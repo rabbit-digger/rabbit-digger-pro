@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "irp",
+    "apir",
     "rabbit-digger",
 ]
 default-members = ["rabbit-digger"]
