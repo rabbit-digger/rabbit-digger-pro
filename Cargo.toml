@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "irp",
+    "rabbit-digger",
+]
+default-members = ["rabbit-digger"]

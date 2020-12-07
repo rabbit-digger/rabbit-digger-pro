@@ -1,0 +1,9 @@
+[package]
+name = "rabbit-digger"
+version = "0.1.0"
+authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
