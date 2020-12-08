@@ -1,9 +1,29 @@
 use async_trait::async_trait;
 use futures::io::{AsyncRead, AsyncWrite};
 use std::{
-    io::Result,
+    error,
+    fmt::{self, Display, Formatter},
+    io::{Error, ErrorKind, Result},
     net::{Shutdown, SocketAddr},
 };
+
+#[derive(Debug)]
+pub struct NotSupport;
+impl Display for NotSupport {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Not support")
+    }
+}
+impl error::Error for NotSupport {}
+
+pub fn not_support() -> Error {
+    Error::new(ErrorKind::Other, NotSupport)
+}
+
+pub fn is_not_suppoer(err: Error) -> bool {
+    let err = err.into_inner();
+    err.map(|i| i.is::<NotSupport>()).unwrap_or(false)
+}
 
 /// A TcpListener
 #[async_trait]

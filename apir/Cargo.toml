@@ -16,5 +16,5 @@ tokio-util = { version = "0.5.1", features = [ "compat" ], optional = true }
 async-std = { version = "1.7.0", optional = true }
 
 [features]
-default = [ "async-std" ]
+default = [ "use_tokio" ]
 use_tokio = [ "tokio", "tokio-util" ]
