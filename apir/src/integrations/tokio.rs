@@ -42,10 +42,10 @@ impl traits::UdpSocket for UdpSocket {
     }
 }
 
-struct Tokio;
+pub struct Tokio;
 
 #[async_trait]
-impl ProxyRuntime for Tokio {
+impl ProxyRuntime for &Tokio {
     type TcpListener = TcpListener;
     type TcpStream = Compat<TcpStream>;
     type UdpSocket = UdpSocket;
@@ -58,5 +58,11 @@ impl ProxyRuntime for Tokio {
     }
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
         UdpSocket::bind(addr).await
+    }
+}
+
+impl traits::Spawn for Tokio {
+    fn spawn<Fut>(&self, future: Fut) -> () {
+        // tokio::spawn()
     }
 }

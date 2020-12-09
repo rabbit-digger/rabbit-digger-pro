@@ -200,10 +200,11 @@ where
 
         // connect
         // VER: 5, CMD: 1(connect)
-        let header = [0x05u8, 0x01, 0x00];
-        socket.write_all(&header).await?;
+        let mut buf = Cursor::new(Vec::new());
+        buf.write_all(&[0x05u8, 0x01, 0x00]).await?;
         let addr: Address = addr.into();
-        addr.write(&mut socket).await?;
+        addr.write(&mut buf).await?;
+        socket.write_all(&buf.into_inner()).await?;
         socket.flush().await?;
 
         // server reply. VER, REP, RSV
@@ -241,7 +242,10 @@ where
     }
 }
 
-impl<PR> Socks5Client<PR> {
+impl<PR> Socks5Client<PR>
+where
+    PR: ProxyRuntime,
+{
     pub fn new(pr: PR, server: SocketAddr) -> Self {
         Self { server, pr }
     }

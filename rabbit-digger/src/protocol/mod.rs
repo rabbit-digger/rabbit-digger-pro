@@ -1,1 +1,1 @@
-mod socks5;
+pub mod socks5;

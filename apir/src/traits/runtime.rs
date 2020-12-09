@@ -95,7 +95,7 @@ pub trait UdpSocket: Unpin + Sized + Send + Sync {
 
 /// A proxy runtime
 #[async_trait]
-pub trait ProxyRuntime: Unpin + Send + Sync {
+pub trait ProxyRuntime: Unpin + Sized + Send + Sync {
     type TcpListener: TcpListener<Self::TcpStream>;
     type TcpStream: TcpStream;
     type UdpSocket: UdpSocket;
