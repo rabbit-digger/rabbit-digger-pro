@@ -1,44 +1,20 @@
-use async_trait::async_trait;
-use futures::io::{AsyncRead, AsyncWrite};
+pub use async_trait::async_trait;
+pub use futures::io::{AsyncRead, AsyncWrite};
 use std::{
-    error,
-    fmt::{self, Display, Formatter},
-    io::{Error, ErrorKind, Result},
+    io::Result,
     marker::PhantomData,
     net::{Shutdown, SocketAddr},
     pin::Pin,
     task::{Context, Poll},
 };
 
-#[derive(Debug)]
-pub struct NotSupport;
-impl Display for NotSupport {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Not support")
-    }
-}
-impl error::Error for NotSupport {}
-
-pub fn not_support() -> Error {
-    Error::new(ErrorKind::Other, NotSupport)
-}
-
-pub fn is_not_suppoer(err: Error) -> bool {
-    let err = err.into_inner();
-    err.map(|i| i.is::<NotSupport>()).unwrap_or(false)
-}
-
 pub struct NotImplement<T: Send = ()>(PhantomData<T>);
 #[async_trait]
 impl<T> TcpListener<T> for NotImplement<T>
 where
-    T: Send + Sync,
+    T: Unpin + Send + Sync,
 {
     const NOT_SUPPORT: bool = true;
-    async fn bind(_addr: SocketAddr) -> Result<Self> {
-        todo!()
-    }
-
     async fn accept(&self) -> Result<(T, SocketAddr)> {
         todo!()
     }
@@ -57,11 +33,9 @@ impl AsyncWrite for NotImplement {
     fn poll_write(self: Pin<&mut Self>, _cx: &mut Context<'_>, _buf: &[u8]) -> Poll<Result<usize>> {
         todo!()
     }
-
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<()>> {
         todo!()
     }
-
     fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<()>> {
         todo!()
     }
@@ -69,9 +43,6 @@ impl AsyncWrite for NotImplement {
 #[async_trait]
 impl TcpStream for NotImplement {
     const NOT_SUPPORT: bool = true;
-    async fn connect(_addr: SocketAddr) -> Result<Self> {
-        todo!()
-    }
     async fn peer_addr(&self) -> Result<SocketAddr> {
         todo!()
     }
@@ -86,9 +57,6 @@ impl TcpStream for NotImplement {
 #[async_trait]
 impl UdpSocket for NotImplement {
     const NOT_SUPPORT: bool = true;
-    async fn bind(_addr: SocketAddr) -> Result<Self> {
-        todo!()
-    }
     async fn recv_from(&self, _buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         todo!()
     }
@@ -102,17 +70,15 @@ impl UdpSocket for NotImplement {
 
 /// A TcpListener
 #[async_trait]
-pub trait TcpListener<TcpStream>: Sized {
+pub trait TcpListener<TcpStream>: Unpin + Sized + Send + Sync {
     const NOT_SUPPORT: bool = false;
-    async fn bind(addr: SocketAddr) -> Result<Self>;
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)>;
 }
 
 /// A TcpStream
 #[async_trait]
-pub trait TcpStream: AsyncRead + AsyncWrite + Sized {
+pub trait TcpStream: AsyncRead + AsyncWrite + Unpin + Sized + Send + Sync {
     const NOT_SUPPORT: bool = false;
-    async fn connect(addr: SocketAddr) -> Result<Self>;
     async fn peer_addr(&self) -> Result<SocketAddr>;
     async fn local_addr(&self) -> Result<SocketAddr>;
     async fn shutdown(&self, how: Shutdown) -> Result<()>;
@@ -120,9 +86,8 @@ pub trait TcpStream: AsyncRead + AsyncWrite + Sized {
 
 /// A UdpSocket
 #[async_trait]
-pub trait UdpSocket: Sized {
+pub trait UdpSocket: Unpin + Sized + Send + Sync {
     const NOT_SUPPORT: bool = false;
-    async fn bind(addr: SocketAddr) -> Result<Self>;
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)>;
     async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize>;
     async fn local_addr(&self) -> Result<SocketAddr>;
@@ -130,8 +95,12 @@ pub trait UdpSocket: Sized {
 
 /// A proxy runtime
 #[async_trait]
-pub trait ProxyRuntime {
+pub trait ProxyRuntime: Unpin + Send + Sync {
     type TcpListener: TcpListener<Self::TcpStream>;
     type TcpStream: TcpStream;
     type UdpSocket: UdpSocket;
+
+    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream>;
+    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener>;
+    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket>;
 }
