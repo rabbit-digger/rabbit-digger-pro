@@ -3,7 +3,7 @@ use std::{
     net::{Shutdown, SocketAddr},
 };
 
-use crate::traits::{self, ProxyRuntime};
+use crate::traits;
 use async_trait::async_trait;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio_util::compat::*;
@@ -45,17 +45,28 @@ impl traits::UdpSocket for UdpSocket {
 pub struct Tokio;
 
 #[async_trait]
-impl ProxyRuntime for &Tokio {
-    type TcpListener = TcpListener;
+impl traits::ProxyTcpStream for &Tokio {
     type TcpStream = Compat<TcpStream>;
-    type UdpSocket = UdpSocket;
 
     async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
         Ok(TcpStream::connect(addr).await?.compat())
     }
+}
+
+#[async_trait]
+impl traits::ProxyTcpListener for &Tokio {
+    type TcpStream = Compat<TcpStream>;
+    type TcpListener = TcpListener;
+
     async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
         TcpListener::bind(addr).await
     }
+}
+
+#[async_trait]
+impl traits::ProxyUdpSocket for &Tokio {
+    type UdpSocket = UdpSocket;
+
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
         UdpSocket::bind(addr).await
     }

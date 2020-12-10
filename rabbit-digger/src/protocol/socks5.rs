@@ -1,8 +1,11 @@
-use apir::traits::{async_trait, AsyncRead, AsyncWrite, NotImplement, ProxyRuntime, TcpStream};
-use futures::prelude::*;
+use apir::traits::{
+    async_trait, AsyncRead, AsyncWrite, ProxyTcpListener, ProxyTcpStream, ProxyUdpSocket, Spawn,
+    TcpListener, TcpStream,
+};
+use futures::{io::Cursor, prelude::*};
 use std::{
     io::{Error, ErrorKind, Result},
-    net::{Shutdown, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv6Addr, Shutdown, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     task::{Context, Poll},
 };
@@ -119,14 +122,14 @@ impl Address {
 // VER: 5, Method: 1, Methods: [NO_AUTH]
 const AUTH_REQUEST: &[u8] = &[0x05, 0x01, 0x00];
 
-pub struct Socks5Client<PR> {
+pub struct Socks5Client<PR: ProxyTcpStream> {
     server: SocketAddr,
     pr: PR,
 }
 
-pub struct Socks5TcpStream<PR: ProxyRuntime>(PR::TcpStream);
+pub struct Socks5TcpStream<PR: ProxyTcpStream>(PR::TcpStream);
 
-impl<PR: ProxyRuntime> AsyncRead for Socks5TcpStream<PR> {
+impl<PR: ProxyTcpStream> AsyncRead for Socks5TcpStream<PR> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -135,7 +138,7 @@ impl<PR: ProxyRuntime> AsyncRead for Socks5TcpStream<PR> {
         Pin::new(&mut self.0).poll_read(cx, buf)
     }
 }
-impl<PR: ProxyRuntime> AsyncWrite for Socks5TcpStream<PR> {
+impl<PR: ProxyTcpStream> AsyncWrite for Socks5TcpStream<PR> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -156,7 +159,7 @@ impl<PR: ProxyRuntime> AsyncWrite for Socks5TcpStream<PR> {
 #[async_trait]
 impl<PR> TcpStream for Socks5TcpStream<PR>
 where
-    PR: ProxyRuntime,
+    PR: ProxyTcpStream,
 {
     async fn peer_addr(&self) -> Result<SocketAddr> {
         todo!()
@@ -172,13 +175,23 @@ where
 }
 
 #[async_trait]
-impl<PR> ProxyRuntime for Socks5Client<PR>
+impl<PR> ProxyUdpSocket for Socks5Client<PR>
 where
-    PR: ProxyRuntime,
+    PR: ProxyTcpStream + ProxyUdpSocket,
 {
-    type TcpListener = NotImplement<Self::TcpStream>;
+    type UdpSocket = PR::UdpSocket;
+
+    async fn udp_bind(&self, _addr: SocketAddr) -> Result<Self::UdpSocket> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl<PR> ProxyTcpStream for Socks5Client<PR>
+where
+    PR: ProxyTcpStream,
+{
     type TcpStream = Socks5TcpStream<PR>;
-    type UdpSocket = NotImplement;
 
     async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
         let mut socket = self.pr.tcp_connect(self.server).await?;
@@ -232,10 +245,16 @@ where
 
         Ok(Socks5TcpStream(socket))
     }
+}
 
-    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
-        todo!()
+impl<PR> Socks5Client<PR>
+where
+    PR: ProxyTcpStream,
+{
+    pub fn new(pr: PR, server: SocketAddr) -> Self {
+        Self { server, pr }
     }
+}
 
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
         todo!()

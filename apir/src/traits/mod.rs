@@ -1,10 +1,6 @@
 //! Defines traits used in APiR.
+pub use not_implement::NotImplement;
 pub use runtime::*;
 
+mod not_implement;
 mod runtime;
-
-pub trait ProxyProtocol<RT: ProxyRuntime> {
-    type Context;
-    type Config;
-    fn new(config: Self::Config) -> Self;
-}
