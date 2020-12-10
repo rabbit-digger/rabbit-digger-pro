@@ -45,7 +45,7 @@ impl traits::UdpSocket for UdpSocket {
 pub struct Tokio;
 
 #[async_trait]
-impl traits::ProxyTcpStream for &Tokio {
+impl traits::ProxyTcpStream for Tokio {
     type TcpStream = Compat<TcpStream>;
 
     async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
@@ -54,7 +54,7 @@ impl traits::ProxyTcpStream for &Tokio {
 }
 
 #[async_trait]
-impl traits::ProxyTcpListener for &Tokio {
+impl traits::ProxyTcpListener for Tokio {
     type TcpStream = Compat<TcpStream>;
     type TcpListener = TcpListener;
 
@@ -64,7 +64,7 @@ impl traits::ProxyTcpListener for &Tokio {
 }
 
 #[async_trait]
-impl traits::ProxyUdpSocket for &Tokio {
+impl traits::ProxyUdpSocket for Tokio {
     type UdpSocket = UdpSocket;
 
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {

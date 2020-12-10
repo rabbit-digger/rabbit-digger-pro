@@ -36,6 +36,16 @@ pub trait ProxyTcpStream: Unpin + Sized + Send + Sync {
     async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream>;
 }
 
+#[async_trait]
+impl<T: ProxyTcpStream> ProxyTcpStream for &T {
+    const NOT_SUPPORT: bool = T::NOT_SUPPORT;
+    type TcpStream = T::TcpStream;
+
+    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
+        ProxyTcpStream::tcp_connect(*self, addr).await
+    }
+}
+
 /// A proxy tcp listener
 #[async_trait]
 pub trait ProxyTcpListener: Unpin + Sized + Send + Sync {
@@ -43,6 +53,17 @@ pub trait ProxyTcpListener: Unpin + Sized + Send + Sync {
     type TcpStream: TcpStream;
     type TcpListener: TcpListener<Self::TcpStream>;
     async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener>;
+}
+
+#[async_trait]
+impl<T: ProxyTcpListener> ProxyTcpListener for &T {
+    const NOT_SUPPORT: bool = T::NOT_SUPPORT;
+    type TcpStream = T::TcpStream;
+    type TcpListener = T::TcpListener;
+
+    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
+        ProxyTcpListener::tcp_bind(*self, addr).await
+    }
 }
 
 /// A proxy udp socket
@@ -54,13 +75,23 @@ pub trait ProxyUdpSocket: Unpin + Sized + Send + Sync {
 }
 
 #[async_trait]
+impl<T: ProxyUdpSocket> ProxyUdpSocket for &T {
+    const NOT_SUPPORT: bool = T::NOT_SUPPORT;
+    type UdpSocket = T::UdpSocket;
+
+    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
+        ProxyUdpSocket::udp_bind(*self, addr).await
+    }
+}
+
+#[async_trait]
 pub trait Spawn: Unpin + Sized + Send + Sync {
     fn run(&self) {}
-    fn spawn<Fut: Future>(&self, future: Fut) -> ();
+    fn spawn<Fut: Future + Send + 'static>(&self, future: Fut);
 }
 
 impl<T: Spawn> Spawn for &T {
-    fn spawn<Fut: Future>(&self, future: Fut) -> () {
+    fn spawn<Fut: Future + Send + 'static>(&self, future: Fut) -> () {
         Spawn::spawn(*self, future)
     }
 }
