@@ -3,7 +3,7 @@ use std::{
     net::{Shutdown, SocketAddr},
 };
 
-use crate::traits::{self, ProxyRuntime};
+use crate::traits;
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_trait::async_trait;
 
@@ -44,19 +44,29 @@ impl traits::UdpSocket for UdpSocket {
 }
 
 struct AsyncStd;
+
 #[async_trait]
-impl ProxyRuntime for AsyncStd {
+impl traits::ProxyTcpListener for AsyncStd {
     type TcpListener = TcpListener;
     type TcpStream = TcpStream;
-    type UdpSocket = UdpSocket;
-
-    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
-        Ok(TcpStream::connect(addr).await?)
-    }
 
     async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
         TcpListener::bind(addr).await
     }
+}
+
+#[async_trait]
+impl traits::ProxyTcpStream for AsyncStd {
+    type TcpStream = TcpStream;
+
+    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
+        Ok(TcpStream::connect(addr).await?)
+    }
+}
+
+#[async_trait]
+impl traits::ProxyUdpSocket for AsyncStd {
+    type UdpSocket = UdpSocket;
 
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
         UdpSocket::bind(addr).await
