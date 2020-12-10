@@ -87,19 +87,26 @@ impl<T: ProxyUdpSocket> ProxyUdpSocket for &T {
 
 #[async_trait]
 pub trait Spawn: Unpin + Sized + Send + Sync {
-    fn spawn<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
+    fn spawn_handle<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send;
-}
-
-impl<T: Spawn> Spawn for &T {
-    fn spawn<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
+    fn spawn<Fut>(&self, future: Fut)
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
-        Spawn::spawn(*self, future)
+        let _ = self.spawn_handle(future);
+    }
+}
+
+impl<T: Spawn> Spawn for &T {
+    fn spawn_handle<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
+    where
+        Fut: Future + Send + 'static,
+        Fut::Output: Send,
+    {
+        Spawn::spawn_handle(*self, future)
     }
 }
 

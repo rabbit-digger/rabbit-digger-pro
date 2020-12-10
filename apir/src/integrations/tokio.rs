@@ -75,7 +75,7 @@ impl traits::ProxyUdpSocket for Tokio {
 }
 
 impl traits::Spawn for Tokio {
-    fn spawn<Fut>(&self, future: Fut) -> traits::RemoteHandle<Fut::Output>
+    fn spawn_handle<Fut>(&self, future: Fut) -> traits::RemoteHandle<Fut::Output>
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
