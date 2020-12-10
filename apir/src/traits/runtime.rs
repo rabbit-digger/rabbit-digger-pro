@@ -1,7 +1,8 @@
 pub use async_trait::async_trait;
+pub use futures::future::RemoteHandle;
 pub use futures::io::{AsyncRead, AsyncWrite};
-use futures::Future;
 use std::{
+    future::Future,
     io::Result,
     net::{Shutdown, SocketAddr},
 };
@@ -86,12 +87,18 @@ impl<T: ProxyUdpSocket> ProxyUdpSocket for &T {
 
 #[async_trait]
 pub trait Spawn: Unpin + Sized + Send + Sync {
-    fn run(&self) {}
-    fn spawn<Fut: Future + Send + 'static>(&self, future: Fut);
+    fn spawn<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
+    where
+        Fut: Future + Send + 'static,
+        Fut::Output: Send;
 }
 
 impl<T: Spawn> Spawn for &T {
-    fn spawn<Fut: Future + Send + 'static>(&self, future: Fut) -> () {
+    fn spawn<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
+    where
+        Fut: Future + Send + 'static,
+        Fut::Output: Send,
+    {
         Spawn::spawn(*self, future)
     }
 }

@@ -1,4 +1,5 @@
 use std::{
+    future::Future,
     io::Result,
     net::{Shutdown, SocketAddr},
 };
@@ -6,6 +7,7 @@ use std::{
 use crate::traits;
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_trait::async_trait;
+use futures::FutureExt;
 
 #[async_trait]
 impl traits::TcpStream for TcpStream {
@@ -43,7 +45,7 @@ impl traits::UdpSocket for UdpSocket {
     }
 }
 
-struct AsyncStd;
+pub struct AsyncStd;
 
 #[async_trait]
 impl traits::ProxyTcpListener for AsyncStd {
@@ -70,5 +72,17 @@ impl traits::ProxyUdpSocket for AsyncStd {
 
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
         UdpSocket::bind(addr).await
+    }
+}
+
+impl traits::Spawn for AsyncStd {
+    fn spawn<Fut>(&self, future: Fut) -> traits::RemoteHandle<Fut::Output>
+    where
+        Fut: Future + Send + 'static,
+        Fut::Output: Send,
+    {
+        let (future, handle) = future.remote_handle();
+        async_std::task::spawn(future);
+        handle
     }
 }

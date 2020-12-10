@@ -2,11 +2,16 @@ use apir::traits::{
     async_trait, AsyncRead, AsyncWrite, ProxyTcpListener, ProxyTcpStream, ProxyUdpSocket, Spawn,
     TcpListener, TcpStream,
 };
-use futures::{io::Cursor, prelude::*};
+use futures::{
+    future::try_join,
+    io::{copy, Cursor},
+    prelude::*,
+};
 use std::{
     io::{Error, ErrorKind, Result},
-    net::{Ipv6Addr, Shutdown, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -26,6 +31,13 @@ impl From<SocketAddr> for Address {
 }
 
 impl Address {
+    fn to_socket_addr(self) -> Option<SocketAddr> {
+        match self {
+            Address::IPv4(v4) => Some(SocketAddr::V4(v4)),
+            Address::IPv6(v6) => Some(SocketAddr::V6(v6)),
+            _ => None,
+        }
+    }
     async fn read_port<R>(mut reader: R) -> Result<u16>
     where
         R: AsyncRead + Unpin,
