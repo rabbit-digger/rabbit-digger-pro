@@ -11,3 +11,4 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 apir = { path = "../apir", version = "0.1" }
 futures = "0.3.5"
+tokio = { version = "0.3", features = ["full"] }

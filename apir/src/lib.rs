@@ -2,9 +2,9 @@
 //!
 //! Aimed to be the standard between proxy softwares written in Rust.
 
-mod channel;
 mod integrations;
 pub mod traits;
+mod virtual_host;
 
 #[cfg(feature = "tokio")]
 pub use integrations::tokio::Tokio;
@@ -12,4 +12,4 @@ pub use integrations::tokio::Tokio;
 #[cfg(feature = "async-std")]
 pub use integrations::async_std::AsyncStd;
 
-pub use channel::{channel, Endpoint};
+pub use virtual_host::VirtualHost;
