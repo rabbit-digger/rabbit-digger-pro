@@ -1,3 +1,7 @@
+//! Virtual host (WIP)
+
+#![allow(dead_code, unused_variables)]
+
 use crate::traits::{self, async_trait, ProxyTcpListener, ProxyTcpStream};
 use futures::{
     channel::mpsc::{
