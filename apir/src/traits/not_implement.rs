@@ -67,8 +67,6 @@ impl UdpSocket for NotImplement {
 
 #[async_trait]
 impl ProxyTcpListener for NotImplement {
-    const NOT_SUPPORT: bool = true;
-
     type TcpStream = NotImplement;
     type TcpListener = NotImplement<Self::TcpStream>;
     async fn tcp_bind(&self, _addr: SocketAddr) -> Result<Self::TcpListener> {
@@ -78,8 +76,6 @@ impl ProxyTcpListener for NotImplement {
 
 #[async_trait]
 impl ProxyTcpStream for NotImplement {
-    const NOT_SUPPORT: bool = true;
-
     type TcpStream = NotImplement;
     async fn tcp_connect(&self, _addr: SocketAddr) -> Result<Self::TcpStream> {
         unimplemented!()
@@ -88,8 +84,6 @@ impl ProxyTcpStream for NotImplement {
 
 #[async_trait]
 impl ProxyUdpSocket for NotImplement {
-    const NOT_SUPPORT: bool = true;
-
     type UdpSocket = NotImplement;
     async fn udp_bind(&self, _addr: SocketAddr) -> Result<Self::UdpSocket> {
         unimplemented!()
