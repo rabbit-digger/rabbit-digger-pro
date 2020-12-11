@@ -1,4 +1,5 @@
 pub use async_trait::async_trait;
+use futures::future::FutureExt;
 pub use futures::future::RemoteHandle;
 pub use futures::io::{AsyncRead, AsyncWrite};
 use std::{
@@ -90,23 +91,25 @@ pub trait Spawn: Unpin + Sized + Send + Sync {
     fn spawn_handle<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
     where
         Fut: Future + Send + 'static,
+        Fut::Output: Send,
+    {
+        let (future, handle) = future.remote_handle();
+        self.spawn(future);
+        handle
+    }
+    fn spawn<Fut>(&self, future: Fut)
+    where
+        Fut: Future + Send + 'static,
         Fut::Output: Send;
+}
+
+impl<T: Spawn> Spawn for &T {
     fn spawn<Fut>(&self, future: Fut)
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
-        let _ = self.spawn_handle(future);
-    }
-}
-
-impl<T: Spawn> Spawn for &T {
-    fn spawn_handle<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
-    where
-        Fut: Future + Send + 'static,
-        Fut::Output: Send,
-    {
-        Spawn::spawn_handle(*self, future)
+        Spawn::spawn(*self, future)
     }
 }
 

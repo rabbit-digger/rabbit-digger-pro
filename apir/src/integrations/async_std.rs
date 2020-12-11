@@ -76,13 +76,11 @@ impl traits::ProxyUdpSocket for AsyncStd {
 }
 
 impl traits::Spawn for AsyncStd {
-    fn spawn_handle<Fut>(&self, future: Fut) -> traits::RemoteHandle<Fut::Output>
+    fn spawn<Fut>(&self, future: Fut)
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
-        let (future, handle) = future.remote_handle();
         async_std::task::spawn(future);
-        handle
     }
 }

@@ -6,7 +6,6 @@ use std::{
 
 use crate::traits;
 use async_trait::async_trait;
-use futures::FutureExt;
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio_util::compat::*;
 
@@ -75,13 +74,11 @@ impl traits::ProxyUdpSocket for Tokio {
 }
 
 impl traits::Spawn for Tokio {
-    fn spawn_handle<Fut>(&self, future: Fut) -> traits::RemoteHandle<Fut::Output>
+    fn spawn<Fut>(&self, future: Fut)
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
-        let (future, handle) = future.remote_handle();
         tokio::spawn(future);
-        handle
     }
 }
