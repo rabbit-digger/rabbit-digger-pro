@@ -13,3 +13,7 @@ pub use integrations::tokio::Tokio;
 pub use integrations::async_std::AsyncStd;
 
 pub use virtual_host::VirtualHost;
+
+pub mod prelude {
+    pub use crate::traits::*;
+}
