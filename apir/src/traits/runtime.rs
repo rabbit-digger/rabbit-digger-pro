@@ -42,7 +42,7 @@ impl<T: ProxyTcpStream> ProxyTcpStream for &T {
     type TcpStream = T::TcpStream;
 
     async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
-        ProxyTcpStream::tcp_connect(*self, addr).await
+        T::tcp_connect(*self, addr).await
     }
 }
 
@@ -60,7 +60,7 @@ impl<T: ProxyTcpListener> ProxyTcpListener for &T {
     type TcpListener = T::TcpListener;
 
     async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
-        ProxyTcpListener::tcp_bind(*self, addr).await
+        T::tcp_bind(*self, addr).await
     }
 }
 
@@ -76,7 +76,7 @@ impl<T: ProxyUdpSocket> ProxyUdpSocket for &T {
     type UdpSocket = T::UdpSocket;
 
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
-        ProxyUdpSocket::udp_bind(*self, addr).await
+        T::udp_bind(self, addr).await
     }
 }
 
@@ -103,37 +103,37 @@ impl<T: Spawn> Spawn for &T {
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
-        Spawn::spawn(*self, future)
+        T::spawn(*self, future)
     }
 }
 
 #[async_trait]
 impl<T: TcpStream + ?Sized> TcpStream for Box<T> {
     async fn peer_addr(&self) -> Result<SocketAddr> {
-        self.peer_addr().await
+        T::peer_addr(&self).await
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
-        self.local_addr().await
+        T::local_addr(&self).await
     }
 
     async fn shutdown(&self, how: Shutdown) -> Result<()> {
-        self.shutdown(how).await
+        T::shutdown(&self, how).await
     }
 }
 
 #[async_trait]
 impl<T: UdpSocket + ?Sized> UdpSocket for Box<T> {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        self.recv_from(buf).await
+        T::recv_from(&self, buf).await
     }
 
     async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
-        self.send_to(buf, addr).await
+        T::send_to(&self, buf, addr).await
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
-        self.local_addr().await
+        T::local_addr(&self).await
     }
 }
 
@@ -144,7 +144,7 @@ impl<T: ProxyTcpListener + ?Sized> ProxyTcpListener for Box<T> {
 
     #[inline(always)]
     async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
-        self.tcp_bind(addr).await
+        T::tcp_bind(&self, addr).await
     }
 }
 
@@ -154,7 +154,7 @@ impl<T: ProxyTcpStream + ?Sized> ProxyTcpStream for Box<T> {
 
     #[inline(always)]
     async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
-        self.tcp_connect(addr).await
+        T::tcp_connect(&self, addr).await
     }
 }
 
@@ -164,7 +164,7 @@ impl<T: ProxyUdpSocket + ?Sized> ProxyUdpSocket for Box<T> {
 
     #[inline(always)]
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
-        self.udp_bind(addr).await
+        T::udp_bind(&self, addr).await
     }
 }
 
