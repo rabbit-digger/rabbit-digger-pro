@@ -8,9 +8,13 @@ mod virtual_host;
 
 #[cfg(feature = "tokio")]
 pub use integrations::tokio::Tokio;
+#[cfg(feature = "tokio")]
+pub use integrations::tokio::Tokio as ActiveRT;
 
-#[cfg(feature = "async-std")]
+#[cfg(feature = "use_async_std")]
 pub use integrations::async_std::AsyncStd;
+#[cfg(feature = "use_async_std")]
+pub use integrations::async_std::AsyncStd as ActiveRT;
 
 pub use virtual_host::VirtualHost;
 

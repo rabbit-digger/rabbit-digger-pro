@@ -7,7 +7,6 @@ use std::{
 use crate::traits;
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_trait::async_trait;
-use futures::FutureExt;
 
 #[async_trait]
 impl traits::TcpStream for TcpStream {
@@ -27,6 +26,9 @@ impl traits::TcpListener<TcpStream> for TcpListener {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
         let (socket, addr) = TcpListener::accept(self).await?;
         Ok((socket, addr))
+    }
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        self.local_addr()
     }
 }
 

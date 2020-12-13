@@ -377,6 +377,9 @@ where
             .prl
             .tcp_bind(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), port))
             .await?;
+        self.serve_listener(listener).await
+    }
+    pub async fn serve_listener(self, listener: PRL::TcpListener) -> Result<()> {
         loop {
             let (socket, _) = listener.accept().await?;
             let _ = self
@@ -413,30 +416,30 @@ where
 mod tests {
     use crate::{
         protocol::socks5::{AuthMethod, Socks5Client, Socks5Server},
-        test::{echo_server, yield_now},
+        test::echo_server,
     };
-    use apir::{prelude::*, Tokio, VirtualHost};
+    use apir::{prelude::*, ActiveRT, VirtualHost};
     use futures::prelude::*;
 
     #[tokio::test]
     async fn test_socks5() -> std::io::Result<()> {
-        let virtual_host = VirtualHost::with_pr(Tokio);
+        let virtual_host = VirtualHost::with_pr(ActiveRT);
 
-        let echo = Tokio.spawn_handle(echo_server(
-            virtual_host.clone(),
-            "127.0.0.1:6666".parse().unwrap(),
-        ));
+        let echo = echo_server(virtual_host.clone(), "127.0.0.1:6666".parse().unwrap()).await?;
         let server = Socks5Server::new(
             virtual_host.clone(),
             virtual_host.clone(),
             AuthMethod::NoAuth,
         );
         let client = Socks5Client::new(&virtual_host, "127.0.0.1:1234".parse().unwrap());
-        Tokio.spawn(server.serve(1234));
 
-        for _ in 0..10 {
-            yield_now().await;
-        }
+        virtual_host.spawn(
+            server.serve_listener(
+                virtual_host
+                    .tcp_bind("0.0.0.0:1234".parse().unwrap())
+                    .await?,
+            ),
+        );
 
         let mut socket = client
             .tcp_connect("127.0.0.1:6666".parse().unwrap())

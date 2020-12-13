@@ -369,18 +369,15 @@ impl Value {
 mod tests {
     use super::*;
     use crate::prelude::{TcpListener, TcpStream, *};
-    use crate::Tokio;
+    use crate::ActiveRT;
     use futures::prelude::*;
 
     #[tokio::test]
     async fn test_tcp() -> std::io::Result<()> {
-        let tk = Tokio;
-        let vh = VirtualHost::with_pr(tk);
+        let rt = ActiveRT;
+        let vh = VirtualHost::with_pr(rt);
         let vh2 = vh.clone();
-        let handle = vh.spawn_handle(crate::tests::echo_server(
-            vh2,
-            "127.0.0.1:1234".parse().unwrap(),
-        ));
+        let handle = crate::tests::echo_server(vh2, "127.0.0.1:1234".parse().unwrap()).await?;
 
         let addr = "127.0.0.1:1234".parse().unwrap();
         let mut client = vh.tcp_connect(addr).await?;
@@ -389,7 +386,7 @@ mod tests {
         let mut buf = Vec::new();
         client.read_to_end(&mut buf).await.unwrap();
         println!("{:?}", buf);
-        handle.await.unwrap();
+        handle.await?;
         Ok(())
     }
 
