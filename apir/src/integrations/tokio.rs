@@ -28,6 +28,9 @@ impl traits::TcpListener<Compat<TcpStream>> for TcpListener {
         let (socket, addr) = TcpListener::accept(self).await?;
         Ok((socket.compat(), addr))
     }
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        TcpListener::local_addr(&self)
+    }
 }
 
 #[async_trait]

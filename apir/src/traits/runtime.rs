@@ -12,6 +12,7 @@ use std::{
 #[async_trait]
 pub trait TcpListener<TcpStream>: Unpin + Send + Sync {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)>;
+    async fn local_addr(&self) -> Result<SocketAddr>;
 }
 
 /// A TcpStream

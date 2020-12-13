@@ -17,3 +17,6 @@ pub use virtual_host::VirtualHost;
 pub mod prelude {
     pub use crate::traits::*;
 }
+
+#[cfg(test)]
+pub mod tests;

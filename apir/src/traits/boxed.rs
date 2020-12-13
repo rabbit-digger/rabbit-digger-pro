@@ -17,6 +17,10 @@ where
         let (s, addr) = self.accept().await?;
         Ok(((Box::new(s)), addr))
     }
+    #[inline(always)]
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        self.local_addr().await
+    }
 }
 
 #[async_trait]
