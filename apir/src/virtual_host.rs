@@ -30,9 +30,14 @@ pub struct TcpData {
     local_addr: Port,
     peer_addr: Port,
 }
+#[derive(Debug, Clone)]
+pub struct UdpData {
+    inner: Arc<Mutex<Inner>>,
+    local_addr: Port,
+}
 pub type TcpStream = Pipe<Vec<u8>, TcpData>;
 pub type TcpListener = Pipe<TcpStream, Port>;
-pub type UdpSocket = Pipe<(Vec<u8>, SocketAddr), Port>;
+pub type UdpSocket = Pipe<(Vec<u8>, SocketAddr), UdpData>;
 
 #[derive(Debug, PartialOrd, PartialEq, Ord, Eq, Copy, Clone)]
 enum Protocol {
@@ -62,11 +67,13 @@ impl Into<SocketAddr> for Port {
     }
 }
 
+#[derive(Debug)]
 struct Inner {
     ports: BTreeMap<Port, Value>,
     next_port: u16,
 }
 
+#[derive(Debug)]
 pub struct VirtualHost<PR = ()>
 where
     PR: Sized,
@@ -215,7 +222,19 @@ impl traits::TcpStream for TcpStream {
         Ok(self.data.local_addr.into())
     }
     async fn shutdown(&self, how: Shutdown) -> Result<()> {
-        todo!()
+        match how {
+            Shutdown::Read => {
+                self.receiver.lock().await.close();
+            }
+            Shutdown::Write => {
+                self.sender.lock().await.close_channel();
+            }
+            Shutdown::Both => {
+                self.receiver.lock().await.close();
+                self.sender.lock().await.close_channel();
+            }
+        }
+        Ok(())
     }
 }
 
@@ -241,21 +260,33 @@ impl traits::UdpSocket for UdpSocket {
         match self.receiver.lock().await.next().await {
             Some(((dat, addr))) => {
                 let to_copy = buf.len().min(dat.len());
-                buf.clone_from_slice(&dat[0..to_copy]);
+                buf[0..to_copy].clone_from_slice(&dat[0..to_copy]);
                 Ok((to_copy, addr))
             }
             None => Err(ErrorKind::BrokenPipe.into()),
         }
     }
     async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
-        let mut sender = self.sender.lock().await;
-        match sender.send((Vec::from(buf), addr)).await {
-            Ok(_) => Ok(buf.len()),
-            Err(_) => Err(ErrorKind::BrokenPipe.into()),
+        check_address(&addr)?;
+        let mut inner = self.data.inner.lock().await;
+        let target_key = Port(Protocol::Udp, addr.port());
+        match inner.ports.get_mut(&target_key) {
+            Some(v) => {
+                let sender = v.get_udp_socket()?;
+                sender
+                    .sender
+                    .lock()
+                    .await
+                    .send((Vec::from(buf), self.data.local_addr.into()))
+                    .await
+                    .map_err(map_err)?;
+                Ok(buf.len())
+            }
+            None => Err(ErrorKind::ConnectionReset.into()),
         }
     }
     async fn local_addr(&self) -> Result<SocketAddr> {
-        todo!()
+        Ok(self.data.local_addr.into())
     }
 }
 
@@ -314,7 +345,10 @@ impl<PR: Unpin + Send + Sync> ProxyUdpSocket for VirtualHost<PR> {
         check_address(&addr)?;
         let mut inner = self.inner.lock().await;
         let key = inner.get_port(Protocol::Udp, addr.port())?;
-        let (udp_socket, other) = UdpSocket::new(key);
+        let (udp_socket, other) = UdpSocket::new(UdpData {
+            inner: self.inner.clone(),
+            local_addr: key,
+        });
         inner.ports.insert(key, Value::UdpSocket(other));
         Ok(udp_socket)
     }
@@ -368,7 +402,7 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prelude::{TcpListener, TcpStream, *};
+    use crate::prelude::{TcpListener, TcpStream, UdpSocket, *};
     use crate::ActiveRT;
     use futures::prelude::*;
 
@@ -427,5 +461,24 @@ mod tests {
             "127.0.0.1:1".parse().unwrap()
         );
         assert_eq!(accepted_addr, "127.0.0.1:1".parse().unwrap())
+    }
+
+    #[tokio::test]
+    async fn test_udp() -> std::io::Result<()> {
+        let addr = "127.0.0.1:1234".parse().unwrap();
+
+        let vh = VirtualHost::with_pr(ActiveRT);
+        let handle = crate::tests::echo_server_udp(vh.clone(), addr).await?;
+        let socket = vh.udp_bind("0.0.0.0:0".parse().unwrap()).await?;
+
+        socket.send_to(b"hello", addr).await?;
+        let mut buf = [0u8; 1024];
+        let (size, addr) = socket.recv_from(&mut buf).await?;
+
+        assert_eq!(&buf[..size], b"hello");
+        assert_eq!(socket.local_addr().await?, "127.0.0.1:1".parse().unwrap());
+
+        handle.await?;
+        Ok(())
     }
 }

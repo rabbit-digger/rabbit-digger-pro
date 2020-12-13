@@ -24,3 +24,23 @@ where
 
     Ok(handle)
 }
+
+pub async fn echo_server_udp<PN: ProxyUdpSocket + Spawn>(
+    pn: PN,
+    bind: SocketAddr,
+) -> io::Result<RemoteHandle<io::Result<()>>>
+where
+    PN::UdpSocket: 'static,
+{
+    let server = pn.udp_bind(bind).await?;
+
+    let handle = pn.spawn_handle(async move {
+        let mut buf = [0u8; 1024];
+        let (size, addr) = server.recv_from(&mut buf).await?;
+        server.send_to(&buf[..size], addr).await?;
+
+        io::Result::Ok(())
+    });
+
+    Ok(handle)
+}
