@@ -75,11 +75,6 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
-      - name: Run tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --all --target=${{ matrix.target }}
       - name: Build release
         uses: actions-rs/cargo@v1
         with:
