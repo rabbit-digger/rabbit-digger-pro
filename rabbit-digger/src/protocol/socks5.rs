@@ -408,3 +408,49 @@ where
     )
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        protocol::socks5::{AuthMethod, Socks5Client, Socks5Server},
+        test::{echo_server, yield_now},
+    };
+    use apir::{prelude::*, Tokio, VirtualHost};
+    use futures::prelude::*;
+
+    #[tokio::test]
+    async fn test_socks5() -> std::io::Result<()> {
+        let virtual_host = VirtualHost::with_pr(Tokio);
+
+        let echo = Tokio.spawn_handle(echo_server(
+            virtual_host.clone(),
+            "127.0.0.1:6666".parse().unwrap(),
+        ));
+        let server = Socks5Server::new(
+            virtual_host.clone(),
+            virtual_host.clone(),
+            AuthMethod::NoAuth,
+        );
+        let client = Socks5Client::new(&virtual_host, "127.0.0.1:1234".parse().unwrap());
+        Tokio.spawn(server.serve(1234));
+
+        for _ in 0..10 {
+            yield_now().await;
+        }
+
+        let mut socket = client
+            .tcp_connect("127.0.0.1:6666".parse().unwrap())
+            .await?;
+
+        socket.write_all(b"hello world").await?;
+        socket.close().await?;
+
+        let mut buf = String::new();
+        socket.read_to_string(&mut buf).await?;
+        assert_eq!(buf, "hello world");
+
+        echo.await?;
+
+        Ok(())
+    }
+}

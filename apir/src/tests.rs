@@ -10,12 +10,11 @@ where
 {
     let listener = pn.tcp_bind(bind).await?;
 
-    let (mut socket, addr) = listener.accept().await?;
-    println!("accept from {}", addr);
-    let mut buf = Vec::new();
-    socket.read_to_end(&mut buf).await.unwrap();
-    println!("server recv {:?}", buf);
-    socket.write_all(&buf).await.unwrap();
+    let (socket, addr) = listener.accept().await?;
+    println!("echo_server: accept from {}", addr);
+
+    let (tx, mut rx) = socket.split();
+    futures::io::copy(tx, &mut rx).await?;
 
     Ok(())
 }
