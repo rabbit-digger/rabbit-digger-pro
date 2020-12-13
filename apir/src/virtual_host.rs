@@ -2,7 +2,7 @@
 
 #![allow(dead_code, unused_variables)]
 
-use crate::traits::{self, async_trait, ProxyTcpListener, ProxyTcpStream};
+use crate::traits::{self, async_trait, ProxyTcpListener, ProxyTcpStream, Spawn};
 use futures::{
     channel::mpsc::{
         unbounded, SendError, UnboundedReceiver as Receiver, UnboundedSender as Sender,
@@ -24,7 +24,13 @@ use std::{
 };
 use traits::ProxyUdpSocket;
 
-pub type TcpStream = Pipe<Vec<u8>, (VecDeque<u8>, Port)>;
+#[derive(Debug, Clone)]
+pub struct TcpData {
+    buf: VecDeque<u8>,
+    local_addr: Port,
+    peer_addr: Port,
+}
+pub type TcpStream = Pipe<Vec<u8>, TcpData>;
 pub type TcpListener = Pipe<TcpStream, Port>;
 pub type UdpSocket = Pipe<(Vec<u8>, SocketAddr), Port>;
 
@@ -44,6 +50,12 @@ enum Value {
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq)]
 pub struct Port(Protocol, u16);
 
+impl TcpData {
+    fn swap(&mut self) {
+        std::mem::swap(&mut self.local_addr, &mut self.peer_addr)
+    }
+}
+
 impl Into<SocketAddr> for Port {
     fn into(self) -> SocketAddr {
         SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), self.1)
@@ -55,18 +67,43 @@ struct Inner {
     next_port: u16,
 }
 
-#[derive(Clone)]
-pub struct VirtualHost {
+pub struct VirtualHost<PR = ()>
+where
+    PR: Sized,
+{
     inner: Arc<Mutex<Inner>>,
+    pr: Arc<Option<PR>>,
 }
 
-impl VirtualHost {
+impl<PR> Clone for VirtualHost<PR> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            pr: self.pr.clone(),
+        }
+    }
+}
+
+impl VirtualHost<()> {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(Inner {
                 ports: BTreeMap::new(),
                 next_port: 1,
             })),
+            pr: Arc::new(None),
+        }
+    }
+}
+
+impl<PR> VirtualHost<PR> {
+    pub fn with_pr(pr: PR) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(Inner {
+                ports: BTreeMap::new(),
+                next_port: 1,
+            })),
+            pr: Arc::new(Some(pr)),
         }
     }
 }
@@ -126,11 +163,11 @@ impl AsyncRead for TcpStream {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<Result<usize>> {
-        let (first, _) = self.data.0.as_slices();
+        let (first, _) = self.data.buf.as_slices();
         if first.len() > 0 {
             let to_copy = first.len().min(buf.len());
             buf[..to_copy].copy_from_slice(&first[0..to_copy]);
-            self.data.0.drain(0..to_copy);
+            self.data.buf.drain(0..to_copy);
             Ok(to_copy).into()
         } else {
             let item = {
@@ -142,7 +179,7 @@ impl AsyncRead for TcpStream {
                     let to_copy = data.len().min(buf.len());
                     buf[..to_copy].copy_from_slice(&data[..to_copy]);
                     data.drain(0..to_copy);
-                    self.data.0.append(&mut data.into());
+                    self.data.buf.append(&mut data.into());
                     Ok(to_copy).into()
                 }
                 None => Ok(0).into(),
@@ -172,10 +209,10 @@ impl AsyncWrite for TcpStream {
 #[async_trait]
 impl traits::TcpStream for TcpStream {
     async fn peer_addr(&self) -> Result<SocketAddr> {
-        todo!()
+        Ok(self.data.peer_addr.into())
     }
     async fn local_addr(&self) -> Result<SocketAddr> {
-        todo!()
+        Ok(self.data.local_addr.into())
     }
     async fn shutdown(&self, how: Shutdown) -> Result<()> {
         todo!()
@@ -187,11 +224,14 @@ impl traits::TcpListener<TcpStream> for TcpListener {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
         match self.receiver.lock().await.next().await {
             Some(t) => {
-                let addr = t.data.clone().1.into();
+                let addr = t.data.peer_addr.clone().into();
                 Ok((t, addr))
             }
             None => Err(ErrorKind::ConnectionAborted.into()),
         }
+    }
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        Ok(self.data.into())
     }
 }
 
@@ -220,7 +260,7 @@ impl traits::UdpSocket for UdpSocket {
 }
 
 #[async_trait]
-impl ProxyTcpListener for VirtualHost {
+impl<PR: Unpin + Send + Sync> ProxyTcpListener for VirtualHost<PR> {
     type TcpStream = TcpStream;
     type TcpListener = TcpListener;
 
@@ -235,7 +275,7 @@ impl ProxyTcpListener for VirtualHost {
 }
 
 #[async_trait]
-impl ProxyTcpStream for VirtualHost {
+impl<PR: Unpin + Send + Sync> ProxyTcpStream for VirtualHost<PR> {
     type TcpStream = TcpStream;
 
     async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
@@ -246,7 +286,12 @@ impl ProxyTcpStream for VirtualHost {
         match inner.ports.get_mut(&target_key) {
             Some(v) => {
                 let sender = v.get_tcp_listener()?;
-                let (tcp_socket, other) = TcpStream::new((VecDeque::new(), key));
+                let (tcp_socket, mut other) = TcpStream::new(TcpData {
+                    buf: VecDeque::new(),
+                    local_addr: key,
+                    peer_addr: target_key,
+                });
+                other.data.swap();
                 sender
                     .sender
                     .lock()
@@ -262,7 +307,7 @@ impl ProxyTcpStream for VirtualHost {
 }
 
 #[async_trait]
-impl ProxyUdpSocket for VirtualHost {
+impl<PR: Unpin + Send + Sync> ProxyUdpSocket for VirtualHost<PR> {
     type UdpSocket = UdpSocket;
 
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
@@ -275,8 +320,20 @@ impl ProxyUdpSocket for VirtualHost {
     }
 }
 
+impl<PR: Spawn> Spawn for VirtualHost<PR> {
+    fn spawn<Fut>(&self, future: Fut)
+    where
+        Fut: Future + Send + 'static,
+        Fut::Output: Send,
+    {
+        PR::spawn(self.pr.as_ref().as_ref().unwrap(), future)
+    }
+}
+
 fn check_address(addr: &SocketAddr) -> Result<()> {
-    if addr.ip() == Ipv4Addr::new(127, 0, 0, 1) {
+    if addr.ip().is_loopback() {
+        Ok(())
+    } else if addr.ip().is_unspecified() {
         Ok(())
     } else {
         Err(ErrorKind::AddrNotAvailable.into())
@@ -311,32 +368,67 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prelude::{TcpListener, *};
+    use crate::prelude::{TcpListener, TcpStream, *};
     use crate::Tokio;
     use futures::prelude::*;
 
     #[tokio::test]
     async fn test_tcp() -> std::io::Result<()> {
         let tk = Tokio;
-        let pr = VirtualHost::new();
-        let server = pr.tcp_bind("127.0.0.1:1234".parse().unwrap()).await?;
-        let handle = tk.spawn_handle(async move {
-            let (mut socket, addr) = server.accept().await.unwrap();
-            println!("accept from {}", addr);
-            let mut buf = Vec::new();
-            socket.read_to_end(&mut buf).await.unwrap();
-            println!("server recv {:?}", buf);
-            socket.write_all(&buf).await.unwrap();
-        });
+        let vh = VirtualHost::with_pr(tk);
+        let vh2 = vh.clone();
+        let handle = vh.spawn_handle(crate::tests::echo_server(
+            vh2,
+            "127.0.0.1:1234".parse().unwrap(),
+        ));
 
         let addr = "127.0.0.1:1234".parse().unwrap();
-        let mut client = pr.tcp_connect(addr).await?;
+        let mut client = vh.tcp_connect(addr).await?;
         client.write_all(b"hello").await.unwrap();
         client.close().await.unwrap();
         let mut buf = Vec::new();
         client.read_to_end(&mut buf).await.unwrap();
         println!("{:?}", buf);
-        handle.await;
+        handle.await.unwrap();
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_tcp_listener_local_addr() {
+        let vh = VirtualHost::new();
+        let addr = "127.0.0.1:12345".parse().unwrap();
+        let socket = vh.tcp_bind(addr).await.unwrap();
+
+        assert_eq!(socket.local_addr().await.unwrap(), addr);
+
+        let vh = VirtualHost::new();
+        let socket = vh.tcp_bind("0.0.0.0:0".parse().unwrap()).await.unwrap();
+        assert_eq!(
+            socket.local_addr().await.unwrap(),
+            "127.0.0.1:1".parse().unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tcp_stream_addr() {
+        let vh = VirtualHost::new();
+        let addr = "127.0.0.1:12345".parse().unwrap();
+        let server = vh.tcp_bind(addr).await.unwrap();
+
+        let socket = vh.tcp_connect(addr).await.unwrap();
+        let (accepted, accepted_addr) = server.accept().await.unwrap();
+
+        assert_eq!(socket.peer_addr().await.unwrap(), addr);
+        assert_eq!(
+            socket.local_addr().await.unwrap(),
+            "127.0.0.1:1".parse().unwrap()
+        );
+
+        assert_eq!(accepted.local_addr().await.unwrap(), addr);
+        assert_eq!(
+            accepted.peer_addr().await.unwrap(),
+            "127.0.0.1:1".parse().unwrap()
+        );
+        assert_eq!(accepted_addr, "127.0.0.1:1".parse().unwrap())
     }
 }
