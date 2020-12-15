@@ -2,10 +2,14 @@ use std::{
     future::Future,
     io::Result,
     net::{Shutdown, SocketAddr},
+    time::Duration,
 };
 
 use crate::traits;
-use async_std::net::{TcpListener, TcpStream, UdpSocket};
+use async_std::{
+    net::{TcpListener, TcpStream, UdpSocket},
+    task::sleep,
+};
 use async_trait::async_trait;
 
 #[async_trait]
@@ -47,6 +51,7 @@ impl traits::UdpSocket for UdpSocket {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct AsyncStd;
 
 #[async_trait]
@@ -77,12 +82,16 @@ impl traits::ProxyUdpSocket for AsyncStd {
     }
 }
 
-impl traits::Spawn for AsyncStd {
+#[async_trait]
+impl traits::Runtime for AsyncStd {
     fn spawn<Fut>(&self, future: Fut)
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
         async_std::task::spawn(future);
+    }
+    async fn sleep(&self, duration: Duration) {
+        sleep(duration).await
     }
 }

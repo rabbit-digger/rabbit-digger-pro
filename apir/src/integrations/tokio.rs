@@ -2,11 +2,15 @@ use std::{
     future::Future,
     io::Result,
     net::{Shutdown, SocketAddr},
+    time::Duration,
 };
 
 use crate::traits;
 use async_trait::async_trait;
-use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::{
+    net::{TcpListener, TcpStream, UdpSocket},
+    time::sleep,
+};
 use tokio_util::compat::*;
 
 #[async_trait]
@@ -46,6 +50,7 @@ impl traits::UdpSocket for UdpSocket {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Tokio;
 
 #[async_trait]
@@ -76,12 +81,16 @@ impl traits::ProxyUdpSocket for Tokio {
     }
 }
 
-impl traits::Spawn for Tokio {
+#[async_trait]
+impl traits::Runtime for Tokio {
     fn spawn<Fut>(&self, future: Fut)
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
         tokio::spawn(future);
+    }
+    async fn sleep(&self, duration: Duration) {
+        sleep(duration).await
     }
 }

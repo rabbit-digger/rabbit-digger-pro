@@ -3,7 +3,7 @@ use super::{
     common::Address,
 };
 use apir::traits::{
-    AsyncRead, AsyncWrite, ProxyTcpListener, ProxyTcpStream, ProxyUdpSocket, Spawn, TcpListener,
+    AsyncRead, AsyncWrite, ProxyTcpListener, ProxyTcpStream, ProxyUdpSocket, Runtime, TcpListener,
     TcpStream,
 };
 use futures::{
@@ -30,7 +30,7 @@ pub struct Socks5Server<PR, PRL> {
 impl<PR, PRL> Socks5Server<PR, PRL>
 where
     PR: ProxyTcpStream + ProxyUdpSocket + 'static,
-    PRL: ProxyTcpListener + Spawn + 'static,
+    PRL: ProxyTcpListener + Runtime + 'static,
 {
     async fn serve_connection(
         cfg: Arc<ServerConfig<PR>>,

@@ -3,7 +3,7 @@ use std::{io, net::SocketAddr};
 use crate::prelude::*;
 use futures::prelude::*;
 
-pub async fn echo_server<PN: ProxyTcpListener + Spawn>(
+pub async fn echo_server<PN: ProxyTcpListener + Runtime>(
     pn: PN,
     bind: SocketAddr,
 ) -> io::Result<RemoteHandle<io::Result<()>>>
@@ -25,7 +25,7 @@ where
     Ok(handle)
 }
 
-pub async fn echo_server_udp<PN: ProxyUdpSocket + Spawn>(
+pub async fn echo_server_udp<PN: ProxyUdpSocket + Runtime>(
     pn: PN,
     bind: SocketAddr,
 ) -> io::Result<RemoteHandle<io::Result<()>>>

@@ -6,6 +6,7 @@ use std::{
     future::Future,
     io::Result,
     net::{Shutdown, SocketAddr},
+    time::Duration,
 };
 
 /// A TcpListener
@@ -82,7 +83,7 @@ impl<T: ProxyUdpSocket> ProxyUdpSocket for &T {
 }
 
 #[async_trait]
-pub trait Spawn: Unpin + Send + Sync {
+pub trait Runtime: Unpin + Send + Sync {
     fn spawn_handle<Fut>(&self, future: Fut) -> RemoteHandle<Fut::Output>
     where
         Fut: Future + Send + 'static,
@@ -96,15 +97,21 @@ pub trait Spawn: Unpin + Send + Sync {
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send;
+    async fn sleep(&self, duration: Duration);
 }
 
-impl<T: Spawn> Spawn for &T {
+#[async_trait]
+impl<T: Runtime> Runtime for &T {
     fn spawn<Fut>(&self, future: Fut)
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
         T::spawn(*self, future)
+    }
+    #[inline(always)]
+    async fn sleep(&self, duration: Duration) {
+        T::sleep(self, duration).await
     }
 }
 

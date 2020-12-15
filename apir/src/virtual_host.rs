@@ -2,7 +2,7 @@
 
 #![allow(dead_code, unused_variables)]
 
-use crate::traits::{self, async_trait, ProxyTcpListener, ProxyTcpStream, Spawn};
+use crate::traits::{self, async_trait, ProxyTcpListener, ProxyTcpStream, Runtime};
 use futures::{
     channel::mpsc::{
         unbounded, SendError, UnboundedReceiver as Receiver, UnboundedSender as Sender,
@@ -21,6 +21,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+    time::Duration,
 };
 use traits::ProxyUdpSocket;
 
@@ -354,13 +355,17 @@ impl<PR: Unpin + Send + Sync> ProxyUdpSocket for VirtualHost<PR> {
     }
 }
 
-impl<PR: Spawn> Spawn for VirtualHost<PR> {
+#[async_trait]
+impl<PR: Runtime> Runtime for VirtualHost<PR> {
     fn spawn<Fut>(&self, future: Fut)
     where
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
         PR::spawn(self.pr.as_ref().as_ref().unwrap(), future)
+    }
+    async fn sleep(&self, duration: Duration) {
+        PR::sleep(self.pr.as_ref().as_ref().unwrap(), duration).await
     }
 }
 
