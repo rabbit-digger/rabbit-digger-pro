@@ -2,13 +2,13 @@ pub mod protocol;
 use apir::traits::*;
 use apir::{ActiveRT, VirtualHost};
 use futures::prelude::*;
-use protocol::socks5::{AuthMethod, Socks5Client, Socks5Server};
+use protocol::socks5::{Socks5Client, Socks5Server};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let virtual_host = VirtualHost::new();
 
-    let server = Socks5Server::new(virtual_host.clone(), ActiveRT, AuthMethod::NoAuth);
+    let server = Socks5Server::new(virtual_host.clone(), ActiveRT);
     let client = Socks5Client::new(&virtual_host, "127.0.0.1:1234".parse().unwrap());
     ActiveRT.spawn(server.serve(1234));
 

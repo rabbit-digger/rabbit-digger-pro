@@ -1,4 +1,7 @@
-use super::common::Address;
+use super::{
+    auth::{auth_server, Method, NoAuth},
+    common::Address,
+};
 use apir::traits::{
     AsyncRead, AsyncWrite, ProxyTcpListener, ProxyTcpStream, ProxyUdpSocket, Spawn, TcpListener,
     TcpStream,
@@ -9,18 +12,14 @@ use futures::{
     prelude::*,
 };
 use std::{
-    io::{Error, ErrorKind, Result},
+    io::Result,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     sync::Arc,
 };
 
-pub enum AuthMethod {
-    NoAuth,
-}
-
 struct ServerConfig<PR> {
     pr: PR,
-    _auth_method: AuthMethod,
+    methods: Vec<Box<dyn Method + Send + Sync>>,
 }
 
 pub struct Socks5Server<PR, PRL> {
@@ -38,31 +37,13 @@ where
         mut socket: PRL::TcpStream,
     ) -> Result<()> {
         let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
-        let ServerConfig { pr, .. } = &*cfg;
+        let ServerConfig { pr, methods, .. } = &*cfg;
 
-        let mut buf = [0u8; 2];
-        socket.read_exact(&mut buf).await?;
-        if buf[0] != 0x05 {
-            return Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("client request error {:x}", buf[0]),
-            ));
-        }
-
-        let methods_len = buf[1] as usize;
-        let mut methods = vec![0u8; methods_len];
-        socket.read_exact(&mut methods).await?;
-
-        // Find no auth
-        if let Some(i) = methods.iter().position(|i| *i == 0) {
-            socket.write_all(&[0x05, i as u8]).await?;
-            socket.flush().await?;
-        } else {
-            // No acceptable methods
-            socket.write_all(&[0x05, 0xFF]).await?;
-            socket.flush().await?;
-            return Ok(());
-        }
+        auth_server(
+            &mut socket,
+            &methods.iter().map(|i| &**i).collect::<Vec<_>>(),
+        )
+        .await?;
 
         let mut buf = [0u8; 3];
         socket.read_exact(&mut buf).await?;
@@ -112,9 +93,12 @@ where
 
         Ok(())
     }
-    pub fn new(pr: PR, prl: PRL, _auth_method: AuthMethod) -> Self {
+    pub fn new(pr: PR, prl: PRL) -> Self {
         Self {
-            config: Arc::new(ServerConfig { pr, _auth_method }),
+            config: Arc::new(ServerConfig {
+                pr,
+                methods: vec![Box::new(NoAuth)],
+            }),
             prl,
         }
     }

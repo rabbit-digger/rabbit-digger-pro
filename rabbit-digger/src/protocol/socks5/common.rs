@@ -1,7 +1,7 @@
 use apir::traits::{AsyncRead, AsyncWrite};
 use futures::prelude::*;
 use std::{
-    io::{Error, ErrorKind, Result},
+    io::{Cursor, Error, ErrorKind, Result},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 pub enum Address {
@@ -118,4 +118,13 @@ impl Address {
             }
         })
     }
+}
+pub async fn pack_send(
+    mut w: impl AsyncWrite + Unpin,
+    f: impl Fn(&mut Cursor<Vec<u8>>) -> Result<()>,
+) -> Result<()> {
+    let mut buf = Cursor::new(Vec::with_capacity(1024));
+    f(&mut buf)?;
+    w.write_all(&buf.into_inner()).await?;
+    w.flush().await
 }

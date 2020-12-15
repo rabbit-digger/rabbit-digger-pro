@@ -1,4 +1,7 @@
-use super::common::Address;
+use super::{
+    auth::{auth_client, Method, NoAuth},
+    common::Address,
+};
 use apir::traits::{async_trait, AsyncRead, AsyncWrite, ProxyTcpStream, ProxyUdpSocket, TcpStream};
 use futures::{io::Cursor, prelude::*};
 use std::{
@@ -8,11 +11,9 @@ use std::{
     task::{Context, Poll},
 };
 
-// VER: 5, Method: 1, Methods: [NO_AUTH]
-const AUTH_REQUEST: &[u8] = &[0x05, 0x01, 0x00];
-
 pub struct Socks5Client<PR: ProxyTcpStream> {
     server: SocketAddr,
+    methods: Vec<Box<dyn Method + Send + Sync>>,
     pr: PR,
 }
 
@@ -84,21 +85,8 @@ where
 
     async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
         let mut socket = self.pr.tcp_connect(self.server).await?;
-        socket.write_all(AUTH_REQUEST).await?;
-        socket.flush().await?;
 
-        let mut buf = [0u8; 2];
-        socket.read_exact(&mut buf).await?;
-        let method = match buf {
-            [0x05, 0xFF] => return Err(Error::new(ErrorKind::Other, "server needs authorization")),
-            [0x05, method] => method,
-            _ => return Err(Error::new(ErrorKind::Other, "server refused to connect")),
-        };
-
-        match method {
-            0 => {}
-            _ => return Err(Error::new(ErrorKind::Other, "auth method not implement")),
-        }
+        auth_client(&mut socket, &self.methods()).await?;
 
         // connect
         // VER: 5, CMD: 1(connect)
@@ -141,6 +129,13 @@ where
     PR: ProxyTcpStream,
 {
     pub fn new(pr: PR, server: SocketAddr) -> Self {
-        Self { server, pr }
+        Self {
+            server,
+            pr,
+            methods: vec![Box::new(NoAuth)],
+        }
+    }
+    fn methods(&self) -> Vec<&(dyn Method + Send + Sync)> {
+        self.methods.iter().map(|i| &**i).collect::<Vec<_>>()
     }
 }
