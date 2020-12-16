@@ -2,14 +2,9 @@ use super::{
     auth::{auth_client, Method, NoAuth},
     common::Address,
 };
-use apir::traits::{async_trait, AsyncRead, AsyncWrite, ProxyTcpStream, ProxyUdpSocket, TcpStream};
+use apir::{traits::{async_trait, AsyncRead, AsyncWrite, ProxyTcpStream, ProxyUdpSocket, TcpStream, UdpSocket}};
 use futures::{io::Cursor, prelude::*};
-use std::{
-    io::{Error, ErrorKind, Result},
-    net::{Shutdown, SocketAddr},
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::{io::{Error, ErrorKind, Result}, net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr}, pin::Pin, task::{Context, Poll}};
 
 pub struct Socks5Client<PR: ProxyTcpStream> {
     server: SocketAddr,
@@ -46,6 +41,28 @@ impl<PR: ProxyTcpStream> AsyncWrite for Socks5TcpStream<PR> {
     }
 }
 
+
+pub struct Socks5UdpSocket<PR: ProxyUdpSocket>(PR::UdpSocket);
+
+#[async_trait]
+impl<PR> UdpSocket for Socks5UdpSocket<PR>
+where
+    PR: ProxyUdpSocket + ProxyTcpStream,
+{
+    async fn recv_from(&self, _buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        todo!()
+    }
+
+    async fn send_to(&self, _buf: &[u8], _addr: SocketAddr) -> Result<usize> {
+        todo!()
+    }
+
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        todo!()
+    }
+}
+
+
 #[async_trait]
 impl<PR> TcpStream for Socks5TcpStream<PR>
 where
@@ -69,10 +86,51 @@ impl<PR> ProxyUdpSocket for Socks5Client<PR>
 where
     PR: ProxyTcpStream + ProxyUdpSocket,
 {
-    type UdpSocket = PR::UdpSocket;
+    type UdpSocket = Socks5UdpSocket<PR>;
 
-    async fn udp_bind(&self, _addr: SocketAddr) -> Result<Self::UdpSocket> {
-        todo!()
+    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
+        let client = self.pr.udp_bind(addr).await.unwrap();
+        let mut socket = self.pr.tcp_connect(self.server).await?;
+
+        auth_client(&mut socket, &self.methods()).await?;
+
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+        let mut buf = Cursor::new(Vec::new());
+        buf.write_all(&[0x05u8, 0x03u8, 0x00u8]).await?;
+        let addr: Address = addr.into();
+        addr.write(&mut buf).await?;
+        socket.write_all(&buf.into_inner()).await?;
+        socket.flush().await?;
+
+        // server reply. VER, REP, RSV
+        let mut buf = [0u8; 3];
+        socket.read_exact(&mut buf).await?;
+        // TODO: set address to socket
+        let addr = match buf[0..3] {
+            [0x05, 0x00, 0x00] => Address::read(&mut socket).await?,
+            [0x05, err] => {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("server response error {}", err),
+                ))
+            }
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    format!(
+                        "server response wrong VER {} REP {} RSV {}",
+                        buf[0], buf[1], buf[2]
+                    ),
+                ))
+            }
+        };
+
+        let _addr = addr.to_socket_addr().unwrap();
+        // client should only send and recv from this addr, but currently
+        // we do not have a connect() method in trait
+        // client.connect(addr).await?;
+
+        Ok(Socks5UdpSocket(client))
     }
 }
 
