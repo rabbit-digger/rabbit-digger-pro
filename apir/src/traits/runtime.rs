@@ -1,3 +1,4 @@
+use super::ext::UdpSocketConnect;
 pub use async_trait::async_trait;
 use futures::future::FutureExt;
 pub use futures::future::RemoteHandle;
@@ -31,6 +32,13 @@ pub trait UdpSocket: Unpin + Send + Sync {
     async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize>;
     async fn local_addr(&self) -> Result<SocketAddr>;
 }
+
+pub trait UdpSocketExt: UdpSocket + Sized {
+    fn ext(self) -> UdpSocketConnect<Self> {
+        UdpSocketConnect::new(self)
+    }
+}
+impl<T: UdpSocket + Sized> UdpSocketExt for T {}
 
 /// A proxy tcp stream
 #[async_trait]
