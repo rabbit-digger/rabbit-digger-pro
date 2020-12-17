@@ -4,7 +4,7 @@ use super::{
 };
 use apir::{traits::{async_trait, AsyncRead, AsyncWrite, ProxyTcpStream, ProxyUdpSocket, TcpStream, UdpSocket}};
 use futures::{io::Cursor, prelude::*};
-use std::{io::{Error, ErrorKind, Result}, net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr}, pin::Pin, task::{Context, Poll}};
+use std::{io::{Error, ErrorKind, Result}, net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr}, ops::Add, pin::Pin, task::{Context, Poll}};
 
 pub struct Socks5Client<PR: ProxyTcpStream> {
     server: SocketAddr,
@@ -42,15 +42,46 @@ impl<PR: ProxyTcpStream> AsyncWrite for Socks5TcpStream<PR> {
 }
 
 
-pub struct Socks5UdpSocket<PR: ProxyUdpSocket>(PR::UdpSocket);
+pub struct Socks5UdpSocket<PR: ProxyUdpSocket>(PR::UdpSocket, SocketAddr);
 
 #[async_trait]
 impl<PR> UdpSocket for Socks5UdpSocket<PR>
 where
     PR: ProxyUdpSocket + ProxyTcpStream,
 {
-    async fn recv_from(&self, _buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        todo!()
+    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        // 259 is max size of address, atype 1 + domain len 1 + domain 255 + port 2
+        let bytes_size = 259 + buf.len();
+        let mut bytes = vec![0u8; bytes_size];
+        let recv_len;
+
+        loop {
+            let (len, addr) = self.0.recv_from(&mut bytes).await.unwrap();
+            if addr == self.1 {
+                recv_len = len;
+                break;
+            }
+        }
+
+        let mut cursor = Cursor::new(bytes);
+        let mut header = [0u8; 3];
+        cursor.read_exact(&mut header).await?;
+        let addr = match header[0..3] {
+            [0x00, 0x00, 0x00] => Address::read(&mut cursor).await?,
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    format!(
+                        "server response wrong RSV {} RSV {} FRAG {}",
+                        header[0], header[1], header[2]
+                    ),
+                ))
+            }
+        };
+        let header_len = cursor.position() as usize;
+        cursor.read_exact(buf).await?;
+
+        Ok((recv_len - header_len, addr.to_socket_addr().unwrap()))
     }
 
     async fn send_to(&self, _buf: &[u8], _addr: SocketAddr) -> Result<usize> {
@@ -58,7 +89,7 @@ where
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
-        todo!()
+        self.0.local_addr().await
     }
 }
 
@@ -125,12 +156,9 @@ where
             }
         };
 
-        let _addr = addr.to_socket_addr().unwrap();
-        // client should only send and recv from this addr, but currently
-        // we do not have a connect() method in trait
-        // client.connect(addr).await?;
+        let addr = addr.to_socket_addr().unwrap();
 
-        Ok(Socks5UdpSocket(client))
+        Ok(Socks5UdpSocket(client, addr))
     }
 }
 
