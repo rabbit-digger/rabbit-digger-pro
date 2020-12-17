@@ -48,7 +48,7 @@ impl<PR: ProxyTcpStream> AsyncWrite for Socks5TcpStream<PR> {
     }
 }
 
-pub struct Socks5UdpSocket<PR: ProxyUdpSocket>(PR::UdpSocket, SocketAddr);
+pub struct Socks5UdpSocket<PR: ProxyUdpSocket+ProxyTcpStream>(PR::UdpSocket, PR::TcpStream, SocketAddr);
 
 #[async_trait]
 impl<PR> UdpSocket for Socks5UdpSocket<PR>
@@ -61,7 +61,7 @@ where
         let mut bytes = vec![0u8; bytes_size];
         let recv_len = loop {
             let (len, addr) = self.0.recv_from(&mut bytes).await?;
-            if addr == self.1 {
+            if addr == self.2 {
                 break len;
             }
         };
@@ -70,6 +70,7 @@ where
         let mut header = [0u8; 3];
         cursor.read_exact(&mut header).await?;
         let addr = match header[0..3] {
+            // TODO: support fragment sequence or at least give another error
             [0x00, 0x00, 0x00] => Address::read(&mut cursor).await?,
             _ => {
                 return Err(Error::new(
@@ -88,8 +89,16 @@ where
         Ok((to_copy, addr.to_socket_addr()?))
     }
 
-    async fn send_to(&self, _buf: &[u8], _addr: SocketAddr) -> Result<usize> {
-        todo!()
+    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
+        let addr: Address = addr.into();
+        let mut cursor = Cursor::new(Vec::new());
+        cursor.write_all(&[0x00, 0x00, 0x00]).await?;
+        addr.write(&mut cursor).await?;
+        cursor.write_all(buf).await?;
+        
+        let bytes = cursor.into_inner();
+
+        self.0.send_to(&bytes, self.2).await
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
@@ -161,7 +170,7 @@ where
 
         let addr = addr.to_socket_addr()?;
 
-        Ok(Socks5UdpSocket(client, addr))
+        Ok(Socks5UdpSocket(client, socket, addr))
     }
 }
 
