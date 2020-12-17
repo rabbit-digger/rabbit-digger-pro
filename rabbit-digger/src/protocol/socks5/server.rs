@@ -51,8 +51,8 @@ where
             // VER: 5, CMD: 1(CONNECT), RSV: 0
             [0x05, 0x01, 0x00] => {
                 let dst = match Address::read(&mut socket).await?.to_socket_addr() {
-                    Some(a) => a,
-                    None => {
+                    Ok(a) => a,
+                    Err(_) => {
                         socket
                             .write_all(&[
                                 0x05, 0x08, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

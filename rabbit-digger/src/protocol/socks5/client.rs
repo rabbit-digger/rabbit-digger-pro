@@ -2,9 +2,16 @@ use super::{
     auth::{auth_client, Method, NoAuth},
     common::Address,
 };
-use apir::{traits::{async_trait, AsyncRead, AsyncWrite, ProxyTcpStream, ProxyUdpSocket, TcpStream, UdpSocket}};
+use apir::traits::{
+    async_trait, AsyncRead, AsyncWrite, ProxyTcpStream, ProxyUdpSocket, TcpStream, UdpSocket,
+};
 use futures::{io::Cursor, prelude::*};
-use std::{io::{Error, ErrorKind, Result}, net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr}, ops::Add, pin::Pin, task::{Context, Poll}};
+use std::{
+    io::{Error, ErrorKind, Result},
+    net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr},
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 pub struct Socks5Client<PR: ProxyTcpStream> {
     server: SocketAddr,
@@ -41,7 +48,6 @@ impl<PR: ProxyTcpStream> AsyncWrite for Socks5TcpStream<PR> {
     }
 }
 
-
 pub struct Socks5UdpSocket<PR: ProxyUdpSocket>(PR::UdpSocket, SocketAddr);
 
 #[async_trait]
@@ -53,15 +59,12 @@ where
         // 259 is max size of address, atype 1 + domain len 1 + domain 255 + port 2
         let bytes_size = 259 + buf.len();
         let mut bytes = vec![0u8; bytes_size];
-        let recv_len;
-
-        loop {
-            let (len, addr) = self.0.recv_from(&mut bytes).await.unwrap();
+        let recv_len = loop {
+            let (len, addr) = self.0.recv_from(&mut bytes).await?;
             if addr == self.1 {
-                recv_len = len;
-                break;
+                break len;
             }
-        }
+        };
 
         let mut cursor = Cursor::new(bytes);
         let mut header = [0u8; 3];
@@ -78,10 +81,11 @@ where
                 ))
             }
         };
-        let header_len = cursor.position() as usize;
-        cursor.read_exact(buf).await?;
+        let body_len = recv_len - cursor.position() as usize;
+        let to_copy = body_len.min(buf.len());
+        cursor.read_exact(&mut buf[..to_copy]).await?;
 
-        Ok((recv_len - header_len, addr.to_socket_addr().unwrap()))
+        Ok((to_copy, addr.to_socket_addr()?))
     }
 
     async fn send_to(&self, _buf: &[u8], _addr: SocketAddr) -> Result<usize> {
@@ -92,7 +96,6 @@ where
         self.0.local_addr().await
     }
 }
-
 
 #[async_trait]
 impl<PR> TcpStream for Socks5TcpStream<PR>
@@ -120,7 +123,7 @@ where
     type UdpSocket = Socks5UdpSocket<PR>;
 
     async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
-        let client = self.pr.udp_bind(addr).await.unwrap();
+        let client = self.pr.udp_bind(addr).await?;
         let mut socket = self.pr.tcp_connect(self.server).await?;
 
         auth_client(&mut socket, &self.methods()).await?;
@@ -156,7 +159,7 @@ where
             }
         };
 
-        let addr = addr.to_socket_addr().unwrap();
+        let addr = addr.to_socket_addr()?;
 
         Ok(Socks5UdpSocket(client, addr))
     }

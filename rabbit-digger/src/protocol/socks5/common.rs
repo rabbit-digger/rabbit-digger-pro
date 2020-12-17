@@ -20,11 +20,11 @@ impl From<SocketAddr> for Address {
 }
 
 impl Address {
-    pub fn to_socket_addr(self) -> Option<SocketAddr> {
+    pub fn to_socket_addr(self) -> Result<SocketAddr> {
         match self {
-            Address::IPv4(v4) => Some(SocketAddr::V4(v4)),
-            Address::IPv6(v6) => Some(SocketAddr::V6(v6)),
-            _ => None,
+            Address::IPv4(v4) => Ok(SocketAddr::V4(v4)),
+            Address::IPv6(v6) => Ok(SocketAddr::V6(v6)),
+            _ => Err(ErrorKind::AddrNotAvailable.into()),
         }
     }
     async fn read_port<R>(mut reader: R) -> Result<u16>
