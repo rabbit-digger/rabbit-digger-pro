@@ -3,7 +3,8 @@ use super::{
     common::Address,
 };
 use apir::traits::{
-    async_trait, AsyncRead, AsyncWrite, ProxyTcpStream, ProxyUdpSocket, TcpStream, UdpSocket,
+    async_trait, AsyncRead, AsyncWrite, IntoAddress, ProxyTcpStream, ProxyUdpSocket, TcpStream,
+    UdpSocket,
 };
 use futures::{io::Cursor, prelude::*};
 use std::{
@@ -14,6 +15,8 @@ use std::{
 };
 
 pub struct Socks5Client<PR: ProxyTcpStream> {
+    /// Don't resolve the domain locally if set to false
+    remote_resolve: bool,
     server: SocketAddr,
     methods: Vec<Box<dyn Method + Send + Sync>>,
     pr: PR,
@@ -48,7 +51,11 @@ impl<PR: ProxyTcpStream> AsyncWrite for Socks5TcpStream<PR> {
     }
 }
 
-pub struct Socks5UdpSocket<PR: ProxyUdpSocket+ProxyTcpStream>(PR::UdpSocket, PR::TcpStream, SocketAddr);
+pub struct Socks5UdpSocket<PR: ProxyUdpSocket + ProxyTcpStream>(
+    PR::UdpSocket,
+    PR::TcpStream,
+    SocketAddr,
+);
 
 #[async_trait]
 impl<PR> UdpSocket for Socks5UdpSocket<PR>
@@ -95,7 +102,7 @@ where
         cursor.write_all(&[0x00, 0x00, 0x00]).await?;
         addr.write(&mut cursor).await?;
         cursor.write_all(buf).await?;
-        
+
         let bytes = cursor.into_inner();
 
         self.0.send_to(&bytes, self.2).await
@@ -131,7 +138,7 @@ where
 {
     type UdpSocket = Socks5UdpSocket<PR>;
 
-    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
+    async fn udp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::UdpSocket> {
         let client = self.pr.udp_bind(addr).await?;
         let mut socket = self.pr.tcp_connect(self.server).await?;
 
@@ -181,7 +188,7 @@ where
 {
     type TcpStream = Socks5TcpStream<PR>;
 
-    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
+    async fn tcp_connect<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpStream> {
         let mut socket = self.pr.tcp_connect(self.server).await?;
 
         auth_client(&mut socket, &self.methods()).await?;
@@ -190,7 +197,7 @@ where
         // VER: 5, CMD: 1(connect)
         let mut buf = Cursor::new(Vec::new());
         buf.write_all(&[0x05u8, 0x01, 0x00]).await?;
-        let addr: Address = addr.into();
+        let addr: Address = addr.into_address()?.into();
         addr.write(&mut buf).await?;
         socket.write_all(&buf.into_inner()).await?;
         socket.flush().await?;
@@ -228,6 +235,7 @@ where
 {
     pub fn new(pr: PR, server: SocketAddr) -> Self {
         Self {
+            remote_resolve: false,
             server,
             pr,
             methods: vec![Box::new(NoAuth)],

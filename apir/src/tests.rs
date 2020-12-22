@@ -1,11 +1,11 @@
-use std::{io, net::SocketAddr};
+use std::io;
 
 use crate::prelude::*;
 use futures::prelude::*;
 
-pub async fn echo_server<PN: ProxyTcpListener + Runtime>(
+pub async fn echo_server<PN: ProxyTcpListener + Runtime, A: IntoAddress>(
     pn: PN,
-    bind: SocketAddr,
+    bind: A,
 ) -> io::Result<RemoteHandle<io::Result<()>>>
 where
     PN::TcpListener: 'static,
@@ -25,9 +25,9 @@ where
     Ok(handle)
 }
 
-pub async fn echo_server_udp<PN: ProxyUdpSocket + Runtime>(
+pub async fn echo_server_udp<PN: ProxyUdpSocket + Runtime, A: IntoAddress>(
     pn: PN,
-    bind: SocketAddr,
+    bind: A,
 ) -> io::Result<RemoteHandle<io::Result<()>>>
 where
     PN::UdpSocket: 'static,

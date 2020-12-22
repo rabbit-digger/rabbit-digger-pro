@@ -1,6 +1,6 @@
 use std::{io::Result, net::SocketAddr};
 
-use super::runtime::*;
+use super::{addr::IntoAddress, runtime::*};
 
 pub type BoxedTcpStream = Box<dyn TcpStream>;
 pub type BoxedTcpListener<TcpStream> = Box<dyn TcpListener<TcpStream>>;
@@ -32,7 +32,7 @@ where
     type TcpStream = BoxedTcpStream;
 
     #[inline(always)]
-    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
+    async fn tcp_connect<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpStream> {
         let s = self.0.tcp_connect(addr).await?;
         Ok((Box::new(s)))
     }
@@ -49,7 +49,7 @@ where
     type TcpListener = BoxedTcpListener<T::TcpStream>;
 
     #[inline(always)]
-    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
+    async fn tcp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpListener> {
         let s = self.0.tcp_bind(addr).await?;
         Ok((Box::new(s)))
     }
@@ -64,7 +64,7 @@ where
     type UdpSocket = BoxedUdpSocket;
 
     #[inline(always)]
-    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
+    async fn udp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::UdpSocket> {
         let s = self.0.udp_bind(addr).await?;
         Ok((Box::new(s)))
     }

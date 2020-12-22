@@ -4,7 +4,7 @@ use super::{
 };
 use apir::traits::{
     AsyncRead, AsyncWrite, ProxyTcpListener, ProxyTcpStream, ProxyUdpSocket, Runtime, TcpListener,
-    TcpStream,
+    TcpStream, UdpSocket,
 };
 use futures::{
     future::try_join,
@@ -85,6 +85,30 @@ where
                 socket.write_all(&writer.into_inner()).await?;
 
                 pipe(out, socket).await?;
+            }
+            // UDP
+            [0x05, 0x03, 0x00] => {
+                let addr = match Address::read(&mut socket).await?.to_socket_addr() {
+                    Ok(a) => a,
+                    Err(_) => {
+                        socket
+                            .write_all(&[
+                                0x05, 0x08, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                            ])
+                            .await?;
+                        socket.flush().await?;
+                        return Ok(());
+                    }
+                };
+                let udp = pr.udp_bind("0.0.0.0:0").await?;
+
+                // success
+                let mut writer = Cursor::new(Vec::new());
+                writer.write_all(&[0x05, 0x00, 0x00]).await?;
+                let addr: Address = udp.local_addr().await.unwrap_or(default_addr).into();
+                addr.write(&mut writer).await?;
+
+                socket.write_all(&writer.into_inner()).await?;
             }
             _ => {
                 return Ok(());

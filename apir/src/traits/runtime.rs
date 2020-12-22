@@ -1,4 +1,7 @@
-use super::ext::UdpSocketConnect;
+use super::{
+    addr::{Address, IntoAddress},
+    ext::UdpSocketConnect,
+};
 pub use async_trait::async_trait;
 use futures::future::FutureExt;
 pub use futures::future::RemoteHandle;
@@ -44,14 +47,14 @@ impl<T: UdpSocket + Sized> UdpSocketExt for T {}
 #[async_trait]
 pub trait ProxyTcpStream: Unpin + Send + Sync {
     type TcpStream: TcpStream;
-    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream>;
+    async fn tcp_connect<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpStream>;
 }
 
 #[async_trait]
 impl<T: ProxyTcpStream> ProxyTcpStream for &T {
     type TcpStream = T::TcpStream;
 
-    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
+    async fn tcp_connect<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpStream> {
         T::tcp_connect(*self, addr).await
     }
 }
@@ -61,7 +64,7 @@ impl<T: ProxyTcpStream> ProxyTcpStream for &T {
 pub trait ProxyTcpListener: Unpin + Send + Sync {
     type TcpStream: TcpStream;
     type TcpListener: TcpListener<Self::TcpStream>;
-    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener>;
+    async fn tcp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpListener>;
 }
 
 #[async_trait]
@@ -69,7 +72,7 @@ impl<T: ProxyTcpListener> ProxyTcpListener for &T {
     type TcpStream = T::TcpStream;
     type TcpListener = T::TcpListener;
 
-    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
+    async fn tcp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpListener> {
         T::tcp_bind(*self, addr).await
     }
 }
@@ -78,16 +81,29 @@ impl<T: ProxyTcpListener> ProxyTcpListener for &T {
 #[async_trait]
 pub trait ProxyUdpSocket: Unpin + Send + Sync {
     type UdpSocket: UdpSocket;
-    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket>;
+    async fn udp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::UdpSocket>;
 }
 
 #[async_trait]
 impl<T: ProxyUdpSocket> ProxyUdpSocket for &T {
     type UdpSocket = T::UdpSocket;
 
-    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
+    async fn udp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::UdpSocket> {
         T::udp_bind(self, addr).await
     }
+}
+
+/// A dns resolver
+#[async_trait]
+pub trait ProxyResolver: Unpin + Send + Sync {
+    async fn resolve<A: IntoAddress>(&self, addr: A) -> Result<SocketAddr> {
+        Ok(match addr.into_address()? {
+            Address::IPv4(v4) => SocketAddr::V4(v4),
+            Address::IPv6(v6) => SocketAddr::V6(v6),
+            Address::Domain(domain, port) => self.resolve_domain((&domain, port)).await?,
+        })
+    }
+    async fn resolve_domain(&self, domain: (&str, u16)) -> Result<SocketAddr>;
 }
 
 #[async_trait]
@@ -159,7 +175,7 @@ impl<T: ProxyTcpListener + ?Sized> ProxyTcpListener for Box<T> {
     type TcpListener = T::TcpListener;
 
     #[inline(always)]
-    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
+    async fn tcp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpListener> {
         T::tcp_bind(&self, addr).await
     }
 }
@@ -169,7 +185,7 @@ impl<T: ProxyTcpStream + ?Sized> ProxyTcpStream for Box<T> {
     type TcpStream = T::TcpStream;
 
     #[inline(always)]
-    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
+    async fn tcp_connect<A: IntoAddress>(&self, addr: A) -> Result<Self::TcpStream> {
         T::tcp_connect(&self, addr).await
     }
 }
@@ -179,7 +195,7 @@ impl<T: ProxyUdpSocket + ?Sized> ProxyUdpSocket for Box<T> {
     type UdpSocket = T::UdpSocket;
 
     #[inline(always)]
-    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
+    async fn udp_bind<A: IntoAddress>(&self, addr: A) -> Result<Self::UdpSocket> {
         T::udp_bind(&self, addr).await
     }
 }

@@ -23,7 +23,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use traits::ProxyUdpSocket;
+use traits::{ProxyResolver, ProxyUdpSocket};
 
 #[derive(Debug, Clone)]
 pub struct TcpData {
@@ -296,7 +296,8 @@ impl<PR: Unpin + Send + Sync> ProxyTcpListener for VirtualHost<PR> {
     type TcpStream = TcpStream;
     type TcpListener = TcpListener;
 
-    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
+    async fn tcp_bind<A: traits::IntoAddress>(&self, addr: A) -> Result<Self::TcpListener> {
+        let addr = self.resolve(addr).await?;
         check_address(&addr)?;
         let mut inner = self.inner.lock().await;
         let key = inner.get_port(Protocol::Tcp, addr.port())?;
@@ -310,7 +311,8 @@ impl<PR: Unpin + Send + Sync> ProxyTcpListener for VirtualHost<PR> {
 impl<PR: Unpin + Send + Sync> ProxyTcpStream for VirtualHost<PR> {
     type TcpStream = TcpStream;
 
-    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
+    async fn tcp_connect<A: traits::IntoAddress>(&self, addr: A) -> Result<Self::TcpStream> {
+        let addr = self.resolve(addr).await?;
         check_address(&addr)?;
         let mut inner = self.inner.lock().await;
         let target_key = Port(Protocol::Tcp, addr.port());
@@ -342,7 +344,8 @@ impl<PR: Unpin + Send + Sync> ProxyTcpStream for VirtualHost<PR> {
 impl<PR: Unpin + Send + Sync> ProxyUdpSocket for VirtualHost<PR> {
     type UdpSocket = UdpSocket;
 
-    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
+    async fn udp_bind<A: traits::IntoAddress>(&self, addr: A) -> Result<Self::UdpSocket> {
+        let addr = self.resolve(addr).await?;
         check_address(&addr)?;
         let mut inner = self.inner.lock().await;
         let key = inner.get_port(Protocol::Udp, addr.port())?;
@@ -352,6 +355,16 @@ impl<PR: Unpin + Send + Sync> ProxyUdpSocket for VirtualHost<PR> {
         });
         inner.ports.insert(key, Value::UdpSocket(other));
         Ok(udp_socket)
+    }
+}
+
+#[async_trait]
+impl<PR: Unpin + Send + Sync> ProxyResolver for VirtualHost<PR> {
+    async fn resolve_domain(&self, (domain, port): (&str, u16)) -> Result<SocketAddr> {
+        match domain {
+            "localhost" => Ok(SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), port)),
+            _ => Err(ErrorKind::AddrNotAvailable.into()),
+        }
     }
 }
 
@@ -416,10 +429,9 @@ mod tests {
         let rt = ActiveRT;
         let vh = VirtualHost::with_pr(rt);
         let vh2 = vh.clone();
-        let handle = crate::tests::echo_server(vh2, "127.0.0.1:1234".parse().unwrap()).await?;
+        let handle = crate::tests::echo_server(vh2, ("127.0.0.1", 1234)).await?;
 
-        let addr = "127.0.0.1:1234".parse().unwrap();
-        let mut client = vh.tcp_connect(addr).await?;
+        let mut client = vh.tcp_connect(("127.0.0.1", 1234)).await?;
         client.write_all(b"hello").await.unwrap();
         client.close().await.unwrap();
         let mut buf = Vec::new();
@@ -438,7 +450,7 @@ mod tests {
         assert_eq!(socket.local_addr().await.unwrap(), addr);
 
         let vh = VirtualHost::new();
-        let socket = vh.tcp_bind("0.0.0.0:0".parse().unwrap()).await.unwrap();
+        let socket = vh.tcp_bind("0.0.0.0:0").await.unwrap();
         assert_eq!(
             socket.local_addr().await.unwrap(),
             "127.0.0.1:1".parse().unwrap()
@@ -474,7 +486,7 @@ mod tests {
 
         let vh = VirtualHost::with_pr(ActiveRT);
         let handle = crate::tests::echo_server_udp(vh.clone(), addr).await?;
-        let socket = vh.udp_bind("0.0.0.0:0".parse().unwrap()).await?;
+        let socket = vh.udp_bind("0.0.0.0:0").await?;
 
         socket.send_to(b"hello", addr).await?;
         let mut buf = [0u8; 1024];

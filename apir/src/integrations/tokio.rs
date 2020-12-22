@@ -1,6 +1,6 @@
 use std::{
     future::Future,
-    io::Result,
+    io::{ErrorKind, Result},
     net::{Shutdown, SocketAddr},
     time::Duration,
 };
@@ -12,6 +12,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::compat::*;
+use traits::ProxyResolver;
 
 #[async_trait]
 impl traits::TcpStream for Compat<TcpStream> {
@@ -57,8 +58,10 @@ pub struct Tokio;
 impl traits::ProxyTcpStream for Tokio {
     type TcpStream = Compat<TcpStream>;
 
-    async fn tcp_connect(&self, addr: SocketAddr) -> Result<Self::TcpStream> {
-        Ok(TcpStream::connect(addr).await?.compat())
+    async fn tcp_connect<A: traits::IntoAddress>(&self, addr: A) -> Result<Self::TcpStream> {
+        Ok(TcpStream::connect(self.resolve(addr).await?)
+            .await?
+            .compat())
     }
 }
 
@@ -67,8 +70,8 @@ impl traits::ProxyTcpListener for Tokio {
     type TcpStream = Compat<TcpStream>;
     type TcpListener = TcpListener;
 
-    async fn tcp_bind(&self, addr: SocketAddr) -> Result<Self::TcpListener> {
-        TcpListener::bind(addr).await
+    async fn tcp_bind<A: traits::IntoAddress>(&self, addr: A) -> Result<Self::TcpListener> {
+        TcpListener::bind(self.resolve(addr).await?).await
     }
 }
 
@@ -76,8 +79,8 @@ impl traits::ProxyTcpListener for Tokio {
 impl traits::ProxyUdpSocket for Tokio {
     type UdpSocket = UdpSocket;
 
-    async fn udp_bind(&self, addr: SocketAddr) -> Result<Self::UdpSocket> {
-        UdpSocket::bind(addr).await
+    async fn udp_bind<A: traits::IntoAddress>(&self, addr: A) -> Result<Self::UdpSocket> {
+        UdpSocket::bind(self.resolve(addr).await?).await
     }
 }
 
@@ -92,5 +95,21 @@ impl traits::Runtime for Tokio {
     }
     async fn sleep(&self, duration: Duration) {
         sleep(duration).await
+    }
+}
+
+#[async_trait]
+impl traits::ProxyResolver for Tokio {
+    async fn resolve_domain(&self, domain: (&str, u16)) -> Result<SocketAddr> {
+        self.lookup_host(domain).await
+    }
+}
+
+impl Tokio {
+    async fn lookup_host(&self, domain: (&str, u16)) -> Result<SocketAddr> {
+        tokio::net::lookup_host(domain)
+            .await?
+            .next()
+            .ok_or(ErrorKind::AddrNotAvailable.into())
     }
 }

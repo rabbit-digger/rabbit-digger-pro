@@ -24,17 +24,9 @@ mod tests {
         let server = Socks5Server::new(virtual_host.clone(), virtual_host.clone());
         let client = Socks5Client::new(&virtual_host, "127.0.0.1:1234".parse().unwrap());
 
-        virtual_host.spawn(
-            server.serve_listener(
-                virtual_host
-                    .tcp_bind("0.0.0.0:1234".parse().unwrap())
-                    .await?,
-            ),
-        );
+        virtual_host.spawn(server.serve_listener(virtual_host.tcp_bind("0.0.0.0:1234").await?));
 
-        let mut socket = client
-            .tcp_connect("127.0.0.1:6666".parse().unwrap())
-            .await?;
+        let mut socket = client.tcp_connect("127.0.0.1:6666").await?;
 
         socket.write_all(b"hello world").await?;
         socket.close().await?;

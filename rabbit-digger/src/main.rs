@@ -14,9 +14,7 @@ async fn main() -> std::io::Result<()> {
     let client = Socks5Client::new(&rt, "127.0.0.1:10801".parse().unwrap());
     ActiveRT.spawn(server.serve(1234));
 
-    let mut socket = client
-        .tcp_connect("93.184.216.34:80".parse().unwrap())
-        .await?;
+    let mut socket = client.tcp_connect("93.184.216.34:80").await?;
 
     socket
         .write_all(

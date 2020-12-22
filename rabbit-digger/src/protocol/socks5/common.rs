@@ -1,4 +1,4 @@
-use apir::traits::{AsyncRead, AsyncWrite};
+use apir::traits::{self, AsyncRead, AsyncWrite};
 use futures::prelude::*;
 use std::{
     io::{Cursor, Error, ErrorKind, Result},
@@ -7,7 +7,17 @@ use std::{
 pub enum Address {
     IPv4(SocketAddrV4),
     IPv6(SocketAddrV6),
-    Domain(String),
+    Domain(String, u16),
+}
+
+impl From<traits::Address> for Address {
+    fn from(addr: traits::Address) -> Self {
+        match addr {
+            traits::Address::IPv4(v4) => Address::IPv4(v4),
+            traits::Address::IPv6(v6) => Address::IPv6(v6),
+            traits::Address::Domain(domain, port) => Address::Domain(domain, port),
+        }
+    }
 }
 
 impl From<SocketAddr> for Address {
@@ -56,13 +66,14 @@ impl Address {
                 writer.write_all(&ip.ip().octets()).await?;
                 Self::write_port(writer, ip.port()).await?;
             }
-            Address::Domain(domain) => {
+            Address::Domain(domain, port) => {
                 if domain.len() >= 256 {
                     return Err(ErrorKind::InvalidInput.into());
                 }
                 let header = [0x03, domain.len() as u8];
                 writer.write_all(&header).await?;
                 writer.write_all(domain.as_bytes()).await?;
+                Self::write_port(writer, *port).await?;
             }
         };
         Ok(())
@@ -98,7 +109,7 @@ impl Address {
                     )
                 })?;
 
-                Address::Domain(domain)
+                Address::Domain(domain, Self::read_port(&mut reader).await?)
             }
             4 => {
                 let mut ip = [0u8; 16];
