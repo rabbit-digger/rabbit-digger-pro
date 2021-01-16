@@ -2,9 +2,11 @@
 pub use addr::*;
 pub use boxed::*;
 pub use ext::*;
+pub use resolve::*;
 pub use runtime::*;
 
 mod addr;
 mod boxed;
 mod ext;
+mod resolve;
 mod runtime;

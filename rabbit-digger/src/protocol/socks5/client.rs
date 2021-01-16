@@ -15,8 +15,6 @@ use std::{
 };
 
 pub struct Socks5Client<PR: ProxyTcpStream> {
-    /// Don't resolve the domain locally if set to false
-    remote_resolve: bool,
     server: SocketAddr,
     methods: Vec<Box<dyn Method + Send + Sync>>,
     pr: PR,
@@ -235,7 +233,6 @@ where
 {
     pub fn new(pr: PR, server: SocketAddr) -> Self {
         Self {
-            remote_resolve: false,
             server,
             pr,
             methods: vec![Box::new(NoAuth)],

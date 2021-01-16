@@ -48,6 +48,12 @@ impl IntoAddress for SocketAddr {
     }
 }
 
+impl IntoAddress for Address {
+    fn into_address(self) -> Result<Address> {
+        Ok(self)
+    }
+}
+
 impl From<SocketAddr> for Address {
     fn from(addr: SocketAddr) -> Self {
         match addr {
