@@ -17,7 +17,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     future::Future,
     io::{Error, ErrorKind, Result},
-    net::{Ipv4Addr, Shutdown, SocketAddr},
+    net::{Ipv4Addr, SocketAddr},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -221,21 +221,6 @@ impl traits::TcpStream for TcpStream {
     }
     async fn local_addr(&self) -> Result<SocketAddr> {
         Ok(self.data.local_addr.into())
-    }
-    async fn shutdown(&self, how: Shutdown) -> Result<()> {
-        match how {
-            Shutdown::Read => {
-                self.receiver.lock().await.close();
-            }
-            Shutdown::Write => {
-                self.sender.lock().await.close_channel();
-            }
-            Shutdown::Both => {
-                self.receiver.lock().await.close();
-                self.sender.lock().await.close_channel();
-            }
-        }
-        Ok(())
     }
 }
 

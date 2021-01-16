@@ -9,7 +9,7 @@ use apir::traits::{
 use futures::{io::Cursor, prelude::*};
 use std::{
     io::{Error, ErrorKind, Result},
-    net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     pin::Pin,
     task::{Context, Poll},
 };
@@ -122,10 +122,6 @@ where
 
     async fn local_addr(&self) -> Result<SocketAddr> {
         todo!()
-    }
-
-    async fn shutdown(&self, how: Shutdown) -> std::io::Result<()> {
-        self.0.shutdown(how).await
     }
 }
 

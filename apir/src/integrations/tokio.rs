@@ -1,7 +1,7 @@
 use std::{
     future::Future,
     io::{ErrorKind, Result},
-    net::{Shutdown, SocketAddr},
+    net::SocketAddr,
     time::Duration,
 };
 
@@ -21,9 +21,6 @@ impl traits::TcpStream for Compat<TcpStream> {
     }
     async fn local_addr(&self) -> Result<SocketAddr> {
         self.get_ref().local_addr()
-    }
-    async fn shutdown(&self, how: Shutdown) -> Result<()> {
-        self.get_ref().shutdown(how)
     }
 }
 

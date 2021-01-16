@@ -6,12 +6,7 @@ pub use async_trait::async_trait;
 use futures::future::FutureExt;
 pub use futures::future::RemoteHandle;
 pub use futures::io::{AsyncRead, AsyncWrite};
-use std::{
-    future::Future,
-    io::Result,
-    net::{Shutdown, SocketAddr},
-    time::Duration,
-};
+use std::{future::Future, io::Result, net::SocketAddr, time::Duration};
 
 /// A TcpListener
 #[async_trait]
@@ -25,7 +20,6 @@ pub trait TcpListener<TcpStream>: Unpin + Send + Sync {
 pub trait TcpStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {
     async fn peer_addr(&self) -> Result<SocketAddr>;
     async fn local_addr(&self) -> Result<SocketAddr>;
-    async fn shutdown(&self, how: Shutdown) -> Result<()>;
 }
 
 /// A UdpSocket
@@ -147,10 +141,6 @@ impl<T: TcpStream + ?Sized> TcpStream for Box<T> {
 
     async fn local_addr(&self) -> Result<SocketAddr> {
         T::local_addr(&self).await
-    }
-
-    async fn shutdown(&self, how: Shutdown) -> Result<()> {
-        T::shutdown(&self, how).await
     }
 }
 
