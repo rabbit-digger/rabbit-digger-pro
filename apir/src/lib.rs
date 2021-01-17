@@ -2,6 +2,7 @@
 //!
 //! Aimed to be the standard between proxy softwares written in Rust.
 
+pub mod dynamic;
 mod integrations;
 pub mod traits;
 mod virtual_host;

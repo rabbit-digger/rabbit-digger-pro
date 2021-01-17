@@ -1,14 +1,25 @@
+mod config;
+mod core;
+mod plugins;
 pub mod protocol;
-use std::time::Duration;
 
+use crate::core::RuleSet;
+use anyhow::Result;
 use apir::traits::*;
 use apir::ActiveRT;
 use futures::prelude::*;
+use plugins::load_plugins;
 use protocol::socks5::{Socks5Client, Socks5Server};
+use std::time::Duration;
 
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<()> {
+    let plugins = load_plugins()?;
+    println!("plugins: {:?}", plugins);
+
     let rt = ActiveRT;
+
+    let core = RuleSet::new();
 
     let server = Socks5Server::new(rt.clone(), ActiveRT);
     let client = Socks5Client::new(&rt, "127.0.0.1:10801".parse().unwrap());
