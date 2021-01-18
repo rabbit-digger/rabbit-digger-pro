@@ -5,15 +5,14 @@ use std::{
     task::{Context, Poll},
 };
 
+use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use rd_interface::{
     async_trait, Address, BoxTcpListener, BoxTcpStream, BoxUdpSocket, Plugin, ProxyNet, Registry,
     Result,
 };
-use tokio::net::{TcpListener, TcpStream, UdpSocket};
-use tokio_util::compat::*;
 
 pub struct Net;
-pub struct CompatTcp(Compat<TcpStream>);
+pub struct CompatTcp(TcpStream);
 pub struct Listener(TcpListener);
 pub struct Udp(UdpSocket);
 
@@ -23,8 +22,10 @@ impl Net {
     }
 }
 async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
+    use async_std::net::ToSocketAddrs;
+
     let domain = (domain.as_ref(), port);
-    tokio::net::lookup_host(domain)
+    ToSocketAddrs::to_socket_addrs(&domain)
         .await?
         .next()
         .ok_or(ErrorKind::AddrNotAvailable.into())
@@ -60,15 +61,15 @@ impl rd_interface::AsyncWrite for CompatTcp {
 #[async_trait]
 impl rd_interface::TcpStream for CompatTcp {
     async fn peer_addr(&self) -> Result<SocketAddr> {
-        self.0.get_ref().peer_addr().map_err(Into::into)
+        self.0.peer_addr().map_err(Into::into)
     }
     async fn local_addr(&self) -> Result<SocketAddr> {
-        self.0.get_ref().local_addr().map_err(Into::into)
+        self.0.local_addr().map_err(Into::into)
     }
 }
 impl CompatTcp {
     fn new(t: TcpStream) -> Box<CompatTcp> {
-        Box::new(CompatTcp(t.compat()))
+        Box::new(CompatTcp(t))
     }
 }
 

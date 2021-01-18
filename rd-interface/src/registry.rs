@@ -7,7 +7,7 @@ pub enum Plugin {
 }
 
 pub struct Registry {
-    net: HashMap<String, BoxProxyNet>,
+    pub net: HashMap<String, BoxProxyNet>,
 }
 
 impl fmt::Debug for Registry {

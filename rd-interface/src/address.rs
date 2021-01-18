@@ -71,9 +71,9 @@ impl Address {
             _ => Err(no_addr()),
         }
     }
-    pub async fn resolve<Fut>(&self, f: impl FnOnce(String, u16) -> Fut)-> Result<SocketAddr>
+    pub async fn resolve<Fut>(&self, f: impl FnOnce(String, u16) -> Fut) -> Result<SocketAddr>
     where
-        Fut: std::future::Future<Output=Result<SocketAddr>>
+        Fut: std::future::Future<Output = Result<SocketAddr>>,
     {
         match self {
             Address::IPv4(v4) => Ok(SocketAddr::V4(*v4)),

@@ -6,8 +6,7 @@ edition = "2018"
 
 [dependencies]
 rd-interface = { path = "../rd-interface" }
-tokio = { version = "1.0", features = ["full"] }
-tokio-util = { version = "0.6.1", features = [ "compat" ] }
+async-std = { version = "1.9" }
 
 [lib]
 crate-type = ["dylib"]
