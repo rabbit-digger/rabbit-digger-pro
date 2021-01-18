@@ -7,6 +7,7 @@ description = "Just a stub"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-futures = "0.3.5"
+futures-io = "0.3.12"
+futures-util = { version = "0.3.12", default-features = false, features = ["channel"] }
 async-trait = "0.1.42"
 thiserror = "1.0"

@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 
 pub use crate::{Address, Error, Result};
 pub use async_trait::async_trait;
-pub use futures::future::RemoteHandle;
-pub use futures::io::{AsyncRead, AsyncWrite};
+pub use futures_io::{AsyncRead, AsyncWrite};
+pub use futures_util::future::RemoteHandle;
 
 /// A TcpListener
 #[async_trait]
