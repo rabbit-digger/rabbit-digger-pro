@@ -1,6 +1,7 @@
 [workspace]
 members = [
-    "apir",
+    "rd-interface",
+    "rd-local",
     "rabbit-digger",
 ]
 default-members = ["rabbit-digger"]

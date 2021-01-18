@@ -1,9 +1,18 @@
-use std::{io::Result, net::SocketAddr};
+use std::{io, net::SocketAddr};
 
-pub use crate::prelude::Address;
+pub use crate::Address;
 pub use async_trait::async_trait;
 pub use futures::future::RemoteHandle;
 pub use futures::io::{AsyncRead, AsyncWrite};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("IO error")]
+    IO(#[from] io::Error),
+    #[error("Not implemented")]
+    NotImplemented,
+}
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// A TcpListener
 #[async_trait]

@@ -1,0 +1,12 @@
+[package]
+name = "rd-interface"
+version = "0.1.0"
+authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
+edition = "2018"
+description = "Just a stub"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+futures = "0.3.5"
+async-trait = "0.1.42"
+thiserror = "1.0"
