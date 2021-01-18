@@ -1,19 +1,7 @@
 use anyhow::Result;
-use itertools::process_results;
 use libloading::{Library, Symbol};
-use rd_interface::{BoxProxyNet, Registry};
-use std::{collections::HashMap, fmt, fs::read_dir, path::PathBuf};
-
-pub struct Plugin {
-    name: String,
-    net: BoxProxyNet,
-    lib: Library,
-}
-impl fmt::Debug for Plugin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Plugin").field("name", &self.name).finish()
-    }
-}
+use rd_interface::Registry;
+use std::{fs::read_dir, path::PathBuf};
 
 pub fn load_plugin(path: PathBuf, registry: &mut Registry) -> Result<()> {
     let lib = Library::new(path)?;

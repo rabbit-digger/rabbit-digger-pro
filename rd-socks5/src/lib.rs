@@ -1,10 +1,3 @@
-use std::{
-    io::{self, ErrorKind},
-    net::SocketAddr,
-    pin::Pin,
-    task::{Context, Poll},
-};
-
 use rd_interface::{
     async_trait, Address, BoxTcpListener, BoxTcpStream, BoxUdpSocket, Plugin, ProxyNet, Registry,
     Result,
