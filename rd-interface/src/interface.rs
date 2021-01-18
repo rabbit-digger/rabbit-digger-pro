@@ -1,18 +1,9 @@
-use std::{io, net::SocketAddr};
+use std::net::SocketAddr;
 
-pub use crate::Address;
+pub use crate::{Address, Error, Result};
 pub use async_trait::async_trait;
 pub use futures::future::RemoteHandle;
 pub use futures::io::{AsyncRead, AsyncWrite};
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("IO error")]
-    IO(#[from] io::Error),
-    #[error("Not implemented")]
-    NotImplemented,
-}
-pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// A TcpListener
 #[async_trait]
@@ -46,8 +37,3 @@ pub trait ProxyNet: Unpin + Send + Sync {
     async fn udp_bind(&self, addr: Address) -> Result<BoxUdpSocket>;
 }
 pub type BoxProxyNet = Box<dyn ProxyNet>;
-
-pub struct PluginInfo {
-    pub name: String,
-    pub net: BoxProxyNet,
-}

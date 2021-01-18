@@ -1,7 +1,7 @@
 use anyhow::Result;
-use apir::dynamic::{BoxProxyNet, PluginInfo};
 use itertools::process_results;
 use libloading::{Library, Symbol};
+use rd_interface::{BoxProxyNet, Registry};
 use std::{collections::HashMap, fmt, fs::read_dir, path::PathBuf};
 
 pub struct Plugin {
@@ -15,28 +15,29 @@ impl fmt::Debug for Plugin {
     }
 }
 
-pub fn load_plugin(path: PathBuf) -> Result<Plugin> {
+pub fn load_plugin(path: PathBuf, registry: &mut Registry) -> Result<()> {
     let lib = Library::new(path)?;
-    let new_plugin: Symbol<fn() -> PluginInfo> = unsafe { lib.get(b"new_plugin")? };
-    let PluginInfo { net, name } = new_plugin();
+    let init_plugin: Symbol<fn(&mut Registry) -> rd_interface::Result<()>> =
+        unsafe { lib.get(b"init_plugin")? };
+    init_plugin(registry)?;
+    std::mem::forget(lib);
 
-    Ok(Plugin { name, net, lib })
+    Ok(())
 }
 
-pub fn load_plugins() -> Result<HashMap<String, Plugin>> {
+pub fn load_plugins() -> Result<Registry> {
     let dirs = read_dir("plugins");
     if dirs.is_err() {
-        return Ok(HashMap::new());
+        return Ok(Registry::new());
     }
-    process_results(
-        dirs?.into_iter().filter_map(|i| {
-            let p = i.ok()?.path();
-            if !p.is_dir() {
-                Some(load_plugin(p))
-            } else {
-                None
-            }
-        }),
-        |r| r.map(|i| (i.name.clone(), i)).collect(),
-    )
+
+    let mut registry = Registry::new();
+    for i in dirs? {
+        let p = i?.path();
+        if !p.is_dir() {
+            load_plugin(p, &mut registry)?;
+        }
+    }
+
+    Ok(registry)
 }

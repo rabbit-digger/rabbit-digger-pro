@@ -1,0 +1,11 @@
+[package]
+name = "rd-socks5"
+version = "0.1.0"
+authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+rd-interface = { path = "../rd-interface" }
+
+[lib]
+crate-type = ["dylib"]

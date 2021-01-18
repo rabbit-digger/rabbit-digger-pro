@@ -2,6 +2,7 @@
 members = [
     "rd-interface",
     "rd-local",
+    "rd-socks5",
     "rabbit-digger",
 ]
 default-members = ["rabbit-digger"]
