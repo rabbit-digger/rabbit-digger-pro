@@ -42,6 +42,12 @@ impl IntoAddress for (&str, u16) {
     }
 }
 
+impl IntoAddress for (String, u16) {
+    fn into_address(self) -> Result<Address> {
+        Ok(Address::Domain(self.0, self.1))
+    }
+}
+
 impl IntoAddress for SocketAddr {
     fn into_address(self) -> Result<Address> {
         Ok(self.into())

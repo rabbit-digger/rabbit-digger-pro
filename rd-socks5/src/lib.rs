@@ -1,32 +1,28 @@
-use rd_interface::{
-    async_trait, Address, BoxTcpListener, BoxTcpStream, BoxUdpSocket, Plugin, ProxyNet, Registry,
-    Result,
-};
-pub struct Net;
+mod auth;
+mod client;
+mod common;
 
-impl Net {
-    fn new() -> Net {
-        Net
-    }
-}
+pub use auth::NoAuth;
+pub use client::Socks5Client;
+// pub use server::Socks5Server;
 
-#[async_trait]
-impl ProxyNet for Net {
-    async fn tcp_connect(&self, _addr: Address) -> Result<BoxTcpStream> {
-        todo!()
-    }
+use rd_interface::{config::from_value, Plugin, Registry, Result};
+use serde_derive::Deserialize;
 
-    async fn tcp_bind(&self, _addr: Address) -> Result<BoxTcpListener> {
-        todo!()
-    }
-
-    async fn udp_bind(&self, _addr: Address) -> Result<BoxUdpSocket> {
-        todo!()
-    }
+#[derive(Debug, Deserialize)]
+struct Config {
+    address: String,
+    port: u16,
 }
 
 #[no_mangle]
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_plugin("socks5", Plugin::Net(Box::new(Net::new())));
+    registry.add_plugin(
+        "socks5",
+        Plugin::Net(Box::new(|pr, cfg| {
+            let Config { address, port } = from_value(cfg)?;
+            Ok(Box::new(Socks5Client::new(pr, address, port)))
+        })),
+    );
     Ok(())
 }
