@@ -2,13 +2,13 @@ use std::{collections::HashMap, fmt};
 
 use crate::{config::Value, BoxProxyNet, Result};
 
-pub type FromConfig<T> = Box<dyn Fn(BoxProxyNet, Value) -> Result<T>>;
+pub type NetFromConfig<T> = Box<dyn Fn(BoxProxyNet, Value) -> Result<T>>;
 pub enum Plugin {
-    Net(FromConfig<BoxProxyNet>),
+    Net(NetFromConfig<BoxProxyNet>),
 }
 
 pub struct Registry {
-    pub net: HashMap<String, FromConfig<BoxProxyNet>>,
+    pub net: HashMap<String, NetFromConfig<BoxProxyNet>>,
 }
 
 impl fmt::Debug for Registry {
