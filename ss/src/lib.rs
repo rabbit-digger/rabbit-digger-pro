@@ -28,7 +28,10 @@ impl ProxyNet for Net {
 
 #[no_mangle]
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_plugin("shadowsocks", Plugin::Net(Box::new(Net::new())));
+    registry.add_plugin(
+        "shadowsocks",
+        Plugin::Net(Box::new(|_, _| Ok(Box::new(Net::new())))),
+    );
 
     Ok(())
 }
