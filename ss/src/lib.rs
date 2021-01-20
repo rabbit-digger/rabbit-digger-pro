@@ -1,6 +1,5 @@
 use rd_interface::{
-    async_trait, Address, BoxTcpListener, BoxTcpStream, BoxUdpSocket, Plugin, ProxyNet, Registry,
-    Result,
+    async_trait, Address, Arc, INet, Registry, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct Net;
@@ -12,26 +11,23 @@ impl Net {
 }
 
 #[async_trait]
-impl ProxyNet for Net {
-    async fn tcp_connect(&self, _addr: Address) -> Result<BoxTcpStream> {
+impl INet for Net {
+    async fn tcp_connect(&self, _addr: Address) -> Result<TcpStream> {
         todo!()
     }
 
-    async fn tcp_bind(&self, _addr: Address) -> Result<BoxTcpListener> {
+    async fn tcp_bind(&self, _addr: Address) -> Result<TcpListener> {
         todo!()
     }
 
-    async fn udp_bind(&self, _addr: Address) -> Result<BoxUdpSocket> {
+    async fn udp_bind(&self, _addr: Address) -> Result<UdpSocket> {
         todo!()
     }
 }
 
 #[no_mangle]
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_plugin(
-        "shadowsocks",
-        Plugin::Net(Box::new(|_, _| Ok(Box::new(Net::new())))),
-    );
+    registry.add_net_plugin("shadowsocks", |_, _| Ok(Net::new()));
 
     Ok(())
 }
