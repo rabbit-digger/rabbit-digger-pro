@@ -4,8 +4,8 @@ use super::{
 };
 use futures::{io::Cursor, prelude::*};
 use rd_interface::{
-    async_trait, AsyncRead, AsyncWrite, BoxProxyNet, BoxTcpStream, BoxUdpSocket, IntoAddress,
-    ProxyNet, Result, TcpStream, UdpSocket,
+    async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, IUdpSocket, IntoAddress, Net, Result,
+    TcpStream, UdpSocket,
 };
 use std::{
     io::{self, Error, ErrorKind},
@@ -18,10 +18,10 @@ pub struct Socks5Client {
     address: String,
     port: u16,
     methods: Vec<Box<dyn Method + Send + Sync>>,
-    pr: BoxProxyNet,
+    pr: Net,
 }
 
-pub struct Socks5TcpStream(BoxTcpStream);
+pub struct Socks5TcpStream(TcpStream);
 
 impl AsyncRead for Socks5TcpStream {
     fn poll_read(
@@ -50,10 +50,10 @@ impl AsyncWrite for Socks5TcpStream {
     }
 }
 
-pub struct Socks5UdpSocket(BoxUdpSocket, BoxTcpStream, SocketAddr);
+pub struct Socks5UdpSocket(UdpSocket, TcpStream, SocketAddr);
 
 #[async_trait]
-impl UdpSocket for Socks5UdpSocket {
+impl IUdpSocket for Socks5UdpSocket {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         // 259 is max size of address, atype 1 + domain len 1 + domain 255 + port 2
         let bytes_size = 259 + buf.len();
@@ -107,7 +107,7 @@ impl UdpSocket for Socks5UdpSocket {
 }
 
 #[async_trait]
-impl TcpStream for Socks5TcpStream {
+impl ITcpStream for Socks5TcpStream {
     async fn peer_addr(&self) -> Result<SocketAddr> {
         todo!()
     }
@@ -118,8 +118,8 @@ impl TcpStream for Socks5TcpStream {
 }
 
 #[async_trait]
-impl ProxyNet for Socks5Client {
-    async fn udp_bind(&self, addr: rd_interface::Address) -> Result<BoxUdpSocket> {
+impl INet for Socks5Client {
+    async fn udp_bind(&self, addr: rd_interface::Address) -> Result<UdpSocket> {
         let client = self.pr.udp_bind(addr).await?;
         let mut socket = self.pr.tcp_connect(self.server()?).await?;
 
@@ -162,7 +162,7 @@ impl ProxyNet for Socks5Client {
 
         Ok(Box::new(Socks5UdpSocket(client, socket, addr)))
     }
-    async fn tcp_connect(&self, addr: rd_interface::Address) -> Result<BoxTcpStream> {
+    async fn tcp_connect(&self, addr: rd_interface::Address) -> Result<TcpStream> {
         let mut socket = self.pr.tcp_connect(self.server()?).await?;
 
         auth_client(&mut socket, &self.methods()).await?;
@@ -204,13 +204,13 @@ impl ProxyNet for Socks5Client {
         Ok(Box::new(Socks5TcpStream(socket)))
     }
 
-    async fn tcp_bind(&self, _addr: rd_interface::Address) -> Result<rd_interface::BoxTcpListener> {
+    async fn tcp_bind(&self, _addr: rd_interface::Address) -> Result<rd_interface::TcpListener> {
         Err(rd_interface::Error::NotImplemented)
     }
 }
 
 impl Socks5Client {
-    pub fn new(pr: BoxProxyNet, address: String, port: u16) -> Self {
+    pub fn new(pr: Net, address: String, port: u16) -> Self {
         Self {
             address,
             port,

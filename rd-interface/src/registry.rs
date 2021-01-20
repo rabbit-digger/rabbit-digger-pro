@@ -1,14 +1,11 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Arc};
 
-use crate::{config::Value, BoxProxyNet, Result};
+use crate::{config::Value, INet, Net, Result};
 
-pub type NetFromConfig<T> = Box<dyn Fn(BoxProxyNet, Value) -> Result<T>>;
-pub enum Plugin {
-    Net(NetFromConfig<BoxProxyNet>),
-}
+pub type NetFromConfig<T> = Box<dyn Fn(Net, Value) -> Result<T>>;
 
 pub struct Registry {
-    pub net: HashMap<String, NetFromConfig<BoxProxyNet>>,
+    pub net: HashMap<String, NetFromConfig<Net>>,
 }
 
 impl fmt::Debug for Registry {
@@ -25,11 +22,16 @@ impl Registry {
             net: HashMap::new(),
         }
     }
-    pub fn add_plugin(&mut self, name: impl Into<String>, plugin: Plugin) {
-        match plugin {
-            Plugin::Net(net) => {
-                self.net.insert(name.into(), net);
-            }
-        }
+    pub fn add_net_plugin<N: INet + 'static>(
+        &mut self,
+        name: impl Into<String>,
+        from_cfg: impl Fn(Net, Value) -> Result<N> + 'static,
+    ) {
+        self.net.insert(
+            name.into(),
+            Box::new(move |net, cfg| {
+                from_cfg(net, cfg).map(|n| Arc::new(n) as Arc<(dyn INet + 'static)>)
+            }),
+        );
     }
 }

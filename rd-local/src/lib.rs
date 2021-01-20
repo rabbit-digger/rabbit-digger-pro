@@ -5,16 +5,15 @@ use std::{
     task::{Context, Poll},
 };
 
-use async_std::net::{TcpListener, TcpStream, UdpSocket};
+use async_std::net;
 use rd_interface::{
-    async_trait, Address, BoxTcpListener, BoxTcpStream, BoxUdpSocket, Plugin, ProxyNet, Registry,
-    Result,
+    async_trait, Address, INet, Registry, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct Net;
-pub struct CompatTcp(TcpStream);
-pub struct Listener(TcpListener);
-pub struct Udp(UdpSocket);
+pub struct CompatTcp(net::TcpStream);
+pub struct Listener(net::TcpListener);
+pub struct Udp(net::UdpSocket);
 
 impl Net {
     fn new() -> Net {
@@ -59,7 +58,7 @@ impl rd_interface::AsyncWrite for CompatTcp {
 }
 
 #[async_trait]
-impl rd_interface::TcpStream for CompatTcp {
+impl rd_interface::ITcpStream for CompatTcp {
     async fn peer_addr(&self) -> Result<SocketAddr> {
         self.0.peer_addr().map_err(Into::into)
     }
@@ -68,63 +67,58 @@ impl rd_interface::TcpStream for CompatTcp {
     }
 }
 impl CompatTcp {
-    fn new(t: TcpStream) -> Box<CompatTcp> {
+    fn new(t: net::TcpStream) -> Box<CompatTcp> {
         Box::new(CompatTcp(t))
     }
 }
 
 #[async_trait]
-impl rd_interface::TcpListener for Listener {
-    async fn accept(&self) -> Result<(BoxTcpStream, SocketAddr)> {
-        let (socket, addr) = TcpListener::accept(&self.0).await?;
+impl rd_interface::ITcpListener for Listener {
+    async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
+        let (socket, addr) = self.0.accept().await?;
         Ok((CompatTcp::new(socket), addr))
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
-        TcpListener::local_addr(&self.0).map_err(Into::into)
+        self.0.local_addr().map_err(Into::into)
     }
 }
 
 #[async_trait]
-impl rd_interface::UdpSocket for Udp {
+impl rd_interface::IUdpSocket for Udp {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        UdpSocket::recv_from(&self.0, buf).await.map_err(Into::into)
+        self.0.recv_from(buf).await.map_err(Into::into)
     }
 
     async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
-        UdpSocket::send_to(&self.0, buf, addr)
-            .await
-            .map_err(Into::into)
+        self.0.send_to(buf, addr).await.map_err(Into::into)
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
-        UdpSocket::local_addr(&self.0).map_err(Into::into)
+        self.0.local_addr().map_err(Into::into)
     }
 }
 
 #[async_trait]
-impl ProxyNet for Net {
-    async fn tcp_connect(&self, addr: Address) -> Result<BoxTcpStream> {
+impl INet for Net {
+    async fn tcp_connect(&self, addr: Address) -> Result<TcpStream> {
         let addr = addr.resolve(lookup_host).await?;
-        Ok(CompatTcp::new(TcpStream::connect(addr).await?))
+        Ok(CompatTcp::new(net::TcpStream::connect(addr).await?))
     }
 
-    async fn tcp_bind(&self, addr: Address) -> Result<BoxTcpListener> {
+    async fn tcp_bind(&self, addr: Address) -> Result<TcpListener> {
         let addr = addr.resolve(lookup_host).await?;
-        Ok(Box::new(Listener(TcpListener::bind(addr).await?)))
+        Ok(Box::new(Listener(net::TcpListener::bind(addr).await?)))
     }
 
-    async fn udp_bind(&self, addr: Address) -> Result<BoxUdpSocket> {
+    async fn udp_bind(&self, addr: Address) -> Result<UdpSocket> {
         let addr = addr.resolve(lookup_host).await?;
-        Ok(Box::new(Udp(UdpSocket::bind(addr).await?)))
+        Ok(Box::new(Udp(net::UdpSocket::bind(addr).await?)))
     }
 }
 
 #[no_mangle]
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_plugin(
-        "local",
-        Plugin::Net(Box::new(|_, _| Ok(Box::new(Net::new())))),
-    );
+    registry.add_net_plugin("local", |_, _| Ok(Net::new()));
     Ok(())
 }
