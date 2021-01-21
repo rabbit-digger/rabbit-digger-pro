@@ -9,4 +9,4 @@ rd-interface = { path = "../rd-interface" }
 async-std = { version = "1.9" }
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["cdylib"]
