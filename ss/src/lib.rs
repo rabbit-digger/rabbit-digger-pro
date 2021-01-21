@@ -1,5 +1,5 @@
 use rd_interface::{
-    async_trait, Address, Arc, INet, Registry, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, Address, INet, Registry, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct Net;
@@ -27,7 +27,7 @@ impl INet for Net {
 
 #[no_mangle]
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net_plugin("shadowsocks", |_, _| Ok(Net::new()));
+    registry.add_net("shadowsocks", |_, _| Ok(Net::new()));
 
     Ok(())
 }
