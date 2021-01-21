@@ -8,4 +8,4 @@ edition = "2018"
 rd-interface = { path = "../../rabbit-digger/rd-interface" }
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["cdylib"]
