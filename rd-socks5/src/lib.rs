@@ -1,10 +1,11 @@
 mod auth;
 mod client;
 mod common;
+mod server;
 
 pub use auth::NoAuth;
 pub use client::Socks5Client;
-// pub use server::Socks5Server;
+pub use server::Socks5Server;
 
 use rd_interface::{config::from_value, Registry, Result};
 use serde_derive::Deserialize;
@@ -17,9 +18,13 @@ struct Config {
 
 #[no_mangle]
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net_plugin("socks5", |pr, cfg| {
+    registry.add_net("socks5", |pr, cfg| {
         let Config { address, port } = from_value(cfg)?;
         Ok(Socks5Client::new(pr, address, port))
+    });
+    registry.add_server("socks5", |net, cfg| {
+        let Config { port, .. } = from_value(cfg)?;
+        Ok(Socks5Server::new(net, port))
     });
     Ok(())
 }

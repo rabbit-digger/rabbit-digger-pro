@@ -38,3 +38,10 @@ pub trait INet: Unpin + Send + Sync {
     async fn udp_bind(&self, addr: Address) -> Result<UdpSocket>;
 }
 pub type Net = Arc<dyn INet>;
+
+#[async_trait]
+pub trait IServer: Unpin + Send + Sync {
+    async fn start(&self) -> Result<()>;
+    async fn stop(&self) -> Result<()>;
+}
+pub type Server = Box<dyn IServer>;

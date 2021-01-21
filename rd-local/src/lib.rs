@@ -119,6 +119,6 @@ impl INet for Net {
 
 #[no_mangle]
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net_plugin("local", |_, _| Ok(Net::new()));
+    registry.add_net("local", |_, _| Ok(Net::new()));
     Ok(())
 }

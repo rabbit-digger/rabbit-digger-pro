@@ -48,7 +48,7 @@ pub async fn auth_client<S: AsyncRead + AsyncWrite + Unpin>(
     Ok(())
 }
 
-pub async fn _auth_server<S: AsyncRead + AsyncWrite + Unpin>(
+pub async fn auth_server<S: AsyncRead + AsyncWrite + Unpin>(
     mut s: S,
     methods: &[&(dyn Method + Send + Sync)],
 ) -> Result<()> {
