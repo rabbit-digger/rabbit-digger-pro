@@ -2,7 +2,7 @@ use super::{
     auth::{auth_server, Method, NoAuth},
     common::Address,
 };
-use async_global_executor::spawn;
+use async_std::task::spawn;
 use futures::{
     future::try_join,
     io::{copy, Cursor},
@@ -60,19 +60,8 @@ impl Socks5Server {
         match buf {
             // VER: 5, CMD: 1(CONNECT), RSV: 0
             [0x05, 0x01, 0x00] => {
-                let dst = match Address::read(&mut socket).await?.to_socket_addr() {
-                    Ok(a) => a,
-                    Err(_) => {
-                        socket
-                            .write_all(&[
-                                0x05, 0x08, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                            ])
-                            .await?;
-                        socket.flush().await?;
-                        return Ok(());
-                    }
-                };
-                let out = match net.tcp_connect(dst.into_address()?).await {
+                let dst = Address::read(&mut socket).await?.into();
+                let out = match net.tcp_connect(dst).await {
                     Ok(socket) => socket,
                     Err(_e) => {
                         // TODO better error
@@ -147,7 +136,8 @@ impl Socks5Server {
     pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
         loop {
             let (socket, _) = listener.accept().await?;
-            let _ = spawn(Self::serve_connection(self.config.clone(), socket));
+            let cfg = self.config.clone();
+            let _ = spawn(Self::serve_connection(cfg, socket));
         }
     }
 }

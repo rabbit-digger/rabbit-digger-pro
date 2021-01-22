@@ -3,6 +3,7 @@ use std::{
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Address {
     IPv4(SocketAddrV4),
     IPv6(SocketAddrV6),

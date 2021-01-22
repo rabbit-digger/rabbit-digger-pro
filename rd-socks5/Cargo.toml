@@ -9,7 +9,7 @@ rd-interface = { path = "../rd-interface" }
 futures = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
-async-global-executor = "2.0.2"
+async-std = "1.9"
 
 [lib]
 crate-type = ["cdylib"]

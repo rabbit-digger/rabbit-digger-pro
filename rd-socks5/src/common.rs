@@ -20,6 +20,16 @@ impl From<rd_interface::Address> for Address {
     }
 }
 
+impl Into<rd_interface::Address> for Address {
+    fn into(self) -> rd_interface::Address {
+        match self {
+            Address::IPv4(v4) => rd_interface::Address::IPv4(v4),
+            Address::IPv6(v4) => rd_interface::Address::IPv6(v4),
+            Address::Domain(domain, port) => rd_interface::Address::Domain(domain, port),
+        }
+    }
+}
+
 impl From<SocketAddr> for Address {
     fn from(addr: SocketAddr) -> Self {
         match addr {
