@@ -15,6 +15,7 @@ impl fmt::Debug for Registry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Registry")
             .field("net", &self.net.keys())
+            .field("server", &self.server.keys())
             .finish()
     }
 }

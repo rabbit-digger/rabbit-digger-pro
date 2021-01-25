@@ -5,7 +5,7 @@ use super::{
 use futures::{io::Cursor, prelude::*};
 use rd_interface::{
     async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, IUdpSocket, IntoAddress, Net, Result,
-    TcpStream, UdpSocket,
+    TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use std::{
     io::{self, Error, ErrorKind},
@@ -109,11 +109,11 @@ impl IUdpSocket for Socks5UdpSocket {
 #[async_trait]
 impl ITcpStream for Socks5TcpStream {
     async fn peer_addr(&self) -> Result<SocketAddr> {
-        todo!()
+        Err(NOT_IMPLEMENTED)
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
-        todo!()
+        Err(NOT_IMPLEMENTED)
     }
 }
 

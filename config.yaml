@@ -1,0 +1,13 @@
+plugin_path: target/debug
+net:
+  - name: Socks5
+    type: socks5
+    address: 127.0.0.1
+    port: 10800
+    chain: local
+server:
+  - name: socks server
+    type: socks5
+    address: 127.0.0.1
+    port: 10888
+    net: Socks5
