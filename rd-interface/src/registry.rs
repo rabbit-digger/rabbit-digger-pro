@@ -3,10 +3,12 @@ use std::{collections::HashMap, fmt, sync::Arc};
 use crate::{config::Value, INet, IServer, Net, Result, Server};
 
 pub type NetFromConfig<T> = Box<dyn Fn(Net, Value) -> Result<T>>;
+/// listen_net, net, config
+pub type ServerFromConfig<T> = Box<dyn Fn(Net, Net, Value) -> Result<T>>;
 
 pub struct Registry {
     pub net: HashMap<String, NetFromConfig<Net>>,
-    pub server: HashMap<String, NetFromConfig<Server>>,
+    pub server: HashMap<String, ServerFromConfig<Server>>,
 }
 
 impl fmt::Debug for Registry {
@@ -39,12 +41,12 @@ impl Registry {
     pub fn add_server<S: IServer + 'static>(
         &mut self,
         name: impl Into<String>,
-        from_cfg: impl Fn(Net, Value) -> Result<S> + 'static,
+        from_cfg: impl Fn(Net, Net, Value) -> Result<S> + 'static,
     ) {
         self.server.insert(
             name.into(),
-            Box::new(move |net, cfg| {
-                from_cfg(net, cfg).map(|n| Box::new(n) as Box<dyn IServer + 'static>)
+            Box::new(move |listen_net, net, cfg| {
+                from_cfg(listen_net, net, cfg).map(|n| Box::new(n) as Box<dyn IServer + 'static>)
             }),
         );
     }

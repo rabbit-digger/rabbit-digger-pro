@@ -27,3 +27,24 @@ impl INet for NoopNet {
         Err(NOT_IMPLEMENTED)
     }
 }
+
+pub struct CombineNet {
+    pub tcp_connect: Net,
+    pub tcp_bind: Net,
+    pub udp_bind: Net,
+}
+
+#[async_trait]
+impl INet for CombineNet {
+    async fn tcp_connect(&self, addr: Address) -> Result<TcpStream> {
+        self.tcp_connect.tcp_connect(addr).await
+    }
+
+    async fn tcp_bind(&self, addr: Address) -> Result<TcpListener> {
+        self.tcp_bind.tcp_bind(addr).await
+    }
+
+    async fn udp_bind(&self, addr: Address) -> Result<UdpSocket> {
+        self.udp_bind.udp_bind(addr).await
+    }
+}

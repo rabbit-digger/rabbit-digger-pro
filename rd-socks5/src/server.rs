@@ -24,18 +24,14 @@ struct ServerConfig {
 
 pub struct Socks5Server {
     config: Arc<ServerConfig>,
-    net: Net,
+    listen_net: Net,
     port: u16,
 }
 
 #[async_trait]
 impl IServer for Socks5Server {
     async fn start(&self) -> Result<()> {
-        let listener = self
-            .net
-            .tcp_bind(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), self.port).into_address()?)
-            .await?;
-        self.serve_listener(listener).await
+        self.serve(self.port).await
     }
 
     async fn stop(&self) -> Result<()> {
@@ -116,19 +112,19 @@ impl Socks5Server {
 
         Ok(())
     }
-    pub fn new(net: Net, port: u16) -> Self {
+    pub fn new(listen_net: Net, net: Net, port: u16) -> Self {
         Self {
             config: Arc::new(ServerConfig {
-                net: net.clone(),
+                net,
                 methods: vec![Box::new(NoAuth)],
             }),
-            net,
+            listen_net,
             port,
         }
     }
     pub async fn serve(&self, port: u16) -> Result<()> {
         let listener = self
-            .net
+            .listen_net
             .tcp_bind(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), port).into_address()?)
             .await?;
         self.serve_listener(listener).await

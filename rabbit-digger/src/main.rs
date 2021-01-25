@@ -16,6 +16,7 @@ async fn main() -> Result<()> {
     let local = local.unwrap()(Arc::new(NoopNet), Value::Null)?;
 
     let server = registry.server.get("socks5").unwrap()(
+        local.clone(),
         local,
         json!({
             "address": "",

@@ -22,9 +22,9 @@ pub fn init_plugin(registry: &mut Registry) -> Result<()> {
         let Config { address, port } = from_value(cfg)?;
         Ok(Socks5Client::new(pr, address, port))
     });
-    registry.add_server("socks5", |net, cfg| {
+    registry.add_server("socks5", |listen_net, net, cfg| {
         let Config { port, .. } = from_value(cfg)?;
-        Ok(Socks5Server::new(net, port))
+        Ok(Socks5Server::new(listen_net, net, port))
     });
     Ok(())
 }
