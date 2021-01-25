@@ -1,5 +1,6 @@
 use rd_interface::{
     async_trait, Address, INet, Registry, Result, TcpListener, TcpStream, UdpSocket,
+    NOT_IMPLEMENTED,
 };
 
 pub struct Net;
@@ -13,15 +14,15 @@ impl Net {
 #[async_trait]
 impl INet for Net {
     async fn tcp_connect(&self, _addr: Address) -> Result<TcpStream> {
-        todo!()
+        Err(NOT_IMPLEMENTED)
     }
 
     async fn tcp_bind(&self, _addr: Address) -> Result<TcpListener> {
-        todo!()
+        Err(NOT_IMPLEMENTED)
     }
 
     async fn udp_bind(&self, _addr: Address) -> Result<UdpSocket> {
-        todo!()
+        Err(NOT_IMPLEMENTED)
     }
 }
 
