@@ -17,15 +17,15 @@ impl Rule {
 
 #[async_trait]
 impl INet for Rule {
-    async fn tcp_connect(&self, ctx: &Context, addr: Address) -> Result<TcpStream> {
+    async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn tcp_bind(&self, ctx: &Context, addr: Address) -> Result<TcpListener> {
+    async fn tcp_bind(&self, ctx: &mut Context, addr: Address) -> Result<TcpListener> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn udp_bind(&self, ctx: &Context, addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, ctx: &mut Context, addr: Address) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
 }

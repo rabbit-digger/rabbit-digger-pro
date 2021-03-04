@@ -121,7 +121,7 @@ impl ITcpStream for Socks5TcpStream {
 impl INet for Socks5Client {
     async fn udp_bind(
         &self,
-        ctx: &rd_interface::Context,
+        ctx: &mut rd_interface::Context,
         addr: rd_interface::Address,
     ) -> Result<UdpSocket> {
         let client = self.pr.udp_bind(ctx, addr).await?;
@@ -168,7 +168,7 @@ impl INet for Socks5Client {
     }
     async fn tcp_connect(
         &self,
-        ctx: &rd_interface::Context,
+        ctx: &mut rd_interface::Context,
         addr: rd_interface::Address,
     ) -> Result<TcpStream> {
         let mut socket = self.pr.tcp_connect(ctx, self.server()?).await?;
@@ -214,7 +214,7 @@ impl INet for Socks5Client {
 
     async fn tcp_bind(
         &self,
-        _ctx: &rd_interface::Context,
+        _ctx: &mut rd_interface::Context,
         _addr: rd_interface::Address,
     ) -> Result<rd_interface::TcpListener> {
         Err(rd_interface::Error::NotImplemented)

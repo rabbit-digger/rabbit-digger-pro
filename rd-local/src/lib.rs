@@ -101,17 +101,25 @@ impl rd_interface::IUdpSocket for Udp {
 
 #[async_trait]
 impl INet for Net {
-    async fn tcp_connect(&self, _ctx: &rd_interface::Context, addr: Address) -> Result<TcpStream> {
+    async fn tcp_connect(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        addr: Address,
+    ) -> Result<TcpStream> {
         let addr = addr.resolve(lookup_host).await?;
         Ok(CompatTcp::new(net::TcpStream::connect(addr).await?))
     }
 
-    async fn tcp_bind(&self, _ctx: &rd_interface::Context, addr: Address) -> Result<TcpListener> {
+    async fn tcp_bind(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        addr: Address,
+    ) -> Result<TcpListener> {
         let addr = addr.resolve(lookup_host).await?;
         Ok(Box::new(Listener(net::TcpListener::bind(addr).await?)))
     }
 
-    async fn udp_bind(&self, _ctx: &rd_interface::Context, addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, _ctx: &mut rd_interface::Context, addr: Address) -> Result<UdpSocket> {
         let addr = addr.resolve(lookup_host).await?;
         Ok(Box::new(Udp(net::UdpSocket::bind(addr).await?)))
     }

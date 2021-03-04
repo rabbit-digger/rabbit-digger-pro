@@ -58,7 +58,7 @@ impl Socks5Server {
             // VER: 5, CMD: 1(CONNECT), RSV: 0
             [0x05, 0x01, 0x00] => {
                 let dst = Address::read(&mut socket).await?.into();
-                let out = match net.tcp_connect(&Context::new(), dst).await {
+                let out = match net.tcp_connect(&mut Context::new(), dst).await {
                     Ok(socket) => socket,
                     Err(_e) => {
                         // TODO better error
@@ -97,7 +97,7 @@ impl Socks5Server {
                     }
                 };
                 let udp = net
-                    .udp_bind(&Context::new(), "0.0.0.0:0".into_address()?)
+                    .udp_bind(&mut Context::new(), "0.0.0.0:0".into_address()?)
                     .await?;
 
                 // success
@@ -129,7 +129,7 @@ impl Socks5Server {
         let listener = self
             .listen_net
             .tcp_bind(
-                &Context::new(),
+                &mut Context::new(),
                 SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), port).into_address()?,
             )
             .await?;
