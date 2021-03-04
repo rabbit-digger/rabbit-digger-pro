@@ -13,15 +13,15 @@ impl Net {
 
 #[async_trait]
 impl INet for Net {
-    async fn tcp_connect(&self, _ctx: &Context, _addr: Address) -> Result<TcpStream> {
+    async fn tcp_connect(&self, _ctx: &mut Context, _addr: Address) -> Result<TcpStream> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn tcp_bind(&self, _ctx: &Context, _addr: Address) -> Result<TcpListener> {
+    async fn tcp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<TcpListener> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn udp_bind(&self, _ctx: &Context, _addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
 }
