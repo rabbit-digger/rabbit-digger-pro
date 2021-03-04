@@ -1,6 +1,7 @@
 use std::io;
 use thiserror::Error;
 
+/// Errors in this crate.
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("IO error")]

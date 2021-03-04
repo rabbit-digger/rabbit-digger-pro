@@ -13,7 +13,7 @@ pub mod config {
     pub use serde_json::{self, from_value, Error, Value};
 }
 
-/// A no-op Net returns `Error::NOT_IMPLEMENTED` for every method.
+/// A no-op Net returns [`Error::NotImplemented`](crate::Error::NotImplemented) for every method.
 pub struct NotImplementedNet;
 
 #[async_trait]
@@ -31,7 +31,7 @@ impl INet for NotImplementedNet {
     }
 }
 
-/// A new Net calls `tcp_connect`, `tcp_bind`, `udp_bind` from different Net.
+/// A new Net calls [`tcp_connect()`](crate::INet::tcp_connect()), [`tcp_bind()`](crate::INet::tcp_bind()), [`udp_bind()`](crate::INet::udp_bind()) from different Net.
 pub struct CombineNet {
     pub tcp_connect: Net,
     pub tcp_bind: Net,

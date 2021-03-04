@@ -7,7 +7,7 @@ pub use futures_io::{AsyncRead, AsyncWrite};
 pub use futures_util::future::RemoteHandle;
 pub use std::sync::Arc;
 
-/// A TcpListener
+/// A TcpListener.
 #[async_trait]
 pub trait ITcpListener: Unpin + Send + Sync {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)>;
@@ -15,7 +15,7 @@ pub trait ITcpListener: Unpin + Send + Sync {
 }
 pub type TcpListener = Box<dyn ITcpListener>;
 
-/// A TcpStream
+/// A TcpStream.
 #[async_trait]
 pub trait ITcpStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {
     async fn peer_addr(&self) -> Result<SocketAddr>;
@@ -23,7 +23,7 @@ pub trait ITcpStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {
 }
 pub type TcpStream = Box<dyn ITcpStream>;
 
-/// A UdpSocket
+/// A UdpSocket.
 #[async_trait]
 pub trait IUdpSocket: Unpin + Send + Sync {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)>;

@@ -74,7 +74,7 @@ impl From<SocketAddr> for Address {
 
 impl Address {
     /// Converts to SocketAddr if Address can be convert to.
-    /// Otherwise std::io::ErrorKind::AddrNotAvailable is returned.
+    /// Otherwise [AddrNotAvailable](std::io::ErrorKind::AddrNotAvailable) is returned.
     pub fn to_socket_addr(self) -> Result<SocketAddr> {
         match self {
             Address::IPv4(v4) => Ok(SocketAddr::V4(v4)),
