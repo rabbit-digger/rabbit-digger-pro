@@ -3,6 +3,7 @@ use std::{
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 
+/// Address can be IPv4, IPv6 address or a domain with port.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Address {
     IPv4(SocketAddrV4),
@@ -10,6 +11,7 @@ pub enum Address {
     Domain(String, u16),
 }
 
+/// Converts to address value.
 pub trait IntoAddress: Send {
     fn into_address(self) -> Result<Address>;
     fn into_socket_addr(self) -> Result<SocketAddr>
@@ -71,6 +73,8 @@ impl From<SocketAddr> for Address {
 }
 
 impl Address {
+    /// Converts to SocketAddr if Address can be convert to.
+    /// Otherwise std::io::ErrorKind::AddrNotAvailable is returned.
     pub fn to_socket_addr(self) -> Result<SocketAddr> {
         match self {
             Address::IPv4(v4) => Ok(SocketAddr::V4(v4)),
@@ -78,6 +82,8 @@ impl Address {
             _ => Err(no_addr()),
         }
     }
+
+    /// Resolve domain to SocketAddr using `f`.
     pub async fn resolve<Fut>(&self, f: impl FnOnce(String, u16) -> Fut) -> Result<SocketAddr>
     where
         Fut: std::future::Future<Output = Result<SocketAddr>>,

@@ -32,6 +32,7 @@ pub trait IUdpSocket: Unpin + Send + Sync {
 }
 pub type UdpSocket = Box<dyn IUdpSocket>;
 
+/// A Net.
 #[async_trait]
 pub trait INet: Unpin + Send + Sync {
     async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream>;
@@ -40,6 +41,7 @@ pub trait INet: Unpin + Send + Sync {
 }
 pub type Net = Arc<dyn INet>;
 
+/// A Server.
 #[async_trait]
 pub trait IServer: Unpin + Send + Sync {
     async fn start(&self) -> Result<()>;

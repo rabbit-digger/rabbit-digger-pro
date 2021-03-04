@@ -13,10 +13,11 @@ pub mod config {
     pub use serde_json::{self, from_value, Error, Value};
 }
 
-pub struct NoopNet;
+/// A no-op Net returns `Error::NOT_IMPLEMENTED` for every method.
+pub struct NotImplementedNet;
 
 #[async_trait]
-impl INet for NoopNet {
+impl INet for NotImplementedNet {
     async fn tcp_connect(&self, _ctx: &mut Context, _addr: Address) -> Result<TcpStream> {
         Err(NOT_IMPLEMENTED)
     }
@@ -30,6 +31,7 @@ impl INet for NoopNet {
     }
 }
 
+/// A new Net calls `tcp_connect`, `tcp_bind`, `udp_bind` from different Net.
 pub struct CombineNet {
     pub tcp_connect: Net,
     pub tcp_bind: Net,
