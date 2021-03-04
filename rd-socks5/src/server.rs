@@ -9,7 +9,8 @@ use futures::{
     prelude::*,
 };
 use rd_interface::{
-    async_trait, AsyncRead, AsyncWrite, IServer, IntoAddress, Net, Result, TcpListener, TcpStream,
+    async_trait, AsyncRead, AsyncWrite, Context, IServer, IntoAddress, Net, Result, TcpListener,
+    TcpStream,
 };
 use std::{
     io,
@@ -57,7 +58,7 @@ impl Socks5Server {
             // VER: 5, CMD: 1(CONNECT), RSV: 0
             [0x05, 0x01, 0x00] => {
                 let dst = Address::read(&mut socket).await?.into();
-                let out = match net.tcp_connect(dst).await {
+                let out = match net.tcp_connect(&Context::new(), dst).await {
                     Ok(socket) => socket,
                     Err(_e) => {
                         // TODO better error
@@ -95,7 +96,9 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
-                let udp = net.udp_bind("0.0.0.0:0".into_address()?).await?;
+                let udp = net
+                    .udp_bind(&Context::new(), "0.0.0.0:0".into_address()?)
+                    .await?;
 
                 // success
                 let mut writer = Cursor::new(Vec::new());
@@ -125,7 +128,10 @@ impl Socks5Server {
     pub async fn serve(&self, port: u16) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), port).into_address()?)
+            .tcp_bind(
+                &Context::new(),
+                SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), port).into_address()?,
+            )
             .await?;
         self.serve_listener(listener).await
     }

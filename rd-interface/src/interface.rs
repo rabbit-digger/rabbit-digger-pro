@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use crate::Context;
 pub use crate::{Address, Error, Result};
 pub use async_trait::async_trait;
 pub use futures_io::{AsyncRead, AsyncWrite};
@@ -33,9 +34,9 @@ pub type UdpSocket = Box<dyn IUdpSocket>;
 
 #[async_trait]
 pub trait INet: Unpin + Send + Sync {
-    async fn tcp_connect(&self, addr: Address) -> Result<TcpStream>;
-    async fn tcp_bind(&self, addr: Address) -> Result<TcpListener>;
-    async fn udp_bind(&self, addr: Address) -> Result<UdpSocket>;
+    async fn tcp_connect(&self, ctx: &Context, addr: Address) -> Result<TcpStream>;
+    async fn tcp_bind(&self, ctx: &Context, addr: Address) -> Result<TcpListener>;
+    async fn udp_bind(&self, ctx: &Context, addr: Address) -> Result<UdpSocket>;
 }
 pub type Net = Arc<dyn INet>;
 

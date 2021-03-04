@@ -119,9 +119,13 @@ impl ITcpStream for Socks5TcpStream {
 
 #[async_trait]
 impl INet for Socks5Client {
-    async fn udp_bind(&self, addr: rd_interface::Address) -> Result<UdpSocket> {
-        let client = self.pr.udp_bind(addr).await?;
-        let mut socket = self.pr.tcp_connect(self.server()?).await?;
+    async fn udp_bind(
+        &self,
+        ctx: &rd_interface::Context,
+        addr: rd_interface::Address,
+    ) -> Result<UdpSocket> {
+        let client = self.pr.udp_bind(ctx, addr).await?;
+        let mut socket = self.pr.tcp_connect(ctx, self.server()?).await?;
 
         auth_client(&mut socket, &self.methods()).await?;
 
@@ -162,8 +166,12 @@ impl INet for Socks5Client {
 
         Ok(Box::new(Socks5UdpSocket(client, socket, addr)))
     }
-    async fn tcp_connect(&self, addr: rd_interface::Address) -> Result<TcpStream> {
-        let mut socket = self.pr.tcp_connect(self.server()?).await?;
+    async fn tcp_connect(
+        &self,
+        ctx: &rd_interface::Context,
+        addr: rd_interface::Address,
+    ) -> Result<TcpStream> {
+        let mut socket = self.pr.tcp_connect(ctx, self.server()?).await?;
 
         auth_client(&mut socket, &self.methods()).await?;
 
@@ -204,7 +212,11 @@ impl INet for Socks5Client {
         Ok(Box::new(Socks5TcpStream(socket)))
     }
 
-    async fn tcp_bind(&self, _addr: rd_interface::Address) -> Result<rd_interface::TcpListener> {
+    async fn tcp_bind(
+        &self,
+        _ctx: &rd_interface::Context,
+        _addr: rd_interface::Address,
+    ) -> Result<rd_interface::TcpListener> {
         Err(rd_interface::Error::NotImplemented)
     }
 }

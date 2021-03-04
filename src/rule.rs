@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rd_interface::{
-    async_trait, Address, Arc, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, Address, Arc, Context, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
     NOT_IMPLEMENTED,
 };
 
@@ -17,15 +17,15 @@ impl Rule {
 
 #[async_trait]
 impl INet for Rule {
-    async fn tcp_connect(&self, addr: Address) -> Result<TcpStream> {
+    async fn tcp_connect(&self, ctx: &Context, addr: Address) -> Result<TcpStream> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn tcp_bind(&self, addr: Address) -> Result<TcpListener> {
+    async fn tcp_bind(&self, ctx: &Context, addr: Address) -> Result<TcpListener> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn udp_bind(&self, addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, ctx: &Context, addr: Address) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
 }

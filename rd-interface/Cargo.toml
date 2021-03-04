@@ -12,3 +12,4 @@ futures-util = { version = "0.3.12", default-features = false, features = ["chan
 async-trait = "0.1.42"
 thiserror = "1.0"
 serde_json = "1.0"
+serde = "1.0"
