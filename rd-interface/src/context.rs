@@ -12,6 +12,11 @@ pub enum Error {
 }
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+pub trait CommonField {
+    const KEY: &'static str;
+    type Type: DeserializeOwned + Serialize;
+}
+
 #[derive(Debug)]
 pub struct Context {
     parent: Value,
@@ -33,7 +38,7 @@ impl Context {
         let value = self.data.remove(key).ok_or(Error::NonExist)?;
         Ok(serde_json::from_value(value)?)
     }
-    pub fn get<T: DeserializeOwned>(&mut self, key: &str) -> Result<T> {
+    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<T> {
         let value = self.data.get(key).ok_or(Error::NonExist)?;
         Ok(serde_json::from_value(value.clone())?)
     }
@@ -45,5 +50,37 @@ impl Context {
     }
     pub fn get_value(&self, key: &str) -> Option<&Value> {
         self.data.get(key)
+    }
+    pub fn get_common<T: CommonField>(&self) -> Result<T::Type> {
+        self.get(T::KEY)
+    }
+    pub fn insert_common<T: CommonField>(&mut self, value: T::Type) -> Result<()> {
+        self.insert(T::KEY.to_string(), value)
+    }
+}
+
+/// Common context keys and types
+pub mod common_field {
+    use super::CommonField;
+    use serde_derive::{Deserialize, Serialize};
+
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct SourceAddress {
+        pub addr: std::net::SocketAddr,
+    }
+
+    impl CommonField for SourceAddress {
+        const KEY: &'static str = "source_address";
+        type Type = SourceAddress;
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct ProcessInfo {
+        pub process_name: String,
+    }
+
+    impl CommonField for ProcessInfo {
+        const KEY: &'static str = "process_info";
+        type Type = ProcessInfo;
     }
 }
