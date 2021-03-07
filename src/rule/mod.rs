@@ -9,14 +9,16 @@ mod domain;
 mod matcher;
 
 use rd_interface::{
-    async_trait, context::common_field::SourceAddress, Address, Arc, Context, INet, Net, Result,
-    TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, config::Value, context::common_field::SourceAddress, Address, Arc, Context, INet,
+    Net, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 
 struct RuleItem {
     rule_type: String,
+    target_name: String,
     target: Net,
     matcher: BoxMatcher,
+    value: Value,
 }
 
 pub struct Rule {
@@ -38,12 +40,14 @@ impl Rule {
                      rest,
                  }| {
                     Ok(RuleItem {
-                        matcher: registry.get(&rule_type, rest)?,
+                        matcher: registry.get(&rule_type, rest.clone())?,
                         rule_type,
                         target: net
                             .get(&target)
                             .ok_or(anyhow::anyhow!("target is not found: {}", target))?
                             .to_owned(),
+                        target_name: target,
+                        value: rest,
                     })
                 },
             )
@@ -56,14 +60,23 @@ impl Rule {
 #[async_trait]
 impl INet for Rule {
     async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
+        let src = ctx.get_common::<SourceAddress>();
+
         for rule in self.rule.iter() {
             if rule.matcher.match_rule(ctx, &addr).await {
-                let src = ctx.get_common::<SourceAddress>();
-                log::info!("{:?} -> {:?} Matched rule {}", &src, &addr, &rule.rule_type);
+                log::info!(
+                    "[{}] {:?} -> {:?} matched rule {} {:?}",
+                    &rule.target_name,
+                    &src,
+                    &addr,
+                    &rule.rule_type,
+                    &rule.value
+                );
                 return rule.target.tcp_connect(ctx, addr).await;
             }
         }
 
+        log::info!("{:?} -> {:?} not matched, reject", src, addr);
         Err(rd_interface::Error::IO(
             io::ErrorKind::ConnectionRefused.into(),
         ))

@@ -126,7 +126,7 @@ fn init_server(
 }
 
 async fn real_main(args: Args) -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("rabbit_digger=debug")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("rabbit_digger=trace")).init();
     let config: config::Config =
         serde_yaml::from_reader(File::open(args.config).context("Failed to open config file.")?)?;
 

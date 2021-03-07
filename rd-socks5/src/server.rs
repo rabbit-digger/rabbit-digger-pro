@@ -9,8 +9,8 @@ use futures::{
     prelude::*,
 };
 use rd_interface::{
-    async_trait, AsyncRead, AsyncWrite, Context, IServer, IntoAddress, Net, Result, TcpListener,
-    TcpStream,
+    async_trait, context::common_field::SourceAddress, AsyncRead, AsyncWrite, Context, IServer,
+    IntoAddress, Net, Result, TcpListener, TcpStream,
 };
 use std::{
     io,
@@ -41,8 +41,20 @@ impl IServer for Socks5Server {
     }
 }
 
+fn new_context(addr: SocketAddr) -> Context {
+    let mut ctx = Context::new();
+    let _ = ctx
+        .insert_common::<SourceAddress>(SourceAddress { addr })
+        .ok();
+    ctx
+}
+
 impl Socks5Server {
-    async fn serve_connection(cfg: Arc<ServerConfig>, mut socket: TcpStream) -> Result<()> {
+    async fn serve_connection(
+        cfg: Arc<ServerConfig>,
+        mut socket: TcpStream,
+        addr: SocketAddr,
+    ) -> Result<()> {
         let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
         let ServerConfig { net, methods, .. } = &*cfg;
 
@@ -58,7 +70,7 @@ impl Socks5Server {
             // VER: 5, CMD: 1(CONNECT), RSV: 0
             [0x05, 0x01, 0x00] => {
                 let dst = Address::read(&mut socket).await?.into();
-                let out = match net.tcp_connect(&mut Context::new(), dst).await {
+                let out = match net.tcp_connect(&mut new_context(addr), dst).await {
                     Ok(socket) => socket,
                     Err(_e) => {
                         // TODO better error
@@ -97,7 +109,7 @@ impl Socks5Server {
                     }
                 };
                 let udp = net
-                    .udp_bind(&mut Context::new(), "0.0.0.0:0".into_address()?)
+                    .udp_bind(&mut new_context(addr), "0.0.0.0:0".into_address()?)
                     .await?;
 
                 // success
@@ -137,9 +149,9 @@ impl Socks5Server {
     }
     pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
         loop {
-            let (socket, _) = listener.accept().await?;
+            let (socket, addr) = listener.accept().await?;
             let cfg = self.config.clone();
-            let _ = spawn(Self::serve_connection(cfg, socket));
+            let _ = spawn(Self::serve_connection(cfg, socket, addr));
         }
     }
 }

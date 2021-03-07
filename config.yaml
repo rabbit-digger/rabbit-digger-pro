@@ -15,5 +15,11 @@ rule:
   - type: domain
     target: socks5
     domain: twitter.com
+  - type: domain
+    target: socks5
+    domain: .twimg.com
+  - type: domain
+    target: socks5
+    domain: t.co
   - type: any
     target: local
