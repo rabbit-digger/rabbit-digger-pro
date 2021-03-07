@@ -1,6 +1,6 @@
 plugin_path: target/debug
 net:
-  - name: Socks5
+  - name: socks5
     type: socks5
     address: 127.0.0.1
     port: 10800
@@ -10,8 +10,10 @@ server:
     type: socks5
     address: 127.0.0.1
     port: 10888
-    net: Socks5
+    net: rule
 rule:
   - type: domain
+    target: socks5
     domain: twitter.com
-    target: Socks5
+  - type: any
+    target: local

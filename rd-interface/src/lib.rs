@@ -1,14 +1,14 @@
 mod address;
-mod context;
+pub mod context;
 mod error;
 mod interface;
-mod registry;
+pub mod registry;
 
 pub use address::{Address, IntoAddress};
 pub use context::Context;
 pub use error::{Error, Result, NOT_IMPLEMENTED};
 pub use interface::*;
-pub use registry::{NetFromConfig, Registry, ServerFromConfig};
+pub use registry::Registry;
 pub mod config {
     pub use serde_json::{self, from_value, Error, Value};
 }

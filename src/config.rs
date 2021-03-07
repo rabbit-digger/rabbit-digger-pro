@@ -5,6 +5,7 @@ use serde_derive::{Deserialize, Serialize};
 
 pub type ConfigNet = Vec<Net>;
 pub type ConfigServer = Vec<Server>;
+pub type ConfigRule = Vec<Rule>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -12,7 +13,7 @@ pub struct Config {
     pub plugin_path: PathBuf,
     pub net: ConfigNet,
     pub server: ConfigServer,
-    pub rule: Vec<Rule>,
+    pub rule: ConfigRule,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

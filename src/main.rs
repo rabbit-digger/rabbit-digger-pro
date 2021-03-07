@@ -58,7 +58,11 @@ impl fmt::Debug for ServerInfo {
     }
 }
 
-fn init_net(registry: &Registry, config: config::ConfigNet) -> Result<HashMap<String, Net>> {
+fn init_net(
+    registry: &Registry,
+    config: config::ConfigNet,
+    rule_config: config::ConfigRule,
+) -> Result<HashMap<String, Net>> {
     let mut net: HashMap<String, Net> = HashMap::new();
     let noop = Arc::new(NotImplementedNet);
 
@@ -79,7 +83,7 @@ fn init_net(registry: &Registry, config: config::ConfigNet) -> Result<HashMap<St
         net.insert(i.name, proxy);
     }
 
-    net.insert("rule".to_string(), Rule::new(net.clone()));
+    net.insert("rule".to_string(), Rule::new(net.clone(), rule_config)?);
 
     Ok(net)
 }
@@ -129,7 +133,7 @@ async fn real_main(args: Args) -> Result<()> {
     let registry = load_plugins(config.plugin_path)?;
     log::debug!("registry: {:?}", registry);
 
-    let net = init_net(&registry, config.net)?;
+    let net = init_net(&registry, config.net, config.rule)?;
     let servers = init_server(&registry, &net, config.server)?;
 
     log::info!("proxy {:#?}", net.keys());

@@ -2,7 +2,9 @@
 
 use anyhow::{anyhow, Result};
 use rd_interface::{
-    config::Value, Arc, Net, NetFromConfig, NotImplementedNet, Server, ServerFromConfig,
+    config::Value,
+    registry::{NetFromConfig, ServerFromConfig},
+    Arc, Net, NotImplementedNet, Server,
 };
 use std::{collections::HashMap, fmt};
 
