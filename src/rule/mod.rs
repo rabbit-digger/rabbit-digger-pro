@@ -1,14 +1,16 @@
 use crate::config;
+use any::AnyMatcher;
 use domain::DomainMatcher;
 use matcher::BoxMatcher;
 use std::{collections::HashMap, io};
 
+mod any;
 mod domain;
 mod matcher;
 
 use rd_interface::{
-    async_trait, Address, Arc, Context, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
-    NOT_IMPLEMENTED,
+    async_trait, context::common_field::SourceAddress, Address, Arc, Context, INet, Net, Result,
+    TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 
 struct RuleItem {
@@ -25,6 +27,7 @@ impl Rule {
     pub fn new(net: HashMap<String, Net>, config: config::ConfigRule) -> anyhow::Result<Net> {
         let mut registry = matcher::MatcherRegistry::new();
         DomainMatcher::register(&mut registry);
+        AnyMatcher::register(&mut registry);
 
         let rule = config
             .into_iter()
@@ -55,8 +58,9 @@ impl INet for Rule {
     async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
         for rule in self.rule.iter() {
             if rule.matcher.match_rule(ctx, &addr).await {
-                let target = rule.target.clone();
-                return target.tcp_connect(ctx, addr).await;
+                let src = ctx.get_common::<SourceAddress>();
+                log::info!("{:?} -> {:?} Matched rule {}", &src, &addr, &rule.rule_type);
+                return rule.target.tcp_connect(ctx, addr).await;
             }
         }
 
