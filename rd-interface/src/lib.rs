@@ -8,7 +8,7 @@ pub use address::{Address, IntoAddress};
 pub use context::Context;
 pub use error::{Error, Result, NOT_IMPLEMENTED};
 pub use interface::*;
-pub use registry::Registry;
+pub use registry::{NetFromConfig, Registry, ServerFromConfig};
 pub mod config {
     pub use serde_json::{self, from_value, Error, Value};
 }

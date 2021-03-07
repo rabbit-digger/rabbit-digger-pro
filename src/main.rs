@@ -1,5 +1,6 @@
 mod config;
 mod plugins;
+mod registry;
 mod rule;
 
 use std::{collections::HashMap, fs::File};
@@ -9,7 +10,8 @@ use anyhow::{anyhow, Context, Result};
 use env_logger::Env;
 use futures::{prelude::*, stream::FuturesUnordered};
 use plugins::load_plugins;
-use rd_interface::{config::Value, Arc, Net, NoopNet, Registry, Server};
+use rd_interface::{config::Value, Arc, Net, NotImplementedNet, Server};
+use registry::Registry;
 use rule::Rule;
 use structopt::StructOpt;
 
@@ -27,11 +29,8 @@ struct Args {
 }
 
 fn get_local(registry: &Registry, noop: Net) -> Result<Net> {
-    let builder = registry
-        .net
-        .get("local")
-        .ok_or(anyhow!("Failed to get local net"))?;
-    let local = builder(noop, Value::Null)?;
+    let net_item = &registry.get_net("local")?;
+    let local = net_item.build(noop, Value::Null)?;
     Ok(local)
 }
 
@@ -59,32 +58,21 @@ impl fmt::Debug for ServerInfo {
     }
 }
 
-async fn real_main(args: Args) -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("rabbit_digger=debug")).init();
-    let config: config::Config =
-        serde_yaml::from_reader(File::open(args.config).context("Failed to open config file.")?)?;
-
-    let registry = load_plugins(config.plugin_path)?;
-    log::debug!("registry: {:?}", registry);
-
+fn init_net(registry: &Registry, config: config::ConfigNet) -> Result<HashMap<String, Net>> {
     let mut net: HashMap<String, Net> = HashMap::new();
-    let mut servers: Vec<ServerInfo> = Vec::new();
-    let noop = Arc::new(NoopNet);
+    let noop = Arc::new(NotImplementedNet);
 
     net.insert("noop".to_string(), noop.clone());
     net.insert("local".to_string(), get_local(&registry, noop)?);
 
-    for i in config.net {
-        let builder = registry
-            .net
-            .get(&i.net_type)
-            .ok_or(anyhow!("Proxy type is not loaded: {}", &i.net_type))?;
+    for i in config {
+        let net_item = registry.get_net(&i.net_type)?;
         let chain = net.get(&i.chain).ok_or(anyhow!(
             "Chain {} is not loaded. Required by {}",
             &i.chain,
             &i.name
         ))?;
-        let proxy = builder(chain.clone(), i.rest).context(format!(
+        let proxy = net_item.build(chain.clone(), i.rest).context(format!(
             "Failed to build net {:?}. Please check your config.",
             i.name
         ))?;
@@ -93,11 +81,18 @@ async fn real_main(args: Args) -> Result<()> {
 
     net.insert("rule".to_string(), Rule::new(net.clone()));
 
-    for i in config.server {
-        let builder = registry
-            .server
-            .get(&i.server_type)
-            .ok_or(anyhow!("Server type is not loaded: {}", &i.server_type))?;
+    Ok(net)
+}
+
+fn init_server(
+    registry: &Registry,
+    net: &HashMap<String, Net>,
+    config: config::ConfigServer,
+) -> Result<Vec<ServerInfo>> {
+    let mut servers: Vec<ServerInfo> = Vec::new();
+
+    for i in config {
+        let server_item = registry.get_server(&i.server_type)?;
         let listen = net.get(&i.listen).ok_or(anyhow!(
             "Listen Net {} is not loaded. Required by {:?}",
             &i.net,
@@ -108,10 +103,12 @@ async fn real_main(args: Args) -> Result<()> {
             &i.net,
             &i.name
         ))?;
-        let server = builder(listen.clone(), net.clone(), i.rest.clone()).context(format!(
-            "Failed to build server {:?}. Please check your config.",
-            i.name
-        ))?;
+        let server = server_item
+            .build(listen.clone(), net.clone(), i.rest.clone())
+            .context(format!(
+                "Failed to build server {:?}. Please check your config.",
+                i.name
+            ))?;
         servers.push(ServerInfo {
             name: i.name,
             server,
@@ -120,6 +117,21 @@ async fn real_main(args: Args) -> Result<()> {
             net: i.net,
         });
     }
+
+    Ok(servers)
+}
+
+async fn real_main(args: Args) -> Result<()> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("rabbit_digger=debug")).init();
+    let config: config::Config =
+        serde_yaml::from_reader(File::open(args.config).context("Failed to open config file.")?)?;
+
+    let registry = load_plugins(config.plugin_path)?;
+    log::debug!("registry: {:?}", registry);
+
+    let net = init_net(&registry, config.net)?;
+    let servers = init_server(&registry, &net, config.server)?;
+
     log::info!("proxy {:#?}", net.keys());
     log::info!("server {:#?}", servers);
 

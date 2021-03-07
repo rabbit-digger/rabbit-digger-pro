@@ -11,3 +11,7 @@ server:
     address: 127.0.0.1
     port: 10888
     net: Socks5
+rule:
+  - type: domain
+    domain: twitter.com
+    target: Socks5

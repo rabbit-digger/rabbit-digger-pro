@@ -3,12 +3,25 @@ use std::path::PathBuf;
 use rd_interface::config::Value;
 use serde_derive::{Deserialize, Serialize};
 
+pub type ConfigNet = Vec<Net>;
+pub type ConfigServer = Vec<Server>;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "plugins")]
     pub plugin_path: PathBuf,
-    pub net: Vec<Net>,
-    pub server: Vec<Server>,
+    pub net: ConfigNet,
+    pub server: ConfigServer,
+    pub rule: Vec<Rule>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Rule {
+    #[serde(rename = "type")]
+    pub rule_type: String,
+    pub target: String,
+    #[serde(flatten)]
+    pub rest: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
