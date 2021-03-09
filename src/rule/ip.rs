@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use super::matcher::{Matcher, MatcherRegistry, MaybeAsync};
 use rd_interface::{config::from_value, Address};
@@ -46,13 +46,19 @@ impl IPMatcher {
     }
 }
 
+impl fmt::Display for IPMatcher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ip_cidr({})", self.ip_cidr.0)
+    }
+}
+
 impl Matcher for IPMatcher {
     fn match_rule(&self, _ctx: &rd_interface::Context, addr: &Address) -> MaybeAsync<bool> {
         match addr {
             Address::IPv4(v4) => self.test(*v4.ip()),
             Address::IPv6(v6) => self.test(*v6.ip()),
             // if it's a domain, pass it.
-            _ => true,
+            _ => false,
         }
         .into()
     }

@@ -1,6 +1,6 @@
 use self::matcher::BoxMatcher;
 use self::{any::AnyMatcher, domain::DomainMatcher, ip::IPMatcher};
-use crate::{config, registry};
+use crate::config;
 use std::{collections::HashMap, io};
 
 mod any;
@@ -9,16 +9,15 @@ mod ip;
 mod matcher;
 
 use rd_interface::{
-    async_trait, config::Value, context::common_field::SourceAddress, Address, Arc, Context, INet,
-    Net, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, context::common_field::SourceAddress, Address, Arc, Context, INet, Net, Result,
+    TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 
 struct RuleItem {
-    rule_type: String,
+    _rule_type: String,
     target_name: String,
     target: Net,
     matcher: BoxMatcher,
-    value: Value,
 }
 
 fn get_matcher_registry() -> matcher::MatcherRegistry {
@@ -47,14 +46,13 @@ impl Rule {
                      rest,
                  }| {
                     Ok(RuleItem {
-                        matcher: registry.get(&rule_type, rest.clone())?,
-                        rule_type,
+                        matcher: registry.get(&rule_type, rest)?,
+                        _rule_type: rule_type,
                         target: net
                             .get(&target)
                             .ok_or(anyhow::anyhow!("target is not found: {}", target))?
                             .to_owned(),
                         target_name: target,
-                        value: rest,
                     })
                 },
             )
@@ -75,12 +73,11 @@ impl INet for Rule {
         for rule in self.rule.iter() {
             if rule.matcher.match_rule(ctx, &addr).await {
                 log::info!(
-                    "[{}] {} -> {} matched rule {} {}",
+                    "[{}] {} -> {} matched rule: {}",
                     &rule.target_name,
                     &src,
                     &addr,
-                    &rule.rule_type,
-                    &rule.value
+                    &rule.matcher
                 );
                 return rule.target.tcp_connect(ctx, addr).await;
             }

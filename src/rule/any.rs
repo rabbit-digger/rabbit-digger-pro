@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::matcher::{Matcher, MatcherRegistry, MaybeAsync};
 use rd_interface::{config::from_value, Address};
 use serde_derive::{Deserialize, Serialize};
@@ -10,6 +12,12 @@ impl AnyMatcher {
         registry.register("any", |value| {
             Ok(Box::new(from_value::<AnyMatcher>(value)?))
         });
+    }
+}
+
+impl fmt::Display for AnyMatcher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "any")
     }
 }
 

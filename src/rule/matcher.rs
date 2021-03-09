@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use core::panic;
 use futures::{future::BoxFuture, Future, FutureExt};
 use pin_project_lite::pin_project;
-use std::{collections::HashMap, pin, task};
+use std::{collections::HashMap, fmt, pin, task};
 
 pin_project! {
     #[project = EnumProj]
@@ -31,7 +31,7 @@ impl<T> Future for MaybeAsync<T> {
     }
 }
 
-pub(super) trait Matcher: Send + Sync {
+pub(super) trait Matcher: Send + Sync + fmt::Display {
     fn match_rule(
         &self,
         ctx: &rd_interface::Context,
