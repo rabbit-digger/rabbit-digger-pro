@@ -1,11 +1,11 @@
-use crate::config;
-use any::AnyMatcher;
-use domain::DomainMatcher;
-use matcher::BoxMatcher;
+use self::matcher::BoxMatcher;
+use self::{any::AnyMatcher, domain::DomainMatcher, ip::IPMatcher};
+use crate::{config, registry};
 use std::{collections::HashMap, io};
 
 mod any;
 mod domain;
+mod ip;
 mod matcher;
 
 use rd_interface::{
@@ -21,16 +21,23 @@ struct RuleItem {
     value: Value,
 }
 
+fn get_matcher_registry() -> matcher::MatcherRegistry {
+    let mut registry = matcher::MatcherRegistry::new();
+
+    DomainMatcher::register(&mut registry);
+    AnyMatcher::register(&mut registry);
+    IPMatcher::register(&mut registry);
+
+    registry
+}
+
 pub struct Rule {
     rule: Vec<RuleItem>,
 }
 
 impl Rule {
     pub fn new(net: HashMap<String, Net>, config: config::ConfigRule) -> anyhow::Result<Net> {
-        let mut registry = matcher::MatcherRegistry::new();
-        DomainMatcher::register(&mut registry);
-        AnyMatcher::register(&mut registry);
-
+        let registry = get_matcher_registry();
         let rule = config
             .into_iter()
             .map(

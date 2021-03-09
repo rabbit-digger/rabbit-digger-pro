@@ -17,7 +17,7 @@ pub struct DomainMatcher {
 }
 
 fn default_method() -> Method {
-    Method::Keyword
+    Method::Suffix
 }
 
 impl DomainMatcher {
@@ -53,7 +53,7 @@ impl Matcher for DomainMatcher {
     fn match_rule(&self, _ctx: &rd_interface::Context, addr: &Address) -> MaybeAsync<bool> {
         match addr {
             Address::Domain(domain, _) => self.test(domain),
-            // if it's IP, pass it.
+            // if it's not a domain, pass it.
             _ => true,
         }
         .into()
