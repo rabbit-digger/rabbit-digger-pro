@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     io::{Error, ErrorKind, Result},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
 };
@@ -92,6 +93,16 @@ impl Address {
             Address::IPv4(v4) => Ok(SocketAddr::V4(*v4)),
             Address::IPv6(v6) => Ok(SocketAddr::V6(*v6)),
             Address::Domain(d, p) => f(d.clone(), *p).await,
+        }
+    }
+}
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Address::Domain(domain, port) => write!(f, "{}:{}", domain, port),
+            Address::IPv4(v4) => write!(f, "{}", v4),
+            Address::IPv6(v6) => write!(f, "{}", v6),
         }
     }
 }

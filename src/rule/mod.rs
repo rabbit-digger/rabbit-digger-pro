@@ -60,12 +60,15 @@ impl Rule {
 #[async_trait]
 impl INet for Rule {
     async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
-        let src = ctx.get_common::<SourceAddress>();
+        let src = ctx
+            .get_common::<SourceAddress>()
+            .map(|s| s.addr.to_string())
+            .unwrap_or_default();
 
         for rule in self.rule.iter() {
             if rule.matcher.match_rule(ctx, &addr).await {
                 log::info!(
-                    "[{}] {:?} -> {:?} matched rule {} {:?}",
+                    "[{}] {} -> {} matched rule {} {}",
                     &rule.target_name,
                     &src,
                     &addr,
@@ -76,7 +79,7 @@ impl INet for Rule {
             }
         }
 
-        log::info!("{:?} -> {:?} not matched, reject", src, addr);
+        log::info!("{} -> {} not matched, reject", src, addr);
         Err(rd_interface::Error::IO(
             io::ErrorKind::ConnectionRefused.into(),
         ))
