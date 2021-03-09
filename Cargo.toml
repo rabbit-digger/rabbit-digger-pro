@@ -25,9 +25,17 @@ dotenv = "0.15.0"
 serde_yaml = "0.8.15"
 pin-project-lite = "0.2.6"
 
+[features]
+controller = []
+
 [workspace]
 members = [
     "rd-interface",
     "rd-local",
     "rd-socks5",
 ]
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = 'abort'
