@@ -1,5 +1,5 @@
 use crate::config::Value;
-use futures_util::future::BoxFuture;
+use futures_util::future::{BoxFuture, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::HashMap,
@@ -9,7 +9,7 @@ use thiserror::Error;
 
 enum Lazy<T> {
     Value(T),
-    Future(Box<dyn Fn() -> BoxFuture<'static, T> + Send + Sync>),
+    Future(Box<dyn Fn() -> BoxFuture<'static, Result<T>> + Send + Sync>),
 }
 
 /// Context error
@@ -25,7 +25,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// Defines common used field with its key and type
 pub trait CommonField {
     const KEY: &'static str;
-    type Type: DeserializeOwned + Serialize;
+    type Type: DeserializeOwned + Serialize + 'static;
 }
 
 impl<T: Debug + Clone> fmt::Debug for Lazy<T> {
@@ -38,9 +38,9 @@ impl<T: Debug + Clone> fmt::Debug for Lazy<T> {
 }
 
 impl<T: Debug + Clone> Lazy<T> {
-    async fn get(&self) -> T {
+    async fn get(&self) -> Result<T> {
         match self {
-            Lazy::Value(v) => v.clone(),
+            Lazy::Value(v) => Ok(v.clone()),
             Lazy::Future(future) => future().await,
         }
     }
@@ -64,7 +64,7 @@ impl Context {
     pub async fn insert_value_lazy(
         &mut self,
         key: String,
-        f: impl Fn() -> BoxFuture<'static, Value> + Send + Sync + 'static,
+        f: impl Fn() -> BoxFuture<'static, Result<Value>> + Send + Sync + 'static,
     ) -> Result<()> {
         self.data.insert(key, Lazy::Future(Box::new(f)));
         Ok(())
@@ -83,25 +83,40 @@ impl Context {
     /// Returns a value corresponding to the key.
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<T> {
         let value = self.data.get(key).ok_or(Error::NonExist)?;
-        Ok(serde_json::from_value(value.get().await)?)
+        Ok(serde_json::from_value(value.get().await?)?)
     }
     /// Inserts a key-value pair into the context.
     pub async fn insert_value(&mut self, key: String, value: Value) {
         self.data.insert(key, Lazy::Value(value));
     }
     /// Removes a key from the context, returning the value at the key if the key was previously in the context.
-    pub async fn remove_value(&mut self, key: &str) -> Option<Value> {
-        match self.data.remove(key) {
-            Some(v) => Some(v.get().await),
-            None => None,
-        }
+    pub async fn remove_value(&mut self, key: &str) -> Result<()> {
+        self.data.remove(key);
+        Ok(())
     }
     /// Returns a value corresponding to the key.
-    pub async fn get_value(&self, key: &str) -> Option<Value> {
+    pub async fn get_value(&self, key: &str) -> Result<Value> {
         match self.data.get(key) {
-            Some(v) => Some(v.get().await),
-            None => None,
+            Some(v) => Ok(v.get().await?),
+            None => Err(Error::NonExist),
         }
+    }
+    /// Inserts a key-value pair into the context. Value can be compute later.
+    pub async fn insert_common_lazy<T: CommonField>(
+        &mut self,
+        f: impl Fn() -> BoxFuture<'static, Result<T::Type>> + Send + Sync + 'static,
+    ) -> Result<()>
+    where
+        T::Type: 'static,
+    {
+        self.insert_value_lazy(T::KEY.to_string(), move || {
+            f().map(|r| match r {
+                Ok(v) => Ok(serde_json::to_value(v)?),
+                Err(e) => Err(e),
+            })
+            .boxed()
+        })
+        .await
     }
     /// Inserts a key-value pair into the context.
     pub async fn insert_common<T: CommonField>(&mut self, value: T::Type) -> Result<()> {
@@ -116,6 +131,7 @@ impl Context {
 /// Common context keys and types
 pub mod common_field {
     use super::CommonField;
+    use crate::config::Value;
     use serde_derive::{Deserialize, Serialize};
 
     #[derive(Debug, Deserialize, Serialize)]
@@ -136,5 +152,13 @@ pub mod common_field {
     impl CommonField for ProcessInfo {
         const KEY: &'static str = "process_info";
         type Type = ProcessInfo;
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct PersistData(Value);
+
+    impl CommonField for PersistData {
+        const KEY: &'static str = "persist_data";
+        type Type = PersistData;
     }
 }
