@@ -41,10 +41,11 @@ impl IServer for Socks5Server {
     }
 }
 
-fn new_context(addr: SocketAddr) -> Context {
+async fn new_context(addr: SocketAddr) -> Context {
     let mut ctx = Context::new();
     let _ = ctx
         .insert_common::<SourceAddress>(SourceAddress { addr })
+        .await
         .ok();
     ctx
 }
@@ -70,7 +71,7 @@ impl Socks5Server {
             // VER: 5, CMD: 1(CONNECT), RSV: 0
             [0x05, 0x01, 0x00] => {
                 let dst = Address::read(&mut socket).await?.into();
-                let out = match net.tcp_connect(&mut new_context(addr), dst).await {
+                let out = match net.tcp_connect(&mut new_context(addr).await, dst).await {
                     Ok(socket) => socket,
                     Err(_e) => {
                         // TODO better error
@@ -109,7 +110,7 @@ impl Socks5Server {
                     }
                 };
                 let udp = net
-                    .udp_bind(&mut new_context(addr), "0.0.0.0:0".into_address()?)
+                    .udp_bind(&mut new_context(addr).await, "0.0.0.0:0".into_address()?)
                     .await?;
 
                 // success
