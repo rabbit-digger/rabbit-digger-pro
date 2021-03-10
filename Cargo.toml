@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = "1.0.38"
-rd-interface = { path = "./rd-interface", version = "0.1" }
+rd-interface = { path = "./rd-interface", version = "0.2" }
 futures = "0.3.5"
 libloading = "0.6.7"
 serde = "1.0.119"
@@ -37,7 +37,6 @@ controller = [ "async-graphql", "async-graphql-warp", "warp" ]
 [workspace]
 members = [
     "rd-interface",
-    "rd-local",
     "rd-socks5",
 ]
 

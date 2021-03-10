@@ -1,3 +1,4 @@
+mod builtin;
 mod config;
 #[cfg(feature = "controller")]
 mod controller;

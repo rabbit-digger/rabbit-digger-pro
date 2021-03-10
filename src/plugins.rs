@@ -1,3 +1,4 @@
+use crate::builtin::load_builtin;
 use crate::registry::Registry;
 use anyhow::Result;
 use libloading::{Library, Symbol};
@@ -31,6 +32,8 @@ pub fn load_plugins(path: PathBuf) -> Result<Registry> {
             registry.add_registry(p.to_string_lossy().to_string(), r);
         }
     }
+
+    load_builtin(&mut registry)?;
 
     Ok(registry)
 }
