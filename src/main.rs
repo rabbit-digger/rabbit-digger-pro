@@ -1,4 +1,6 @@
 mod config;
+#[cfg(feature = "controller")]
+mod controller;
 mod plugins;
 mod registry;
 mod rule;
@@ -76,6 +78,7 @@ fn init_net(
             &i.chain,
             &i.name
         ))?;
+        log::trace!("Loading net: {}", i.name);
         let proxy = net_item.build(chain.clone(), i.rest).context(format!(
             "Failed to build net {:?}. Please check your config.",
             i.name
@@ -92,6 +95,7 @@ fn init_server(
     registry: &Registry,
     net: &HashMap<String, Net>,
     config: config::ConfigServer,
+    wrapper: impl Fn(Net) -> Net,
 ) -> Result<Vec<ServerInfo>> {
     let mut servers: Vec<ServerInfo> = Vec::new();
 
@@ -107,8 +111,9 @@ fn init_server(
             &i.net,
             &i.name
         ))?;
+        log::trace!("Loading server: {}", i.name);
         let server = server_item
-            .build(listen.clone(), net.clone(), i.rest.clone())
+            .build(listen.clone(), wrapper(net.clone()), i.rest.clone())
             .context(format!(
                 "Failed to build server {:?}. Please check your config.",
                 i.name
@@ -130,19 +135,31 @@ async fn real_main(args: Args) -> Result<()> {
     let config: config::Config =
         serde_yaml::from_reader(File::open(args.config).context("Failed to open config file.")?)?;
 
+    #[cfg(feature = "controller")]
+    let ctl = controller::Controller::new();
+    #[cfg(not(feature = "controller"))]
+    let wrap_net = |net: Net| net;
+    #[cfg(feature = "controller")]
+    let wrap_net = {
+        let c = ctl.clone();
+        move |net: Net| c.get_net(net)
+    };
     let registry = load_plugins(config.plugin_path)?;
     log::debug!("registry: {:?}", registry);
 
     let net = init_net(&registry, config.net, config.rule)?;
-    let servers = init_server(&registry, &net, config.server)?;
+    let servers = init_server(&registry, &net, config.server, wrap_net)?;
 
     log::info!("proxy {:#?}", net.keys());
     log::info!("server {:#?}", servers);
 
     let mut tasks: FuturesUnordered<_> = servers
         .into_iter()
-        .map(|i| start_server(i.server))
+        .map(|i| start_server(i.server).boxed())
         .collect();
+
+    #[cfg(feature = "controller")]
+    tasks.push(ctl.start().boxed());
 
     while tasks.next().await.is_some() {}
 

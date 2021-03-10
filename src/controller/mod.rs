@@ -1,0 +1,86 @@
+mod event;
+mod wrapper;
+
+use anyhow::Result;
+use async_std::{
+    channel,
+    task::{sleep, spawn},
+};
+use rd_interface::{async_trait, Address, Context, INet, Net, TcpListener, TcpStream, UdpSocket};
+use std::{sync::Arc, time::Duration};
+
+use self::event::{Event, EventType};
+
+struct Inner {}
+
+#[derive(Clone)]
+pub struct Controller {
+    inner: Arc<Inner>,
+    sender: channel::Sender<Event>,
+}
+
+pub struct ControllerNet {
+    net: Net,
+    sender: channel::Sender<Event>,
+}
+
+#[async_trait]
+impl INet for ControllerNet {
+    async fn tcp_connect(
+        &self,
+        ctx: &mut Context,
+        addr: Address,
+    ) -> rd_interface::Result<TcpStream> {
+        let tcp = self.net.tcp_connect(ctx, addr.clone()).await?;
+        let tcp = wrapper::TcpStream::new(tcp, self.sender.clone());
+        tcp.send(EventType::NewTcp(addr));
+        Ok(Box::new(tcp))
+    }
+
+    // TODO: wrap TcpListener
+    async fn tcp_bind(
+        &self,
+        ctx: &mut Context,
+        addr: Address,
+    ) -> rd_interface::Result<TcpListener> {
+        self.net.tcp_bind(ctx, addr).await
+    }
+
+    // TODO: wrap TcpListener
+    async fn udp_bind(&self, ctx: &mut Context, addr: Address) -> rd_interface::Result<UdpSocket> {
+        self.net.udp_bind(ctx, addr).await
+    }
+}
+
+async fn process(rx: channel::Receiver<Event>) {
+    loop {
+        let e = match rx.try_recv() {
+            Ok(e) => e,
+            Err(channel::TryRecvError::Empty) => {
+                sleep(Duration::from_millis(100)).await;
+                continue;
+            }
+            Err(channel::TryRecvError::Closed) => break,
+        };
+
+        log::trace!("Event {:?}", e);
+    }
+}
+
+impl Controller {
+    pub fn new() -> Controller {
+        let inner = Arc::new(Inner {});
+        let (sender, rx) = channel::unbounded();
+        spawn(process(rx));
+        Controller { inner, sender }
+    }
+    pub fn get_net(&self, net: Net) -> Net {
+        Arc::new(ControllerNet {
+            net,
+            sender: self.sender.clone(),
+        })
+    }
+    pub async fn start(self) -> Result<()> {
+        Ok(())
+    }
+}
