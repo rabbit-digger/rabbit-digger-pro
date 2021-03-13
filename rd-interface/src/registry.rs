@@ -34,9 +34,7 @@ impl Registry {
     ) {
         self.net.insert(
             name.into(),
-            Box::new(move |net, cfg| {
-                from_cfg(net, cfg).map(|n| Arc::new(n) as Arc<(dyn INet + 'static)>)
-            }),
+            Box::new(move |net, cfg| from_cfg(net, cfg).map(|n| Arc::new(n) as Net)),
         );
     }
     pub fn add_server<S: IServer + 'static>(
@@ -47,7 +45,7 @@ impl Registry {
         self.server.insert(
             name.into(),
             Box::new(move |listen_net, net, cfg| {
-                from_cfg(listen_net, net, cfg).map(|n| Box::new(n) as Box<dyn IServer + 'static>)
+                from_cfg(listen_net, net, cfg).map(|n| Box::new(n) as Server)
             }),
         );
     }
