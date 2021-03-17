@@ -1,6 +1,7 @@
 mod event;
 mod wrapper;
 
+use self::event::{Event, EventType};
 use anyhow::Result;
 use async_std::{
     channel,
@@ -8,8 +9,6 @@ use async_std::{
 };
 use rd_interface::{async_trait, Address, Context, INet, Net, TcpListener, TcpStream, UdpSocket};
 use std::{sync::Arc, time::Duration};
-
-use self::event::{Event, EventType};
 
 struct Inner {}
 
