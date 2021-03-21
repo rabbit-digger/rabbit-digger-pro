@@ -4,16 +4,16 @@ use rd_interface::{
     TcpStream, UdpSocket,
 };
 
-pub struct Net(rd_interface::Net);
+pub struct AliasNet(rd_interface::Net);
 
-impl Net {
-    fn new(net: rd_interface::Net) -> Net {
-        Net(net)
+impl AliasNet {
+    fn new(net: rd_interface::Net) -> AliasNet {
+        AliasNet(net)
     }
 }
 
 #[async_trait]
-impl INet for Net {
+impl INet for AliasNet {
     #[inline(always)]
     fn tcp_connect<'life0: 'a, 'life1: 'a, 'a>(
         &'life0 self,
@@ -52,6 +52,6 @@ impl INet for Net {
 }
 
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net("alias", |nets, _| Ok(Net::new(get_one_net(nets)?)));
+    registry.add_net("alias", |nets, _| Ok(AliasNet::new(get_one_net(nets)?)));
     Ok(())
 }

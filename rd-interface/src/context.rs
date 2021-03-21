@@ -155,7 +155,7 @@ pub mod common_field {
     }
 
     #[derive(Debug, Deserialize, Serialize)]
-    pub struct PersistData(Value);
+    pub struct PersistData(pub Value);
 
     impl CommonField for PersistData {
         const KEY: &'static str = "persist_data";

@@ -10,14 +10,14 @@ use rd_interface::{
     async_trait, Address, INet, Registry, Result, TcpListener, TcpStream, UdpSocket,
 };
 
-pub struct Net;
+pub struct LocalNet;
 pub struct CompatTcp(net::TcpStream);
 pub struct Listener(net::TcpListener);
 pub struct Udp(net::UdpSocket);
 
-impl Net {
-    fn new() -> Net {
-        Net
+impl LocalNet {
+    fn new() -> LocalNet {
+        LocalNet
     }
 }
 async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
@@ -100,7 +100,7 @@ impl rd_interface::IUdpSocket for Udp {
 }
 
 #[async_trait]
-impl INet for Net {
+impl INet for LocalNet {
     async fn tcp_connect(
         &self,
         _ctx: &mut rd_interface::Context,
@@ -126,6 +126,6 @@ impl INet for Net {
 }
 
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net("local", |_, _| Ok(Net::new()));
+    registry.add_net("local", |_, _| Ok(LocalNet::new()));
     Ok(())
 }

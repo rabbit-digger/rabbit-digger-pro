@@ -12,6 +12,8 @@ pub enum Error {
     Config(#[from] serde_json::Error),
     #[error("Aborted by user")]
     AbortedByUser,
+    #[error("Context error: {0:?}")]
+    Context(#[from] crate::context::Error),
     #[error("{0:?}")]
     Other(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
