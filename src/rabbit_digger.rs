@@ -7,50 +7,102 @@ use crate::plugins::load_plugins;
 use crate::registry::Registry;
 use crate::rule::Rule;
 use anyhow::{anyhow, Context, Result};
-use futures::{prelude::*, stream::FuturesUnordered};
+use async_std::{fs::read_to_string, task};
+use futures::{
+    future::{ready, try_select, Either},
+    pin_mut,
+    prelude::*,
+    stream::{self, FuturesUnordered, Stream},
+    StreamExt,
+};
+use notify_stream::{
+    notify::{EventKind, RecursiveMode},
+    notify_stream, NotifyStream,
+};
 use rd_interface::{config::Value, Arc, Net, NotImplementedNet, Server};
 
 pub struct RabbitDigger {
+    config_stream: NotifyStream,
     config_path: PathBuf,
 }
 
+pub async fn run<S>(controller: &controller::Controller, mut config_stream: S) -> Result<()>
+where
+    S: Stream<Item = Result<config::Config>> + Unpin,
+{
+    let mut config = match config_stream.try_next().await? {
+        Some(cfg) => cfg,
+        None => return Err(anyhow!("The config_stream is empty, can not start.")),
+    };
+    let mut config_stream = config_stream.chain(stream::pending());
+
+    loop {
+        log::info!("rabbit digger is starting...");
+        let run_fut = run_once(controller, config);
+        pin_mut!(run_fut);
+        let new_config = match try_select(run_fut, config_stream.try_next()).await {
+            Ok(Either::Left((_, cfg_fut))) => {
+                log::info!("Exited normally, waiting for next config...");
+                cfg_fut.await?
+            }
+            Ok(Either::Right((cfg, _))) => cfg,
+            Err(Either::Left((e, cfg_fut))) => {
+                log::info!("Error: {:?}, waiting for next config...", e);
+                cfg_fut.await?
+            }
+            Err(Either::Right((e, _))) => return Err(e),
+        };
+        config = match new_config {
+            Some(v) => v,
+            None => return Ok(()),
+        }
+    }
+}
+
+pub async fn run_once(ctl: &controller::Controller, config: config::Config) -> Result<()> {
+    let wrap_net = {
+        let c = ctl.clone();
+        move |net: Net| c.get_net(net)
+    };
+    let registry = load_plugins(config.plugin_path)?;
+    log::debug!("registry: {:?}", registry);
+
+    let net = init_net(&registry, config.net, config.rule)?;
+    let servers = init_server(&registry, &net, config.server, wrap_net)?;
+
+    log::info!("proxy {:#?}", net.keys());
+    log::info!("server {:#?}", servers);
+
+    let mut tasks: FuturesUnordered<_> = servers
+        .into_iter()
+        .map(|i| start_server(i.server).boxed())
+        .collect();
+
+    while tasks.next().await.is_some() {}
+
+    log::info!("all servers are down, exit.");
+
+    Ok(())
+}
+
 impl RabbitDigger {
-    pub fn new(config: PathBuf) -> Result<RabbitDigger> {
+    pub fn new(config_path: PathBuf) -> Result<RabbitDigger> {
+        let config_stream = notify_stream(&config_path, RecursiveMode::Recursive)?;
         Ok(RabbitDigger {
-            config_path: config,
+            config_stream,
+            config_path,
         })
     }
-    pub async fn run(&self) -> Result<()> {
-        let config: config::Config = serde_yaml::from_reader(
-            File::open(&self.config_path).context("Failed to open config file.")?,
-        )?;
-
-        let ctl = controller::Controller::new();
-        let wrap_net = {
-            let c = ctl.clone();
-            move |net: Net| c.get_net(net)
-        };
-        let registry = load_plugins(config.plugin_path)?;
-        log::debug!("registry: {:?}", registry);
-
-        let net = init_net(&registry, config.net, config.rule)?;
-        let servers = init_server(&registry, &net, config.server, wrap_net)?;
-
-        log::info!("proxy {:#?}", net.keys());
-        log::info!("server {:#?}", servers);
-
-        let mut tasks: FuturesUnordered<_> = servers
-            .into_iter()
-            .map(|i| start_server(i.server).boxed())
-            .collect();
-
-        tasks.push(ctl.start().boxed());
-
-        while tasks.next().await.is_some() {}
-
-        log::info!("all servers are down, exit.");
-
-        Ok(())
+    pub async fn run(self, controller: &controller::Controller) -> Result<()> {
+        let config_path = self.config_path;
+        let config_stream = self
+            .config_stream
+            .try_filter(|e| ready(e.kind.is_modify()))
+            .map_err(Into::<anyhow::Error>::into)
+            .and_then(move |_| read_to_string(config_path.clone()).map_err(Into::into))
+            .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)));
+        pin_mut!(config_stream);
+        run(controller, config_stream).await
     }
 }
 

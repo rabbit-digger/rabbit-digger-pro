@@ -12,6 +12,11 @@ use std::{sync::Arc, time::Duration};
 
 struct Inner {}
 
+#[derive(Debug)]
+pub struct TaskInfo {
+    pub name: String,
+}
+
 #[derive(Clone)]
 pub struct Controller {
     inner: Arc<Inner>,
@@ -79,7 +84,7 @@ impl Controller {
             sender: self.sender.clone(),
         })
     }
-    pub async fn start(self) -> Result<()> {
+    pub async fn start(&mut self) -> Result<()> {
         Ok(())
     }
 }
