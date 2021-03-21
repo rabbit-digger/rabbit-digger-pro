@@ -12,6 +12,8 @@ pub enum Error {
     Config(#[from] serde_json::Error),
     #[error("Aborted by user")]
     AbortedByUser,
+    #[error("{0:?}")]
+    Other(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub const NOT_IMPLEMENTED: Error = Error::NotImplemented;

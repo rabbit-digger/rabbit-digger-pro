@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::{config::Value, INet, IServer, Net, Result, Server};
 
-pub type NetFromConfig<T> = Box<dyn Fn(Net, Value) -> Result<T>>;
+pub type NetFromConfig<T> = Box<dyn Fn(Vec<Net>, Value) -> Result<T>>;
 /// listen_net, net, config
 pub type ServerFromConfig<T> = Box<dyn Fn(Net, Net, Value) -> Result<T>>;
 
@@ -30,7 +30,7 @@ impl Registry {
     pub fn add_net<N: INet + 'static>(
         &mut self,
         name: impl Into<String>,
-        from_cfg: impl Fn(Net, Value) -> Result<N> + 'static,
+        from_cfg: impl Fn(Vec<Net>, Value) -> Result<N> + 'static,
     ) {
         self.net.insert(
             name.into(),

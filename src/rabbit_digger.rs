@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File};
+use std::collections::HashMap;
 use std::{fmt, path::PathBuf};
 
 use crate::config;
@@ -7,7 +7,7 @@ use crate::plugins::load_plugins;
 use crate::registry::Registry;
 use crate::rule::Rule;
 use anyhow::{anyhow, Context, Result};
-use async_std::{fs::read_to_string, task};
+use async_std::fs::read_to_string;
 use futures::{
     future::{ready, try_select, Either},
     pin_mut,
@@ -15,10 +15,7 @@ use futures::{
     stream::{self, FuturesUnordered, Stream},
     StreamExt,
 };
-use notify_stream::{
-    notify::{EventKind, RecursiveMode},
-    notify_stream, NotifyStream,
-};
+use notify_stream::{notify::RecursiveMode, notify_stream, NotifyStream};
 use rd_interface::{config::Value, Arc, Net, NotImplementedNet, Server};
 
 pub struct RabbitDigger {
@@ -106,9 +103,9 @@ impl RabbitDigger {
     }
 }
 
-fn get_local(registry: &Registry, noop: Net) -> Result<Net> {
+fn get_local(registry: &Registry) -> Result<Net> {
     let net_item = &registry.get_net("local")?;
-    let local = net_item.build(noop, Value::Null)?;
+    let local = net_item.build(Vec::new(), Value::Null)?;
     Ok(local)
 }
 
@@ -145,19 +142,28 @@ fn init_net(
     let noop = Arc::new(NotImplementedNet);
 
     net.insert("noop".to_string(), noop.clone());
-    net.insert("local".to_string(), get_local(&registry, noop)?);
+    net.insert("local".to_string(), get_local(&registry)?);
 
-    for i in config {
+    for i in config.into_iter() {
+        let name = &i.name;
         let net_item = registry.get_net(&i.net_type)?;
-        let chain = net.get(&i.chain).ok_or(anyhow!(
-            "Chain {} is not loaded. Required by {}",
-            &i.chain,
-            &i.name
-        ))?;
-        log::trace!("Loading net: {}", i.name);
-        let proxy = net_item.build(chain.clone(), i.rest).context(format!(
+        let chains = i
+            .chain
+            .to_vec()
+            .into_iter()
+            .map(|s| {
+                net.get(&s).map(|s| s.clone()).ok_or(anyhow!(
+                    "Chain {} is not loaded. Required by {}",
+                    &s,
+                    name
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        log::trace!("Loading net: {}", name);
+        let proxy = net_item.build(chains, i.rest).context(format!(
             "Failed to build net {:?}. Please check your config.",
-            i.name
+            name
         ))?;
         net.insert(i.name, proxy);
     }

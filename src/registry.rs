@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use rd_interface::{
     config::Value,
     registry::{NetFromConfig, ServerFromConfig},
-    Arc, Net, NotImplementedNet, Server,
+    Net, Server,
 };
 use std::{collections::HashMap, fmt};
 
@@ -19,10 +19,8 @@ pub struct ServerItem {
 }
 
 impl NetItem {
-    pub fn build(&self, net: impl Into<Option<Net>>, config: Value) -> rd_interface::Result<Net> {
-        let net = net.into();
-
-        (self.factory)(net.unwrap_or_else(|| Arc::new(NotImplementedNet)), config)
+    pub fn build(&self, nets: Vec<Net>, config: Value) -> rd_interface::Result<Net> {
+        (self.factory)(nets, config)
     }
 }
 

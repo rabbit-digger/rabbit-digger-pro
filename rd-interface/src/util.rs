@@ -1,11 +1,21 @@
-use crate::interface::{async_trait, AsyncRead, AsyncWrite, ITcpStream, TcpStream};
-use futures_util::{future::try_join, io::copy, AsyncReadExt, AsyncWriteExt};
+use crate::{
+    interface::{
+        async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, Net, TcpListener, TcpStream,
+        UdpSocket,
+    },
+    Address, Context, Result, NOT_IMPLEMENTED,
+};
+use futures_util::{
+    future::{try_join, BoxFuture},
+    io::copy,
+    AsyncReadExt, AsyncWriteExt,
+};
 use std::{
     collections::VecDeque,
     io,
     net::SocketAddr,
     pin::Pin,
-    task::{Context, Poll},
+    task::{self, Poll},
 };
 
 /// Connect two `TcpStream`
@@ -36,7 +46,7 @@ pub struct PeekableTcpStream {
 impl AsyncRead for PeekableTcpStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut task::Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         let (first, ..) = &self.buf.as_slices();
@@ -56,17 +66,17 @@ impl AsyncRead for PeekableTcpStream {
 impl AsyncWrite for PeekableTcpStream {
     fn poll_write(
         mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut task::Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         Pin::new(&mut self.tcp).poll_write(cx, buf)
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.tcp).poll_flush(cx)
     }
 
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.tcp).poll_close(cx)
     }
 }
@@ -109,4 +119,76 @@ impl PeekableTcpStream {
     pub fn into_inner(self) -> (TcpStream, VecDeque<u8>) {
         (self.tcp, self.buf)
     }
+}
+
+/// A no-op Net returns [`Error::NotImplemented`](crate::Error::NotImplemented) for every method.
+pub struct NotImplementedNet;
+
+#[async_trait]
+impl INet for NotImplementedNet {
+    async fn tcp_connect(&self, _ctx: &mut Context, _addr: Address) -> Result<TcpStream> {
+        Err(NOT_IMPLEMENTED)
+    }
+
+    async fn tcp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<TcpListener> {
+        Err(NOT_IMPLEMENTED)
+    }
+
+    async fn udp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<UdpSocket> {
+        Err(NOT_IMPLEMENTED)
+    }
+}
+
+/// A new Net calls [`tcp_connect()`](crate::INet::tcp_connect()), [`tcp_bind()`](crate::INet::tcp_bind()), [`udp_bind()`](crate::INet::udp_bind()) from different Net.
+pub struct CombineNet {
+    pub tcp_connect: Net,
+    pub tcp_bind: Net,
+    pub udp_bind: Net,
+}
+
+#[async_trait]
+impl INet for CombineNet {
+    #[inline(always)]
+    fn tcp_connect<'life0: 'a, 'life1: 'a, 'a>(
+        &'life0 self,
+        ctx: &'life1 mut Context,
+        addr: Address,
+    ) -> BoxFuture<'a, Result<TcpStream>>
+    where
+        Self: 'a,
+    {
+        self.tcp_connect.tcp_connect(ctx, addr)
+    }
+
+    #[inline(always)]
+    fn tcp_bind<'life0: 'a, 'life1: 'a, 'a>(
+        &'life0 self,
+        ctx: &'life1 mut Context,
+        addr: Address,
+    ) -> BoxFuture<'a, Result<TcpListener>>
+    where
+        Self: 'a,
+    {
+        self.tcp_bind.tcp_bind(ctx, addr)
+    }
+
+    #[inline(always)]
+    fn udp_bind<'life0: 'a, 'life1: 'a, 'a>(
+        &'life0 self,
+        ctx: &'life1 mut Context,
+        addr: Address,
+    ) -> BoxFuture<'a, Result<UdpSocket>>
+    where
+        Self: 'a,
+    {
+        self.udp_bind.udp_bind(ctx, addr)
+    }
+}
+
+pub fn get_one_net(mut nets: Vec<Net>) -> Result<Net> {
+    if nets.len() != 1 {
+        return Err(crate::Error::Other("Must have one net".to_string().into()));
+    }
+
+    Ok(nets.remove(0))
 }
