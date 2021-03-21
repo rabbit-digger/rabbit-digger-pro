@@ -3,6 +3,7 @@ pub mod context;
 mod error;
 mod interface;
 pub mod registry;
+pub mod util;
 
 pub use address::{Address, IntoAddress};
 pub use context::Context;

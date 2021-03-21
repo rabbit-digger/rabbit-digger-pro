@@ -3,17 +3,12 @@ use super::{
     common::Address,
 };
 use async_std::task::spawn;
-use futures::{
-    future::try_join,
-    io::{copy, Cursor},
-    prelude::*,
-};
+use futures::{io::Cursor, prelude::*};
 use rd_interface::{
-    async_trait, context::common_field::SourceAddress, AsyncRead, AsyncWrite, Context, IServer,
+    async_trait, context::common_field::SourceAddress, util::connect_tcp, Context, IServer,
     IntoAddress, Net, Result, TcpListener, TcpStream,
 };
 use std::{
-    io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     sync::Arc,
 };
@@ -32,7 +27,14 @@ pub struct Socks5Server {
 #[async_trait]
 impl IServer for Socks5Server {
     async fn start(&self) -> Result<()> {
-        self.serve(self.port).await
+        let listener = self
+            .listen_net
+            .tcp_bind(
+                &mut Context::new(),
+                SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), self.port).into_address()?,
+            )
+            .await?;
+        self.serve_listener(listener).await
     }
 
     async fn stop(&self) -> Result<()> {
@@ -93,7 +95,7 @@ impl Socks5Server {
 
                 socket.write_all(&writer.into_inner()).await?;
 
-                pipe(out, socket).await?;
+                connect_tcp(out, socket).await?;
             }
             // UDP
             [0x05, 0x03, 0x00] => {
@@ -138,16 +140,6 @@ impl Socks5Server {
             port,
         }
     }
-    pub async fn serve(&self, port: u16) -> Result<()> {
-        let listener = self
-            .listen_net
-            .tcp_bind(
-                &mut Context::new(),
-                SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), port).into_address()?,
-            )
-            .await?;
-        self.serve_listener(listener).await
-    }
     pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
         loop {
             let (socket, addr) = listener.accept().await?;
@@ -155,27 +147,4 @@ impl Socks5Server {
             let _ = spawn(Self::serve_connection(cfg, socket, addr));
         }
     }
-}
-
-async fn pipe<S1, S2>(s1: S1, s2: S2) -> io::Result<(u64, u64)>
-where
-    S1: AsyncRead + AsyncWrite,
-    S2: AsyncRead + AsyncWrite,
-{
-    let (mut read_1, mut write_1) = s1.split();
-    let (mut read_2, mut write_2) = s2.split();
-
-    try_join(
-        async {
-            let r = copy(&mut read_1, &mut write_2).await;
-            write_2.close().await?;
-            r
-        },
-        async {
-            let r = copy(&mut read_2, &mut write_1).await;
-            write_1.close().await?;
-            r
-        },
-    )
-    .await
 }
