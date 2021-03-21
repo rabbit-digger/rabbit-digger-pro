@@ -3,6 +3,7 @@ mod wrapper;
 use rd_interface::{
     async_trait,
     config::{from_value, Value},
+    util::get_one_net,
     Address, Arc, INet, IntoAddress, Net, Registry, Result, TcpListener, TcpStream, UdpSocket,
     NOT_IMPLEMENTED,
 };
@@ -85,7 +86,9 @@ impl INet for SSNet {
 
 #[no_mangle]
 pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net("shadowsocks", |net, config| SSNet::new(net, config));
+    registry.add_net("shadowsocks", |nets, config| {
+        SSNet::new(get_one_net(nets)?, config)
+    });
 
     Ok(())
 }
