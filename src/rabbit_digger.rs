@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::{fmt, path::PathBuf};
+use std::{collections::HashMap, fmt, path::PathBuf, time::Duration};
 
 use crate::config;
 use crate::controller;
@@ -7,7 +6,7 @@ use crate::plugins::load_plugins;
 use crate::registry::Registry;
 use crate::rule::Rule;
 use anyhow::{anyhow, Context, Result};
-use async_std::fs::read_to_string;
+use async_std::{fs::read_to_string, future::timeout};
 use futures::{
     future::{ready, try_select, Either},
     pin_mut,
@@ -27,9 +26,10 @@ pub async fn run<S>(controller: &controller::Controller, mut config_stream: S) -
 where
     S: Stream<Item = Result<config::Config>> + Unpin,
 {
-    let mut config = match config_stream.try_next().await? {
-        Some(cfg) => cfg,
-        None => return Err(anyhow!("The config_stream is empty, can not start.")),
+    let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
+        Ok(Ok(Some(cfg))) => cfg,
+        Ok(Err(e)) => return Err(anyhow!("Failed to get first config {}.", e)),
+        Err(_) | Ok(Ok(None)) => return Err(anyhow!("The config_stream is empty, can not start.")),
     };
     let mut config_stream = config_stream.chain(stream::pending());
 
@@ -92,10 +92,13 @@ impl RabbitDigger {
     }
     pub async fn run(self, controller: &controller::Controller) -> Result<()> {
         let config_path = self.config_path;
-        let config_stream = self
-            .config_stream
-            .try_filter(|e| ready(e.kind.is_modify()))
-            .map_err(Into::<anyhow::Error>::into)
+        let config_stream = stream::once(async { Ok(()) })
+            .chain(
+                self.config_stream
+                    .try_filter(|e| ready(e.kind.is_modify()))
+                    .map_err(Into::<anyhow::Error>::into)
+                    .map(|_| Ok(())),
+            )
             .and_then(move |_| read_to_string(config_path.clone()).map_err(Into::into))
             .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)));
         pin_mut!(config_stream);

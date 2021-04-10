@@ -7,6 +7,7 @@ use std::{ffi::OsStr, fs::read_dir, path::PathBuf};
 const PLUGIN_EXTENSIONS: &'static [&'static str] = &["so", "dll"];
 
 pub fn load_plugin(path: PathBuf, registry: &mut rd_interface::Registry) -> Result<()> {
+    log::trace!("Loading plugin: {:?}", path);
     let lib = Library::new(path)?;
     let init_plugin: Symbol<fn(&mut rd_interface::Registry) -> rd_interface::Result<()>> =
         unsafe { lib.get(b"init_plugin")? };
