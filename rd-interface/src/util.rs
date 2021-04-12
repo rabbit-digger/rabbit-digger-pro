@@ -19,7 +19,10 @@ use std::{
 };
 
 /// Connect two `TcpStream`
-pub async fn connect_tcp(t1: TcpStream, t2: TcpStream) -> io::Result<(u64, u64)> {
+pub async fn connect_tcp(
+    t1: impl AsyncRead + AsyncWrite,
+    t2: impl AsyncRead + AsyncWrite,
+) -> io::Result<(u64, u64)> {
     let (mut read_1, mut write_1) = t1.split();
     let (mut read_2, mut write_2) = t2.split();
 

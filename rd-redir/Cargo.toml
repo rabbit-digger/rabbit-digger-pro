@@ -1,0 +1,17 @@
+[package]
+name = "rd-redir"
+version = "0.1.0"
+authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+rd-interface = { path = "../rd-interface" }
+futures = "0.3"
+async-std = "1.9"
+serde = "1.0"
+serde_derive = "1.0"
+libc = "0.2.91"
+socket2 = "0.4.0"
+
+[lib]
+crate-type = ["cdylib"]

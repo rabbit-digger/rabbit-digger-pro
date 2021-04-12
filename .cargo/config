@@ -1,0 +1,5 @@
+[build]
+rustflags = [
+    # "-Z", "print-link-args",
+    "-Z", "strip=symbols",
+]

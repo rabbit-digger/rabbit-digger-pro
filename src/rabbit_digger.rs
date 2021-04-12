@@ -44,7 +44,7 @@ where
             }
             Ok(Either::Right((cfg, _))) => cfg,
             Err(Either::Left((e, cfg_fut))) => {
-                log::info!("Error: {:?}, waiting for next config...", e);
+                log::error!("Error: {:?}, waiting for next config...", e);
                 cfg_fut.await?
             }
             Err(Either::Right((e, _))) => return Err(e),

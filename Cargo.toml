@@ -27,6 +27,7 @@ smoltcp = "0.7.0"
 uuid = { version = "0.8.2", features = [ "v4" ] }
 notify-stream = "0.1.1"
 async-trait = "0.1.42"
+once_cell = "1.7.2"
 
 async-graphql = { version = "2.0", optional = true }
 async-graphql-warp = { version = "2.0", optional = true }
@@ -40,6 +41,7 @@ gql = [ "async-graphql", "async-graphql-warp", "warp" ]
 members = [
     "rd-interface",
     "rd-socks5",
+    "rd-redir",
 ]
 
 [profile.release]
