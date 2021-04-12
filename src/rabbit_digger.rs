@@ -14,87 +14,38 @@ use futures::{
     stream::{self, FuturesUnordered, Stream},
     StreamExt,
 };
-use notify_stream::{notify::RecursiveMode, notify_stream, NotifyStream};
+use notify_stream::{notify::RecursiveMode, notify_stream};
 use rd_interface::{config::Value, Arc, Net, NotImplementedNet, Server};
 
+pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'static>;
 pub struct RabbitDigger {
-    config_stream: NotifyStream,
     config_path: PathBuf,
-}
-
-pub async fn run<S>(controller: &controller::Controller, mut config_stream: S) -> Result<()>
-where
-    S: Stream<Item = Result<config::Config>> + Unpin,
-{
-    let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
-        Ok(Ok(Some(cfg))) => cfg,
-        Ok(Err(e)) => return Err(anyhow!("Failed to get first config {}.", e)),
-        Err(_) | Ok(Ok(None)) => return Err(anyhow!("The config_stream is empty, can not start.")),
-    };
-    let mut config_stream = config_stream.chain(stream::pending());
-
-    loop {
-        log::info!("rabbit digger is starting...");
-        let run_fut = run_once(controller, config);
-        pin_mut!(run_fut);
-        let new_config = match try_select(run_fut, config_stream.try_next()).await {
-            Ok(Either::Left((_, cfg_fut))) => {
-                log::info!("Exited normally, waiting for next config...");
-                cfg_fut.await?
-            }
-            Ok(Either::Right((cfg, _))) => cfg,
-            Err(Either::Left((e, cfg_fut))) => {
-                log::error!("Error: {:?}, waiting for next config...", e);
-                cfg_fut.await?
-            }
-            Err(Either::Right((e, _))) => return Err(e),
-        };
-        config = match new_config {
-            Some(v) => v,
-            None => return Ok(()),
-        }
-    }
-}
-
-pub async fn run_once(ctl: &controller::Controller, config: config::Config) -> Result<()> {
-    let wrap_net = {
-        let c = ctl.clone();
-        move |net: Net| c.get_net(net)
-    };
-    let registry = load_plugins(config.plugin_path)?;
-    log::debug!("registry: {:?}", registry);
-
-    let net = init_net(&registry, config.net, config.rule)?;
-    let servers = init_server(&registry, &net, config.server, wrap_net)?;
-
-    log::info!("proxy {:#?}", net.keys());
-    log::info!("server {:#?}", servers);
-
-    let mut tasks: FuturesUnordered<_> = servers
-        .into_iter()
-        .map(|i| start_server(i.server).boxed())
-        .collect();
-
-    while tasks.next().await.is_some() {}
-
-    log::info!("all servers are down, exit.");
-
-    Ok(())
+    plugin_loader: PluginLoader,
 }
 
 impl RabbitDigger {
     pub fn new(config_path: PathBuf) -> Result<RabbitDigger> {
-        let config_stream = notify_stream(&config_path, RecursiveMode::Recursive)?;
         Ok(RabbitDigger {
-            config_stream,
             config_path,
+            plugin_loader: Box::new(|cfg| load_plugins(cfg.plugin_path.clone())),
         })
     }
-    pub async fn run(self, controller: &controller::Controller) -> Result<()> {
-        let config_path = self.config_path;
+    pub fn with_plugin_loader(
+        config_path: PathBuf,
+        plugin_loader: impl Fn(&config::Config) -> Result<Registry> + 'static,
+    ) -> Result<RabbitDigger> {
+        Ok(RabbitDigger {
+            config_path,
+            plugin_loader: Box::new(plugin_loader),
+        })
+    }
+    pub async fn run(&self, controller: &controller::Controller) -> Result<()> {
+        let config_path = self.config_path.clone();
+        let config_stream = notify_stream(&config_path, RecursiveMode::Recursive)?;
+
         let config_stream = stream::once(async { Ok(()) })
             .chain(
-                self.config_stream
+                config_stream
                     .try_filter(|e| ready(e.kind.is_modify()))
                     .map_err(Into::<anyhow::Error>::into)
                     .map(|_| Ok(())),
@@ -102,7 +53,69 @@ impl RabbitDigger {
             .and_then(move |_| read_to_string(config_path.clone()).map_err(Into::into))
             .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)));
         pin_mut!(config_stream);
-        run(controller, config_stream).await
+        self._run(controller, config_stream).await
+    }
+
+    async fn _run<S>(&self, controller: &controller::Controller, mut config_stream: S) -> Result<()>
+    where
+        S: Stream<Item = Result<config::Config>> + Unpin,
+    {
+        let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
+            Ok(Ok(Some(cfg))) => cfg,
+            Ok(Err(e)) => return Err(anyhow!("Failed to get first config {}.", e)),
+            Err(_) | Ok(Ok(None)) => {
+                return Err(anyhow!("The config_stream is empty, can not start."))
+            }
+        };
+        let mut config_stream = config_stream.chain(stream::pending());
+
+        loop {
+            log::info!("rabbit digger is starting...");
+            let run_fut = self.run_once(controller, config);
+            pin_mut!(run_fut);
+            let new_config = match try_select(run_fut, config_stream.try_next()).await {
+                Ok(Either::Left((_, cfg_fut))) => {
+                    log::info!("Exited normally, waiting for next config...");
+                    cfg_fut.await?
+                }
+                Ok(Either::Right((cfg, _))) => cfg,
+                Err(Either::Left((e, cfg_fut))) => {
+                    log::error!("Error: {:?}, waiting for next config...", e);
+                    cfg_fut.await?
+                }
+                Err(Either::Right((e, _))) => return Err(e),
+            };
+            config = match new_config {
+                Some(v) => v,
+                None => return Ok(()),
+            }
+        }
+    }
+
+    async fn run_once(&self, ctl: &controller::Controller, config: config::Config) -> Result<()> {
+        let wrap_net = {
+            let c = ctl.clone();
+            move |net: Net| c.get_net(net)
+        };
+        let registry = (self.plugin_loader)(&config)?;
+        log::debug!("registry: {:?}", registry);
+
+        let net = init_net(&registry, config.net, config.rule)?;
+        let servers = init_server(&registry, &net, config.server, wrap_net)?;
+
+        log::info!("proxy {:#?}", net.keys());
+        log::info!("server {:#?}", servers);
+
+        let mut tasks: FuturesUnordered<_> = servers
+            .into_iter()
+            .map(|i| start_server(i.server).boxed())
+            .collect();
+
+        while tasks.next().await.is_some() {}
+
+        log::info!("all servers are down, exit.");
+
+        Ok(())
     }
 }
 

@@ -1,17 +1,8 @@
-mod builtin;
-mod config;
-mod controller;
-mod plugins;
-mod rabbit_digger;
-mod registry;
-mod rule;
-
 use std::path::PathBuf;
 
 use anyhow::Result;
 use env_logger::Env;
-use rabbit_digger::RabbitDigger;
-use registry::Registry;
+use rabbit_digger::{controller, RabbitDigger};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
