@@ -1,4 +1,4 @@
-use crate::builtin::load_builtin;
+pub use crate::builtin::load_builtin;
 use crate::registry::Registry;
 use anyhow::Result;
 use libloading::{Library, Symbol};
