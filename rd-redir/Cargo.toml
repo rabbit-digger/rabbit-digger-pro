@@ -5,7 +5,7 @@ authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-rd-interface = { path = "../rd-interface" }
+rd-interface = { version = "0.3", path = "../rd-interface" }
 futures = "0.3"
 async-std = "1.9"
 serde = "1.0"
