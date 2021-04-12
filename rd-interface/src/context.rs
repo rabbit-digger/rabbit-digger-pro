@@ -23,9 +23,8 @@ pub enum Error {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Defines common used field with its key and type
-pub trait CommonField {
+pub trait CommonField: DeserializeOwned + Serialize + 'static {
     const KEY: &'static str;
-    type Type: DeserializeOwned + Serialize + 'static;
 }
 
 impl<T: Debug + Clone> fmt::Debug for Lazy<T> {
@@ -104,10 +103,10 @@ impl Context {
     /// Inserts a key-value pair into the context. Value can be compute later.
     pub async fn insert_common_lazy<T: CommonField>(
         &mut self,
-        f: impl Fn() -> BoxFuture<'static, Result<T::Type>> + Send + Sync + 'static,
+        f: impl Fn() -> BoxFuture<'static, Result<T>> + Send + Sync + 'static,
     ) -> Result<()>
     where
-        T::Type: 'static,
+        T: 'static,
     {
         self.insert_value_lazy(T::KEY.to_string(), move || {
             f().map(|r| match r {
@@ -119,11 +118,11 @@ impl Context {
         .await
     }
     /// Inserts a key-value pair into the context.
-    pub async fn insert_common<T: CommonField>(&mut self, value: T::Type) -> Result<()> {
+    pub async fn insert_common<T: CommonField>(&mut self, value: T) -> Result<()> {
         self.insert(T::KEY.to_string(), value).await
     }
     /// Returns a value corresponding to the key.
-    pub async fn get_common<T: CommonField>(&self) -> Result<T::Type> {
+    pub async fn get_common<T: CommonField>(&self) -> Result<T> {
         self.get(T::KEY).await
     }
 }
@@ -141,7 +140,6 @@ pub mod common_field {
 
     impl CommonField for SourceAddress {
         const KEY: &'static str = "source_address";
-        type Type = SourceAddress;
     }
 
     #[derive(Debug, Deserialize, Serialize)]
@@ -151,7 +149,6 @@ pub mod common_field {
 
     impl CommonField for ProcessInfo {
         const KEY: &'static str = "process_info";
-        type Type = ProcessInfo;
     }
 
     #[derive(Debug, Deserialize, Serialize)]
@@ -159,6 +156,5 @@ pub mod common_field {
 
     impl CommonField for PersistData {
         const KEY: &'static str = "persist_data";
-        type Type = PersistData;
     }
 }

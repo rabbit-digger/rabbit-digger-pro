@@ -8,5 +8,5 @@ Rule based async tun to proxy based on smoltcp written in Rust.
 
 ```sh
 cargo install cross # run once
-cross build --release --target mipsel-unknown-linux-musl
+cross build --release --target mipsel-unknown-linux-musl --all
 ```

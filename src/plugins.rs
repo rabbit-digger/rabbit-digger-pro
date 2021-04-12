@@ -20,11 +20,13 @@ pub fn load_plugin(path: PathBuf, registry: &mut rd_interface::Registry) -> Resu
 pub fn load_plugins(path: PathBuf) -> Result<Registry> {
     let exts: Vec<&OsStr> = PLUGIN_EXTENSIONS.iter().map(|i| OsStr::new(i)).collect();
     let dirs = read_dir(path);
+    let mut registry = Registry::new();
+
     if dirs.is_err() {
-        return Ok(Registry::new());
+        load_builtin(&mut registry)?;
+        return Ok(registry);
     }
 
-    let mut registry = Registry::new();
     for i in dirs? {
         let p = i?.path();
         if !p.is_dir() && exts.contains(&p.extension().unwrap_or_default()) {
@@ -33,7 +35,7 @@ pub fn load_plugins(path: PathBuf) -> Result<Registry> {
             registry.add_registry(p.to_string_lossy().to_string(), r);
         }
     }
-
+    // Prevent builtin plugins from being tampered with
     load_builtin(&mut registry)?;
 
     Ok(registry)
