@@ -13,4 +13,4 @@ serde = "1.0"
 tokio-util = { version = "0.6.3", features = [ "compat" ] }
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["dylib"]
