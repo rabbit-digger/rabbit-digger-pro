@@ -80,7 +80,11 @@ impl INet for Rule {
                     &addr,
                     &rule.matcher
                 );
-                return rule.target.tcp_connect(ctx, addr).await;
+                let r = rule.target.tcp_connect(ctx, addr.clone()).await;
+                if let Err(e) = &r {
+                    log::error!("{} -> {} Failed to connect: {:?}", &src, &addr, e);
+                }
+                return r;
             }
         }
 

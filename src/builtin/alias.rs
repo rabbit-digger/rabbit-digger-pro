@@ -1,7 +1,6 @@
 use futures::future::BoxFuture;
 use rd_interface::{
-    async_trait, util::get_one_net, Address, Context, INet, Registry, Result, TcpListener,
-    TcpStream, UdpSocket,
+    util::get_one_net, Address, Context, INet, Registry, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct AliasNet(rd_interface::Net);
@@ -12,7 +11,6 @@ impl AliasNet {
     }
 }
 
-#[async_trait]
 impl INet for AliasNet {
     #[inline(always)]
     fn tcp_connect<'life0: 'a, 'life1: 'a, 'a>(

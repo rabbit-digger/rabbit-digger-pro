@@ -1,7 +1,7 @@
 use std::{
     fmt,
     io::{Error, ErrorKind, Result},
-    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 
 /// Address can be IPv4, IPv6 address or a domain with port.
@@ -92,7 +92,10 @@ impl Address {
         match self {
             Address::IPv4(v4) => Ok(SocketAddr::V4(*v4)),
             Address::IPv6(v6) => Ok(SocketAddr::V6(*v6)),
-            Address::Domain(d, p) => f(d.clone(), *p).await,
+            Address::Domain(d, p) => match str::parse::<IpAddr>(d) {
+                Ok(ip) => Ok(SocketAddr::new(ip, *p)),
+                Err(_) => f(d.to_string(), *p).await,
+            },
         }
     }
 }
