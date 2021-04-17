@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, net::SocketAddr, str::FromStr};
 
 use super::matcher::{Matcher, MatcherRegistry, MaybeAsync};
 use rd_interface::{config::from_value, Address};
@@ -57,8 +57,11 @@ impl Matcher for IPMatcher {
         match addr {
             Address::IPv4(v4) => self.test(*v4.ip()),
             Address::IPv6(v6) => self.test(*v6.ip()),
-            // if it's a domain, pass it.
-            _ => false,
+            // if it's a domain, try to parse it to SocketAddr.
+            Address::Domain(domain, _) => match str::parse::<SocketAddr>(domain) {
+                Ok(addr) => self.test(addr.ip()),
+                Err(_) => false,
+            },
         }
         .into()
     }
