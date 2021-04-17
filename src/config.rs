@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::Result;
 use rd_interface::config::Value;
 use serde_derive::{Deserialize, Serialize};
 
@@ -14,6 +15,13 @@ pub struct Config {
     pub net: ConfigNet,
     pub server: ConfigServer,
     pub rule: ConfigRule,
+    pub import: Option<Vec<Import>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Import {
+    pub format: String,
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,7 +73,7 @@ pub struct Server {
     pub rest: Value,
 }
 
-fn local_chain() -> Chain {
+pub(crate) fn local_chain() -> Chain {
     Chain::One("local".to_string())
 }
 
@@ -79,4 +87,15 @@ fn rule() -> String {
 
 fn plugins() -> PathBuf {
     PathBuf::from("plugins")
+}
+
+impl Config {
+    pub async fn post_process(mut self) -> Result<Self> {
+        if let Some(imports) = (&mut self).import.take() {
+            for i in imports {
+                crate::translate::post_process(&mut self, i).await?;
+            }
+        }
+        Ok(self)
+    }
 }

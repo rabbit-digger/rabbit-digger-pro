@@ -52,7 +52,8 @@ impl RabbitDigger {
                 Duration::from_millis(100),
             ))
             .and_then(move |_| read_to_string(config_path.clone()).map_err(Into::into))
-            .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)));
+            .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)))
+            .and_then(|c: config::Config| c.post_process());
         pin_mut!(config_stream);
         self._run(controller, config_stream).await
     }
