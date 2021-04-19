@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use crate::Context;
+pub use crate::{pool::ConnectionPool, Context};
 pub use crate::{Address, Error, Result};
 pub use async_trait::async_trait;
 pub use futures_io::{AsyncRead, AsyncWrite};
@@ -44,7 +44,6 @@ pub type Net = Arc<dyn INet>;
 /// A Server.
 #[async_trait]
 pub trait IServer: Unpin + Send + Sync {
-    async fn start(&self) -> Result<()>;
-    async fn stop(&self) -> Result<()>;
+    async fn start(&self, pool: ConnectionPool) -> Result<()>;
 }
 pub type Server = Box<dyn IServer>;

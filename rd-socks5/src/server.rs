@@ -2,11 +2,10 @@ use super::{
     auth::{auth_server, Method, NoAuth},
     common::Address,
 };
-use async_std::task::spawn;
 use futures::{io::Cursor, prelude::*};
 use rd_interface::{
-    async_trait, context::common_field::SourceAddress, util::connect_tcp, Context, IServer,
-    IntoAddress, Net, Result, TcpListener, TcpStream,
+    async_trait, context::common_field::SourceAddress, util::connect_tcp, ConnectionPool, Context,
+    IServer, IntoAddress, Net, Result, TcpListener, TcpStream,
 };
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
@@ -26,7 +25,7 @@ pub struct Socks5Server {
 
 #[async_trait]
 impl IServer for Socks5Server {
-    async fn start(&self) -> Result<()> {
+    async fn start(&self, pool: ConnectionPool) -> Result<()> {
         let listener = self
             .listen_net
             .tcp_bind(
@@ -34,12 +33,7 @@ impl IServer for Socks5Server {
                 SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), self.port).into_address()?,
             )
             .await?;
-        self.serve_listener(listener).await
-    }
-
-    async fn stop(&self) -> Result<()> {
-        // TODO
-        Ok(())
+        self.serve_listener(pool, listener).await
     }
 }
 
@@ -140,11 +134,15 @@ impl Socks5Server {
             port,
         }
     }
-    pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
+    pub async fn serve_listener(&self, pool: ConnectionPool, listener: TcpListener) -> Result<()> {
         loop {
             let (socket, addr) = listener.accept().await?;
             let cfg = self.config.clone();
-            let _ = spawn(Self::serve_connection(cfg, socket, addr));
+            let _ = pool.spawn(async move {
+                if let Err(e) = Self::serve_connection(cfg, socket, addr).await {
+                    log::error!("Error when serve_connection: {:?}", e)
+                }
+            });
         }
     }
 }

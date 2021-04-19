@@ -1,9 +1,8 @@
 use std::net::SocketAddr;
 
-use async_std::task::spawn;
 use rd_interface::{
     async_trait, config::from_value, context::common_field::SourceAddress, util::connect_tcp, Arc,
-    Context, IServer, IntoAddress, Net, Registry, Result, TcpListener, TcpStream,
+    ConnectionPool, Context, IServer, IntoAddress, Net, Registry, Result, TcpListener, TcpStream,
 };
 use serde_derive::Deserialize;
 
@@ -29,17 +28,12 @@ impl ForwardNet {
 }
 #[async_trait]
 impl IServer for ForwardNet {
-    async fn start(&self) -> Result<()> {
+    async fn start(&self, pool: ConnectionPool) -> Result<()> {
         let listener = self
             .listen_net
             .tcp_bind(&mut Context::new(), self.cfg.bind.into_address()?)
             .await?;
-        self.serve_listener(listener).await
-    }
-
-    async fn stop(&self) -> Result<()> {
-        // TODO
-        Ok(())
+        self.serve_listener(pool, listener).await
     }
 }
 
@@ -65,12 +59,16 @@ impl ForwardNet {
         connect_tcp(socket, target).await?;
         Ok(())
     }
-    pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
+    pub async fn serve_listener(&self, pool: ConnectionPool, listener: TcpListener) -> Result<()> {
         loop {
             let (socket, addr) = listener.accept().await?;
             let cfg = self.cfg.clone();
             let net = self.net.clone();
-            let _ = spawn(Self::serve_connection(cfg, socket, net, addr));
+            let _ = pool.spawn(async move {
+                if let Err(e) = Self::serve_connection(cfg, socket, net, addr).await {
+                    log::error!("Error when serve_connection: {:?}", e);
+                }
+            });
         }
     }
 }

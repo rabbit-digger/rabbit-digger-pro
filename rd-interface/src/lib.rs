@@ -2,6 +2,7 @@ mod address;
 pub mod context;
 mod error;
 mod interface;
+pub mod pool;
 pub mod registry;
 pub mod util;
 

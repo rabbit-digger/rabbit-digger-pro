@@ -15,7 +15,7 @@ use futures::{
     StreamExt,
 };
 use notify_stream::{notify::RecursiveMode, notify_stream};
-use rd_interface::{config::Value, Arc, Net, NotImplementedNet, Server};
+use rd_interface::{config::Value, Arc, ConnectionPool, Net, NotImplementedNet, Server};
 
 pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'static>;
 pub struct RabbitDigger {
@@ -102,15 +102,16 @@ impl RabbitDigger {
         let registry = (self.plugin_loader)(&config)?;
         log::debug!("registry: {:?}", registry);
 
-        let net = init_net(&registry, config.net, config.rule)?;
+        let net = init_net(&registry, config.net, config.ruleset)?;
         let servers = init_server(&registry, &net, config.server, wrap_net)?;
 
         log::info!("proxy {:#?}", net.keys());
         log::info!("server {:#?}", servers);
 
+        let pool = ConnectionPool::new()?;
         let mut tasks: FuturesUnordered<_> = servers
             .into_iter()
-            .map(|i| start_server(i.server).boxed())
+            .map(|i| start_server(i.server, pool.clone()).boxed())
             .collect();
 
         while tasks.next().await.is_some() {}
@@ -127,8 +128,8 @@ fn get_local(registry: &Registry) -> Result<Net> {
     Ok(local)
 }
 
-async fn start_server(server: Server) -> Result<()> {
-    server.start().await?;
+async fn start_server(server: Server, pool: ConnectionPool) -> Result<()> {
+    server.start(pool).await?;
     Ok(())
 }
 
@@ -154,7 +155,7 @@ impl fmt::Debug for ServerInfo {
 fn init_net(
     registry: &Registry,
     config: config::ConfigNet,
-    rule_config: config::ConfigRule,
+    rule_config: config::ConfigRuleSet,
 ) -> Result<HashMap<String, Net>> {
     let mut net: HashMap<String, Net> = HashMap::new();
     let noop = Arc::new(NotImplementedNet);
@@ -162,8 +163,7 @@ fn init_net(
     net.insert("noop".to_string(), noop.clone());
     net.insert("local".to_string(), get_local(&registry)?);
 
-    for i in config.into_iter() {
-        let name = &i.name;
+    for (name, i) in config.into_iter() {
         let net_item = registry.get_net(&i.net_type)?;
         let chains = i
             .chain
@@ -183,10 +183,12 @@ fn init_net(
             "Failed to build net {:?}. Please check your config.",
             name
         ))?;
-        net.insert(i.name, proxy);
+        net.insert(name, proxy);
     }
 
-    net.insert("rule".to_string(), Rule::new(net.clone(), rule_config)?);
+    for (name, i) in rule_config.into_iter() {
+        net.insert(name, Rule::new(net.clone(), i)?);
+    }
 
     Ok(net)
 }
@@ -199,27 +201,27 @@ fn init_server(
 ) -> Result<Vec<ServerInfo>> {
     let mut servers: Vec<ServerInfo> = Vec::new();
 
-    for i in config {
+    for (name, i) in config {
         let server_item = registry.get_server(&i.server_type)?;
         let listen = net.get(&i.listen).ok_or(anyhow!(
             "Listen Net {} is not loaded. Required by {:?}",
             &i.net,
-            &i.name
+            &name
         ))?;
         let net = net.get(&i.net).ok_or(anyhow!(
             "Net {} is not loaded. Required by {:?}",
             &i.net,
-            &i.name
+            &name
         ))?;
-        log::trace!("Loading server: {}", i.name);
+        log::trace!("Loading server: {}", name);
         let server = server_item
             .build(listen.clone(), wrapper(net.clone()), i.rest.clone())
             .context(format!(
                 "Failed to build server {:?}. Please check your config.",
-                i.name
+                name
             ))?;
         servers.push(ServerInfo {
-            name: i.name,
+            name: name,
             server,
             config: i.rest,
             listen: i.listen,

@@ -7,11 +7,12 @@ edition = "2018"
 [dependencies]
 rd-interface = { version = "0.3", path = "../rd-interface" }
 futures = "0.3"
-async-std = "1.9"
+async-net = "1.5"
 serde = "1.0"
 serde_derive = "1.0"
 libc = "0.2.91"
 socket2 = "0.4.0"
+log = "0.4"
 
 [lib]
 crate-type = ["cdylib"]

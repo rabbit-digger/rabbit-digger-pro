@@ -9,13 +9,10 @@ mod linux {
     use std::net::SocketAddr;
 
     use crate::util::OriginAddrExt;
-    use async_std::{
-        net::{TcpListener, TcpStream},
-        task::spawn,
-    };
+    use async_net::{TcpListener, TcpStream};
     use rd_interface::{
-        async_trait, context::common_field::SourceAddress, util::connect_tcp, Context, IServer,
-        IntoAddress, Net, Result,
+        async_trait, context::common_field::SourceAddress, util::connect_tcp, ConnectionPool,
+        Context, IServer, IntoAddress, Net, Result,
     };
     use serde_derive::Deserialize;
 
@@ -31,14 +28,9 @@ mod linux {
 
     #[async_trait]
     impl IServer for RedirServer {
-        async fn start(&self) -> Result<()> {
+        async fn start(&self, pool: ConnectionPool) -> Result<()> {
             let listener = TcpListener::bind(&self.cfg.bind).await?;
-            self.serve_listener(listener).await
-        }
-
-        async fn stop(&self) -> Result<()> {
-            // TODO
-            Ok(())
+            self.serve_listener(pool, listener).await
         }
     }
 
@@ -56,10 +48,19 @@ mod linux {
             RedirServer { cfg, net }
         }
 
-        pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
+        pub async fn serve_listener(
+            &self,
+            pool: ConnectionPool,
+            listener: TcpListener,
+        ) -> Result<()> {
             loop {
                 let (socket, addr) = listener.accept().await?;
-                let _ = spawn(Self::serve_connection(self.net.clone(), socket, addr));
+                let net = self.net.clone();
+                let _ = pool.spawn(async move {
+                    if let Err(e) = Self::serve_connection(net, socket, addr).await {
+                        log::error!("Error when serve_connection: {:?}", e);
+                    }
+                });
             }
         }
 

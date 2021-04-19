@@ -1,12 +1,13 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::Result;
 use rd_interface::config::Value;
 use serde_derive::{Deserialize, Serialize};
 
-pub type ConfigNet = Vec<Net>;
-pub type ConfigServer = Vec<Server>;
+pub type ConfigNet = HashMap<String, Net>;
+pub type ConfigServer = HashMap<String, Server>;
 pub type ConfigRule = Vec<Rule>;
+pub type ConfigRuleSet = HashMap<String, ConfigRule>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -14,14 +15,17 @@ pub struct Config {
     pub plugin_path: PathBuf,
     pub net: ConfigNet,
     pub server: ConfigServer,
-    pub rule: ConfigRule,
-    pub import: Option<Vec<Import>>,
+    pub ruleset: ConfigRuleSet,
+    pub import: Option<HashMap<String, Import>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Import {
+    pub name: Option<String>,
     pub format: String,
     pub path: PathBuf,
+    #[serde(flatten)]
+    pub rest: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,7 +55,6 @@ impl Chain {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Net {
-    pub name: String,
     #[serde(rename = "type")]
     pub net_type: String,
     #[serde(default = "local_chain")]
@@ -62,7 +65,6 @@ pub struct Net {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Server {
-    pub name: String,
     #[serde(rename = "type")]
     pub server_type: String,
     #[serde(default = "local_string")]
@@ -92,8 +94,8 @@ fn plugins() -> PathBuf {
 impl Config {
     pub async fn post_process(mut self) -> Result<Self> {
         if let Some(imports) = (&mut self).import.take() {
-            for i in imports {
-                crate::translate::post_process(&mut self, i).await?;
+            for (name, i) in imports {
+                crate::translate::post_process(&mut self, name, i).await?;
             }
         }
         Ok(self)
