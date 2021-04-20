@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 
-use crate::config::{
-    local_chain, Composite, CompositeName, CompositeRule, CompositeRuleItem, Config, Net, Server,
+use crate::{
+    config::{
+        local_chain, noop_chain, Composite, CompositeName, CompositeRule, CompositeRuleItem,
+        Config, Net, Server,
+    },
+    util::topological_sort,
 };
 use anyhow::{anyhow, Result};
 use serde_derive::Deserialize;
@@ -47,8 +51,16 @@ pub fn from_config(value: Value) -> Result<Clash> {
     from_value(value).map_err(Into::into)
 }
 
+fn ghost_net() -> Net {
+    Net {
+        net_type: "alias".to_string(),
+        chain: noop_chain(),
+        rest: Value::Null,
+    }
+}
+
 impl Clash {
-    fn proxy_to_net(&self, p: Proxy) -> Result<(String, Net)> {
+    fn proxy_to_net(&self, p: Proxy) -> Result<Net> {
         let net = match p.proxy_type.as_ref() {
             "ss" => {
                 #[derive(Debug, Deserialize)]
@@ -60,36 +72,50 @@ impl Clash {
                     udp: Option<bool>,
                 }
                 let params: Param = serde_json::from_value(p.rest)?;
-                (
-                    p.name,
-                    Net {
-                        net_type: "shadowsocks".to_string(),
-                        chain: local_chain(),
-                        rest: json!({
-                            "server": params.server,
-                            "port": params.port,
-                            "cipher": params.cipher,
-                            "password": params.password,
-                            "udp": params.udp.unwrap_or_default(),
-                        }),
-                    },
-                )
+                Net {
+                    net_type: "shadowsocks".to_string(),
+                    chain: local_chain(),
+                    rest: json!({
+                        "server": params.server,
+                        "port": params.port,
+                        "cipher": params.cipher,
+                        "password": params.password,
+                        "udp": params.udp.unwrap_or_default(),
+                    }),
+                }
             }
             _ => return Err(anyhow!("Unsupported proxy type: {}", p.proxy_type)),
         };
         Ok(net)
     }
 
-    fn proxy_group_to_composite(&self, p: ProxyGroup) -> Result<(String, CompositeName)> {
+    fn get_target(&self, target: &str) -> Result<String> {
+        if target == "DIRECT" {
+            return Ok(self.direct.clone().unwrap_or("local".to_string()));
+        }
+        // TODO: noop is not reject, add blackhole net
+        if target == "REJECT" {
+            return Ok(self.direct.clone().unwrap_or("noop".to_string()));
+        }
+        let net_name = self.name_map.get(target);
+        net_name
+            .map(|i| i.to_string())
+            .ok_or(anyhow!("Name not found. clash name: {}", target))
+    }
+
+    fn proxy_group_to_composite(&self, p: ProxyGroup) -> Result<CompositeName> {
+        let net_list = p
+            .proxies
+            .into_iter()
+            .map(|name| self.get_target(&name))
+            .collect::<Result<Vec<String>>>()?;
+
         Ok(match p.proxy_group_type.as_ref() {
-            "select" => (
-                self.proxy_group_name(&p.name),
-                CompositeName {
-                    name: Some(p.name),
-                    net_list: Some(p.proxies).into(),
-                    composite: Composite::Select {}.into(),
-                },
-            ),
+            "select" => CompositeName {
+                name: Some(p.name),
+                net_list: Some(net_list).into(),
+                composite: Composite::Select {}.into(),
+            },
             _ => {
                 return Err(anyhow!(
                     "Unsupported proxy group type: {}",
@@ -104,23 +130,10 @@ impl Clash {
         let mut ps = r.split(",");
         let mut ps_next = || ps.next().ok_or_else(bad_rule);
         let rule_type = ps_next()?;
-        let get_target = |target: &str| -> Result<String> {
-            if target == "DIRECT" {
-                return Ok(self.direct.clone().unwrap_or("local".to_string()));
-            }
-            // TODO: noop is not reject, add blackhole net
-            if target == "REJECT" {
-                return Ok(self.direct.clone().unwrap_or("noop".to_string()));
-            }
-            let net_name = self.name_map.get(target);
-            net_name
-                .map(|i| i.to_string())
-                .ok_or(anyhow!("Name not found. clash name: {}", target))
-        };
         let item = match rule_type {
             "DOMAIN-SUFFIX" | "DOMAIN-KEYWORD" | "DOMAIN" => {
                 let domain = ps_next()?;
-                let target = get_target(ps_next()?)?;
+                let target = self.get_target(ps_next()?)?;
                 let method = match rule_type {
                     "DOMAIN-SUFFIX" => "suffix",
                     "DOMAIN-KEYWORD" => "keyword",
@@ -136,7 +149,7 @@ impl Clash {
             }
             "IP-CIDR" | "IP-CIDR6" => {
                 let ip_cidr = ps_next()?;
-                let target = get_target(ps_next()?)?;
+                let target = self.get_target(ps_next()?)?;
                 CompositeRuleItem {
                     rule_type: "ip_cidr".to_string(),
                     target,
@@ -144,7 +157,7 @@ impl Clash {
                 }
             }
             "MATCH" => {
-                let target = get_target(ps_next()?)?;
+                let target = self.get_target(ps_next()?)?;
                 CompositeRuleItem {
                     rule_type: "any".to_string(),
                     target,
@@ -171,25 +184,39 @@ impl Clash {
         let clash_config: ClashConfig = serde_yaml::from_str(&content)?;
         for p in clash_config.proxies {
             let old_name = p.name.clone();
+            let name = self.prefix(&old_name);
+            self.name_map.insert(old_name.clone(), name.clone());
             match self.proxy_to_net(p) {
-                Ok((name, p)) => {
-                    let name = self.prefix(name);
-                    self.name_map.insert(old_name, name.clone());
+                Ok(p) => {
                     config.net.insert(name, p);
                 }
-                Err(e) => log::warn!("proxy not translated: {:?}", e),
+                Err(e) => {
+                    log::warn!("proxy {} not translated: {:?}", old_name, e);
+                    config.net.insert(name, ghost_net());
+                }
             };
         }
 
-        for pg in clash_config.proxy_groups {
-            let old_name = pg.name.clone();
+        let proxy_groups = topological_sort(
+            clash_config
+                .proxy_groups
+                .into_iter()
+                .map(|i| (i.name.clone(), i))
+                .collect(),
+            |i: &ProxyGroup| i.proxies.iter().collect(),
+        )
+        .ok_or(anyhow!("There is cyclic dependencies in proxy_groups"))?;
+
+        for (old_name, pg) in proxy_groups {
+            let name = self.proxy_group_name(&old_name);
             match self.proxy_group_to_composite(pg) {
-                Ok((name, rule)) => {
-                    let name = self.prefix(name);
+                Ok(rule) => {
                     self.name_map.insert(old_name, name.clone());
                     config.composite.insert(name, rule);
                 }
-                Err(e) => log::warn!("proxy_group not translated: {:?}", e),
+                Err(e) => {
+                    log::warn!("proxy_group {} not translated: {:?}", old_name, e);
+                }
             };
         }
 

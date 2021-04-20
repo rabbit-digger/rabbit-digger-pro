@@ -17,24 +17,26 @@ pub enum AllNet {
 }
 
 impl AllNet {
-    pub fn get_dependency(&self) -> Result<Vec<String>> {
-        Ok(match self {
+    pub fn get_dependency(&self) -> Vec<&String> {
+        match self {
             AllNet::Net(Net { chain, .. }) => match chain {
-                Chain::One(s) => vec![s.to_string()],
-                Chain::Many(v) => v.iter().map(Clone::clone).collect(),
+                Chain::One(s) => vec![s],
+                Chain::Many(v) => v.iter().collect(),
             },
             AllNet::Composite(CompositeName {
                 composite,
                 net_list,
                 ..
             }) => match &composite.0 {
-                Composite::Rule(CompositeRule { rule }) => {
-                    rule.iter().map(|i| i.target.clone()).collect()
-                }
-                Composite::Select => net_list.clone_net_list()?,
+                Composite::Rule(CompositeRule { rule }) => rule.iter().map(|i| &i.target).collect(),
+                Composite::Select => net_list
+                    .0
+                    .as_ref()
+                    .map(|i| i.iter().collect())
+                    .unwrap_or_default(),
             },
             _ => Vec::new(),
-        })
+        }
     }
 }
 
@@ -61,13 +63,14 @@ pub struct Import {
     pub rest: Value,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct NetList(pub Option<Vec<String>>);
 
 /// Define a net composited from many other net
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompositeName {
     pub name: Option<String>,
+    #[serde(default)]
     pub net_list: NetList,
     #[serde(flatten)]
     pub composite: CompositeDefaultType,
@@ -178,13 +181,12 @@ pub struct CompositeRule {
     pub rule: Vec<CompositeRuleItem>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CompositeNetList {
-    pub net_list: Vec<String>,
-}
-
 pub(crate) fn local_chain() -> Chain {
     Chain::One("local".to_string())
+}
+
+pub(crate) fn noop_chain() -> Chain {
+    Chain::One("noop".to_string())
 }
 
 fn local_string() -> String {

@@ -5,6 +5,7 @@ use crate::config;
 use crate::controller;
 use crate::plugins::load_plugins;
 use crate::registry::Registry;
+use crate::util::topological_sort;
 use anyhow::{anyhow, Context, Result};
 use async_std::{
     fs::{read_to_string, File},
@@ -20,7 +21,6 @@ use futures::{
 };
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rd_interface::{config::Value, Arc, ConnectionPool, Net, NotImplementedNet, Server};
-use topological_sort::TopologicalSort;
 
 pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'static>;
 pub struct RabbitDigger {
@@ -181,18 +181,11 @@ fn init_net(
     all_net.insert("noop".to_string(), AllNet::Noop);
     all_net.insert("local".to_string(), AllNet::Local);
 
-    let mut ts = TopologicalSort::<String>::new();
-    for (k, n) in all_net.iter() {
-        for d in n.get_dependency()? {
-            ts.add_dependency(d, k.clone());
-        }
-    }
+    let all_net = topological_sort(all_net, AllNet::get_dependency)
+        .ok_or(anyhow!("There is cyclic dependencies in net",))?;
 
-    while let Some(name) = ts.pop() {
-        match all_net
-            .remove(&name)
-            .ok_or(anyhow!("Failed to get net by name: {}", name))?
-        {
+    for (name, i) in all_net {
+        match i {
             AllNet::Net(i) => {
                 let load_net = || -> Result<()> {
                     let net_item = registry.get_net(&i.net_type)?;
@@ -234,11 +227,7 @@ fn init_net(
         }
     }
 
-    if ts.len() == 0 {
-        Ok(net)
-    } else {
-        Err(anyhow!("There is cyclic dependencies in net",))
-    }
+    Ok(net)
 }
 
 fn init_server(
