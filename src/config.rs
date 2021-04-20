@@ -6,7 +6,32 @@ use serde_derive::{Deserialize, Serialize};
 
 pub type ConfigNet = HashMap<String, Net>;
 pub type ConfigServer = HashMap<String, Server>;
-pub type ConfigComposite = HashMap<String, Composite>;
+pub type ConfigComposite = HashMap<String, CompositeName>;
+
+#[derive(Debug)]
+pub enum AllNet {
+    Net(Net),
+    Composite(CompositeName),
+    Local,
+    Noop,
+}
+
+impl AllNet {
+    pub fn get_dependency(&self) -> Vec<String> {
+        match self {
+            AllNet::Net(Net { chain, .. }) => match chain {
+                Chain::One(s) => vec![s.to_string()],
+                Chain::Many(v) => v.iter().map(Clone::clone).collect(),
+            },
+            AllNet::Composite(CompositeName { composite, .. }) => match &composite.0 {
+                Composite::Rule(CompositeRule { rule }) => {
+                    rule.iter().map(|i| i.target.clone()).collect()
+                }
+            },
+            _ => Vec::new()
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -33,12 +58,46 @@ pub struct Import {
 
 /// Define a net composited from many other net
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Composite {
+pub struct CompositeName {
     pub name: Option<String>,
-    #[serde(rename = "type", default = "rule")]
-    pub composite_type: String,
     #[serde(flatten)]
-    pub rest: Value,
+    pub composite: CompositeDefaultType,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type")]
+pub enum Composite {
+    Rule(CompositeRule),
+}
+
+impl Into<CompositeDefaultType> for Composite {
+    fn into(self) -> CompositeDefaultType {
+        CompositeDefaultType(self)
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct CompositeDefaultType(pub Composite);
+
+impl<'de> serde::Deserialize<'de> for CompositeDefaultType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de;
+
+        let v = Value::deserialize(deserializer)?;
+        match Option::<String>::deserialize(&v["type"]).map_err(de::Error::custom)? {
+            Some(_) => {
+                let inner = Composite::deserialize(v).map_err(de::Error::custom)?;
+                Ok(CompositeDefaultType(inner))
+            }
+            None => {
+                let inner = CompositeRule::deserialize(v).map_err(de::Error::custom)?;
+                Ok(CompositeDefaultType(Composite::Rule(inner)))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,8 +138,8 @@ pub struct Server {
     pub rest: Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConfigRuleItem {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CompositeRuleItem {
     #[serde(rename = "type")]
     pub rule_type: String,
     pub target: String,
@@ -88,9 +147,9 @@ pub struct ConfigRuleItem {
     pub rest: Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConfigRule {
-    pub rule: Vec<ConfigRuleItem>,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CompositeRule {
+    pub rule: Vec<CompositeRuleItem>,
 }
 
 pub(crate) fn local_chain() -> Chain {

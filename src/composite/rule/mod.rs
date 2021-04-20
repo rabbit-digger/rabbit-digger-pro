@@ -5,7 +5,7 @@ mod matcher;
 
 use self::matcher::BoxMatcher;
 use self::{any::AnyMatcher, domain::DomainMatcher, ip::IPMatcher};
-use crate::config::{ConfigRule, ConfigRuleItem};
+use crate::config::{CompositeRule, CompositeRuleItem};
 use std::{collections::HashMap, io};
 
 use rd_interface::{
@@ -35,13 +35,13 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn new(net: HashMap<String, Net>, config: ConfigRule) -> anyhow::Result<Net> {
+    pub fn new(net: HashMap<String, Net>, config: CompositeRule) -> anyhow::Result<Net> {
         let registry = get_matcher_registry();
         let rule = config
             .rule
             .into_iter()
             .map(
-                |ConfigRuleItem {
+                |CompositeRuleItem {
                      rule_type,
                      target,
                      rest,

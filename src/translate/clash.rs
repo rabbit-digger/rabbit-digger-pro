@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::config::{local_chain, Composite, Config, ConfigRuleItem, Net, Server};
+use crate::config::{
+    local_chain, Composite, CompositeName, CompositeRule, CompositeRuleItem, Config, Net, Server,
+};
 use anyhow::{anyhow, Result};
 use serde_derive::Deserialize;
 use serde_json::{from_value, json, Value};
@@ -78,16 +80,13 @@ impl Clash {
         Ok(net)
     }
 
-    fn proxy_group_to_composite(&self, p: ProxyGroup) -> Result<(String, Composite)> {
+    fn proxy_group_to_composite(&self, p: ProxyGroup) -> Result<(String, CompositeName)> {
         Ok(match p.proxy_group_type.as_ref() {
             "select" => (
                 self.proxy_group_name(&p.name),
-                Composite {
+                CompositeName {
                     name: Some(p.name),
-                    composite_type: "rule".to_string(),
-                    rest: json!({
-                        "rule": []
-                    }),
+                    composite: Composite::Rule(CompositeRule { rule: Vec::new() }).into(),
                 },
             ),
             _ => {
@@ -99,7 +98,7 @@ impl Clash {
         })
     }
 
-    fn rule_to_rule(&self, r: &str) -> Result<ConfigRuleItem> {
+    fn rule_to_rule(&self, r: &str) -> Result<CompositeRuleItem> {
         let bad_rule = || anyhow!("Bad rule.");
         let mut ps = r.split(",");
         let mut ps_next = || ps.next().ok_or_else(bad_rule);
@@ -128,7 +127,7 @@ impl Clash {
                     _ => return Err(bad_rule()),
                 }
                 .to_string();
-                ConfigRuleItem {
+                CompositeRuleItem {
                     rule_type: "domain_suffix".to_string(),
                     target,
                     rest: json!({ "domain": domain, "method": method }),
@@ -137,7 +136,7 @@ impl Clash {
             "IP-CIDR" | "IP-CIDR6" => {
                 let ip_cidr = ps_next()?;
                 let target = get_target(ps_next()?)?;
-                ConfigRuleItem {
+                CompositeRuleItem {
                     rule_type: "ip_cidr".to_string(),
                     target,
                     rest: json!({ "ip_cidr": ip_cidr }),
@@ -145,10 +144,10 @@ impl Clash {
             }
             "MATCH" => {
                 let target = get_target(ps_next()?)?;
-                ConfigRuleItem {
+                CompositeRuleItem {
                     rule_type: "any".to_string(),
                     target,
-                    rest: Value::Null,
+                    rest: json!({}),
                 }
             }
             _ => return Err(anyhow!("Rule prefix {} is not supported", rule_type)),
@@ -192,7 +191,7 @@ impl Clash {
             };
         }
 
-        let mut rule = Vec::<ConfigRuleItem>::new();
+        let mut rule = Vec::new();
         for r in clash_config.rules {
             match self.rule_to_rule(&r) {
                 Ok(r) => {
@@ -203,10 +202,9 @@ impl Clash {
         }
         config.composite.insert(
             self.prefix("rule"),
-            Composite {
+            CompositeName {
                 name: None,
-                composite_type: "rule".to_string(),
-                rest: json!({ "rule": rule }),
+                composite: Composite::Rule(CompositeRule { rule }).into(),
             },
         );
 

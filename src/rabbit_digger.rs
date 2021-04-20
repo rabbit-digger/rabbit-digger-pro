@@ -10,6 +10,7 @@ use async_std::{
     fs::{read_to_string, File},
     future::timeout,
 };
+use config::AllNet;
 use futures::{
     future::{ready, try_select, Either},
     pin_mut,
@@ -19,6 +20,7 @@ use futures::{
 };
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rd_interface::{config::Value, Arc, ConnectionPool, Net, NotImplementedNet, Server};
+use topological_sort::TopologicalSort;
 
 pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'static>;
 pub struct RabbitDigger {
@@ -114,7 +116,13 @@ impl RabbitDigger {
         let registry = (self.plugin_loader)(&config)?;
         log::debug!("registry: {:?}", registry);
 
-        let net = init_net(&registry, config.net, config.composite)?;
+        let net_cfg = config.net.into_iter().map(|(k, v)| (k, AllNet::Net(v)));
+        let composite_cfg = config
+            .composite
+            .into_iter()
+            .map(|(k, v)| (k, AllNet::Composite(v)));
+        let all_net = net_cfg.chain(composite_cfg).collect();
+        let net = init_net(&registry, all_net)?;
         let servers = init_server(&registry, &net, config.server, wrap_net)?;
 
         log::info!("proxy {:#?}", net.keys());
@@ -166,52 +174,69 @@ impl fmt::Debug for ServerInfo {
 
 fn init_net(
     registry: &Registry,
-    config: config::ConfigNet,
-    composite_config: config::ConfigComposite,
+    mut all_net: HashMap<String, config::AllNet>,
 ) -> Result<HashMap<String, Net>> {
     let mut net: HashMap<String, Net> = HashMap::new();
     let noop = Arc::new(NotImplementedNet);
 
-    net.insert("noop".to_string(), noop.clone());
-    net.insert("local".to_string(), get_local(&registry)?);
+    all_net.insert("noop".to_string(), AllNet::Noop);
+    all_net.insert("local".to_string(), AllNet::Local);
 
-    for (name, i) in config.into_iter() {
-        let name = &name;
-        let load_net = || -> Result<()> {
-            let net_item = registry.get_net(&i.net_type)?;
-            let chains = i
-                .chain
-                .to_vec()
-                .into_iter()
-                .map(|s| {
-                    net.get(&s).map(|s| s.clone()).ok_or(anyhow!(
-                        "Chain {} is not loaded. Required by {}",
-                        &s,
+    let mut ts = TopologicalSort::<String>::new();
+    for (k, n) in all_net.iter() {
+        for d in n.get_dependency() {
+            ts.add_dependency(d, k.clone());
+        }
+    }
+
+    while let Some(name) = ts.pop() {
+        match all_net.remove(&name).unwrap() {
+            AllNet::Net(i) => {
+                let load_net = || -> Result<()> {
+                    let net_item = registry.get_net(&i.net_type)?;
+                    let chains = i
+                        .chain
+                        .to_vec()
+                        .into_iter()
+                        .map(|s| {
+                            net.get(&s).map(|s| s.clone()).ok_or(anyhow!(
+                                "Chain {} is not loaded. Required by {}",
+                                &s,
+                                name
+                            ))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+
+                    let proxy = net_item.build(chains, i.rest).context(format!(
+                        "Failed to build net {:?}. Please check your config.",
                         name
-                    ))
-                })
-                .collect::<Result<Vec<_>>>()?;
-
-            let proxy = net_item.build(chains, i.rest).context(format!(
-                "Failed to build net {:?}. Please check your config.",
-                name
-            ))?;
-            net.insert(name.to_string(), proxy);
-            Ok(())
-        };
-        load_net().map_err(|e| e.context(format!("Loading net {}", name)))?;
+                    ))?;
+                    net.insert(name.to_string(), proxy);
+                    Ok(())
+                };
+                load_net().map_err(|e| e.context(format!("Loading net {}", name)))?;
+            }
+            AllNet::Composite(i) => {
+                net.insert(
+                    name.to_string(),
+                    composite::build_composite(net.clone(), i)
+                        .context(format!("Loading composite {}", name))?,
+                );
+            }
+            AllNet::Local => {
+                net.insert(name, get_local(&registry)?);
+            }
+            AllNet::Noop => {
+                net.insert(name, noop.clone());
+            }
+        }
     }
 
-    for (name, i) in composite_config.into_iter() {
-        let ctx = format!("Loading composite {}", name);
-        net.insert(
-            name,
-            composite::build_composite(net.clone(), i)
-                .context(ctx)?,
-        );
+    if ts.len() == 0 {
+        Ok(net)
+    } else {
+        Err(anyhow!("There is cyclic dependencies in net",))
     }
-
-    Ok(net)
 }
 
 fn init_server(

@@ -2,18 +2,14 @@ mod rule;
 
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use rd_interface::Net;
 
-pub fn build_composite(net: HashMap<String, Net>, config: crate::config::Composite) -> Result<Net> {
-    let net = match config.composite_type.as_ref() {
-        "rule" => rule::Rule::new(net, serde_json::from_value(config.rest)?)?,
-        _ => {
-            return Err(anyhow!(
-                "composite type {} is not found",
-                config.composite_type
-            ))
-        }
+use crate::config::{Composite, CompositeName};
+
+pub fn build_composite(net: HashMap<String, Net>, config: CompositeName) -> Result<Net> {
+    let net = match config.composite.0 {
+        Composite::Rule(rule) => rule::Rule::new(net, rule)?,
     };
     Ok(net)
 }
