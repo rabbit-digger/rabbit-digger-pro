@@ -1,25 +1,45 @@
 plugin_path: target/debug
 net:
-  - name: socks5
+  socks5:
     type: socks5
     address: 127.0.0.1
     port: 10800
     chain: local
 server:
-  - name: socks server
+  socks5:
     type: socks5
     address: 127.0.0.1
     port: 10888
     net: rule
-rule:
-  - type: domain
-    target: socks5
-    domain: twitter.com
-  - type: domain
-    target: socks5
-    domain: .twimg.com
-  - type: domain
-    target: socks5
-    domain: t.co
-  - type: any
-    target: local
+composite:
+  global:
+    name: 全局连接
+    rule:
+      - type: any
+        target: socks5
+  rule:
+    name: 规则判断
+    rule:
+      - type: domain
+        target: socks5
+        domain: twitter.com
+      - type: domain
+        target: socks5
+        domain: .twimg.com
+      - type: domain
+        target: socks5
+        domain: t.co
+      - type: any
+        target: local
+      - type: any
+        target: socks5
+  direct:
+    name: 直接连接
+    rule:
+      - type: any
+        target: local
+
+# import:
+#   - type: clash
+#     path: ./clash.yaml
+#     target: rule
