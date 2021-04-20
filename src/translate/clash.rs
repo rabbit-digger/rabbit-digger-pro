@@ -201,27 +201,25 @@ impl Clash {
             }
         }
         config.composite.insert(
-            self.prefix("rule"),
+            self.prefix("clash_rule"),
             CompositeName {
                 name: None,
                 composite: Composite::Rule(CompositeRule { rule }).into(),
             },
         );
 
-        if let Some(target) = &self.target {
-            config.server.insert(
-                self.prefix("socks_port"),
-                Server {
-                    server_type: "socks5".to_string(),
-                    listen: "local".to_string(),
-                    net: target.to_string(),
-                    rest: json!({
-                        "address": "0.0.0.0",
-                        "port": clash_config.socks_port,
-                    }),
-                },
-            );
-        }
+        config.server.insert(
+            self.prefix("socks_port"),
+            Server {
+                server_type: "socks5".to_string(),
+                listen: "local".to_string(),
+                net: self.target.clone().unwrap_or(self.prefix("clash_rule")),
+                rest: json!({
+                    "address": "0.0.0.0",
+                    "port": clash_config.socks_port,
+                }),
+            },
+        );
 
         Ok(())
     }
