@@ -125,7 +125,6 @@ impl RabbitDigger {
         let net = init_net(&registry, all_net)?;
         let servers = init_server(&registry, &net, config.server, wrap_net)?;
 
-        log::info!("proxy {:#?}", net.keys());
         log::info!("server {:#?}", servers);
 
         let pool = ConnectionPool::new()?;
@@ -184,13 +183,16 @@ fn init_net(
 
     let mut ts = TopologicalSort::<String>::new();
     for (k, n) in all_net.iter() {
-        for d in n.get_dependency() {
+        for d in n.get_dependency()? {
             ts.add_dependency(d, k.clone());
         }
     }
 
     while let Some(name) = ts.pop() {
-        match all_net.remove(&name).unwrap() {
+        match all_net
+            .remove(&name)
+            .ok_or(anyhow!("Failed to get net by name: {}", name))?
+        {
             AllNet::Net(i) => {
                 let load_net = || -> Result<()> {
                     let net_item = registry.get_net(&i.net_type)?;

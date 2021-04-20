@@ -86,7 +86,8 @@ impl Clash {
                 self.proxy_group_name(&p.name),
                 CompositeName {
                     name: Some(p.name),
-                    composite: Composite::Rule(CompositeRule { rule: Vec::new() }).into(),
+                    net_list: Some(p.proxies).into(),
+                    composite: Composite::Select {}.into(),
                 },
             ),
             _ => {
@@ -184,8 +185,9 @@ impl Clash {
             let old_name = pg.name.clone();
             match self.proxy_group_to_composite(pg) {
                 Ok((name, rule)) => {
+                    let name = self.prefix(name);
                     self.name_map.insert(old_name, name.clone());
-                    config.composite.insert(self.prefix(name), rule);
+                    config.composite.insert(name, rule);
                 }
                 Err(e) => log::warn!("proxy_group not translated: {:?}", e),
             };
@@ -204,6 +206,7 @@ impl Clash {
             self.prefix("clash_rule"),
             CompositeName {
                 name: None,
+                net_list: None.into(),
                 composite: Composite::Rule(CompositeRule { rule }).into(),
             },
         );

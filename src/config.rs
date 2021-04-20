@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use rd_interface::config::Value;
 use serde_derive::{Deserialize, Serialize};
 
@@ -17,19 +17,24 @@ pub enum AllNet {
 }
 
 impl AllNet {
-    pub fn get_dependency(&self) -> Vec<String> {
-        match self {
+    pub fn get_dependency(&self) -> Result<Vec<String>> {
+        Ok(match self {
             AllNet::Net(Net { chain, .. }) => match chain {
                 Chain::One(s) => vec![s.to_string()],
                 Chain::Many(v) => v.iter().map(Clone::clone).collect(),
             },
-            AllNet::Composite(CompositeName { composite, .. }) => match &composite.0 {
+            AllNet::Composite(CompositeName {
+                composite,
+                net_list,
+                ..
+            }) => match &composite.0 {
                 Composite::Rule(CompositeRule { rule }) => {
                     rule.iter().map(|i| i.target.clone()).collect()
                 }
+                Composite::Select => net_list.clone_net_list()?,
             },
-            _ => Vec::new()
-        }
+            _ => Vec::new(),
+        })
     }
 }
 
@@ -56,18 +61,39 @@ pub struct Import {
     pub rest: Value,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NetList(pub Option<Vec<String>>);
+
 /// Define a net composited from many other net
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompositeName {
     pub name: Option<String>,
+    pub net_list: NetList,
     #[serde(flatten)]
     pub composite: CompositeDefaultType,
+}
+
+impl NetList {
+    pub fn into_net_list(self) -> Result<Vec<String>> {
+        self.0.ok_or(anyhow!("net_list is required"))
+    }
+
+    pub fn clone_net_list(&self) -> Result<Vec<String>> {
+        self.0.clone().ok_or(anyhow!("net_list is required"))
+    }
+}
+
+impl From<Option<Vec<String>>> for NetList {
+    fn from(i: Option<Vec<String>>) -> Self {
+        NetList(i)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum Composite {
     Rule(CompositeRule),
+    Select,
 }
 
 impl Into<CompositeDefaultType> for Composite {
@@ -150,6 +176,11 @@ pub struct CompositeRuleItem {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompositeRule {
     pub rule: Vec<CompositeRuleItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CompositeNetList {
+    pub net_list: Vec<String>,
 }
 
 pub(crate) fn local_chain() -> Chain {
