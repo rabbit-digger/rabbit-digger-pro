@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rd_interface::config::Value;
 use serde_derive::{Deserialize, Serialize};
 
@@ -13,7 +13,9 @@ pub type ConfigRuleSet = HashMap<String, ConfigRule>;
 pub struct Config {
     #[serde(default = "plugins")]
     pub plugin_path: PathBuf,
+    #[serde(default)]
     pub net: ConfigNet,
+    #[serde(default)]
     pub server: ConfigServer,
     pub ruleset: ConfigRuleSet,
     pub import: Option<HashMap<String, Import>>,
@@ -95,7 +97,9 @@ impl Config {
     pub async fn post_process(mut self) -> Result<Self> {
         if let Some(imports) = (&mut self).import.take() {
             for (name, i) in imports {
-                crate::translate::post_process(&mut self, name, i).await?;
+                crate::translate::post_process(&mut self, i)
+                    .await
+                    .context(format!("post process of import: {}", name))?;
             }
         }
         Ok(self)

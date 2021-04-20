@@ -6,15 +6,19 @@ use async_std::fs::read_to_string;
 use crate::config::{Config, Import};
 
 #[cfg(not(feature = "translate"))]
-pub async fn post_process(_config: &mut Config, _name: String, _import: Import) -> Result<()> {
+pub async fn post_process(_config: &mut Config, _import: Import) -> Result<()> {
     Ok(())
 }
 
 #[cfg(feature = "translate")]
-pub async fn post_process(config: &mut Config, name: String, import: Import) -> Result<()> {
+pub async fn post_process(config: &mut Config, import: Import) -> Result<()> {
     let content = read_to_string(import.path).await?;
     match import.format.as_ref() {
-        "clash" => clash::process(config, name, content).await?,
+        "clash" => {
+            clash::from_config(import.rest)?
+                .process(config, content)
+                .await?
+        }
         _ => return Err(anyhow!("format {} is not supported", import.format)),
     };
     Ok(())

@@ -64,7 +64,7 @@ impl RabbitDigger {
     {
         let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
             Ok(Ok(Some(cfg))) => cfg,
-            Ok(Err(e)) => return Err(anyhow!("Failed to get first config {}.", e)),
+            Ok(Err(e)) => return Err(e.context(format!("Failed to get first config."))),
             Err(_) | Ok(Ok(None)) => {
                 return Err(anyhow!("The config_stream is empty, can not start."))
             }
@@ -164,26 +164,30 @@ fn init_net(
     net.insert("local".to_string(), get_local(&registry)?);
 
     for (name, i) in config.into_iter() {
-        let net_item = registry.get_net(&i.net_type)?;
-        let chains = i
-            .chain
-            .to_vec()
-            .into_iter()
-            .map(|s| {
-                net.get(&s).map(|s| s.clone()).ok_or(anyhow!(
-                    "Chain {} is not loaded. Required by {}",
-                    &s,
-                    name
-                ))
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let name = &name;
+        let load_net = || -> Result<()> {
+            let net_item = registry.get_net(&i.net_type)?;
+            let chains = i
+                .chain
+                .to_vec()
+                .into_iter()
+                .map(|s| {
+                    net.get(&s).map(|s| s.clone()).ok_or(anyhow!(
+                        "Chain {} is not loaded. Required by {}",
+                        &s,
+                        name
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?;
 
-        log::trace!("Loading net: {}", name);
-        let proxy = net_item.build(chains, i.rest).context(format!(
-            "Failed to build net {:?}. Please check your config.",
-            name
-        ))?;
-        net.insert(name, proxy);
+            let proxy = net_item.build(chains, i.rest).context(format!(
+                "Failed to build net {:?}. Please check your config.",
+                name
+            ))?;
+            net.insert(name.to_string(), proxy);
+            Ok(())
+        };
+        load_net().map_err(|e| e.context(format!("Loading net {}", name)))?;
     }
 
     for (name, i) in rule_config.into_iter() {
@@ -202,31 +206,36 @@ fn init_server(
     let mut servers: Vec<ServerInfo> = Vec::new();
 
     for (name, i) in config {
-        let server_item = registry.get_server(&i.server_type)?;
-        let listen = net.get(&i.listen).ok_or(anyhow!(
-            "Listen Net {} is not loaded. Required by {:?}",
-            &i.net,
-            &name
-        ))?;
-        let net = net.get(&i.net).ok_or(anyhow!(
-            "Net {} is not loaded. Required by {:?}",
-            &i.net,
-            &name
-        ))?;
-        log::trace!("Loading server: {}", name);
-        let server = server_item
-            .build(listen.clone(), wrapper(net.clone()), i.rest.clone())
-            .context(format!(
-                "Failed to build server {:?}. Please check your config.",
-                name
+        let name = &name;
+        let load_server = || -> Result<()> {
+            let server_item = registry.get_server(&i.server_type)?;
+            let listen = net.get(&i.listen).ok_or(anyhow!(
+                "Listen Net {} is not loaded. Required by {:?}",
+                &i.net,
+                &name
             ))?;
-        servers.push(ServerInfo {
-            name: name,
-            server,
-            config: i.rest,
-            listen: i.listen,
-            net: i.net,
-        });
+            let net = net.get(&i.net).ok_or(anyhow!(
+                "Net {} is not loaded. Required by {:?}",
+                &i.net,
+                &name
+            ))?;
+            log::trace!("Loading server: {}", name);
+            let server = server_item
+                .build(listen.clone(), wrapper(net.clone()), i.rest.clone())
+                .context(format!(
+                    "Failed to build server {:?}. Please check your config.",
+                    name
+                ))?;
+            servers.push(ServerInfo {
+                name: name.to_string(),
+                server,
+                config: i.rest,
+                listen: i.listen,
+                net: i.net,
+            });
+            Ok(())
+        };
+        load_server().map_err(|e| e.context(format!("Loading server {}", name)))?;
     }
 
     Ok(servers)
