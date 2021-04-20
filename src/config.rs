@@ -6,8 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 
 pub type ConfigNet = HashMap<String, Net>;
 pub type ConfigServer = HashMap<String, Server>;
-pub type ConfigRule = Vec<Rule>;
-pub type ConfigRuleSet = HashMap<String, ConfigRule>;
+pub type ConfigComposite = HashMap<String, Composite>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -17,24 +16,27 @@ pub struct Config {
     pub net: ConfigNet,
     #[serde(default)]
     pub server: ConfigServer,
-    pub ruleset: ConfigRuleSet,
-    pub import: Option<HashMap<String, Import>>,
+    #[serde(default)]
+    pub composite: ConfigComposite,
+    pub import: Option<Vec<Import>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Import {
     pub name: Option<String>,
+    #[serde(rename = "type")]
     pub format: String,
     pub path: PathBuf,
     #[serde(flatten)]
     pub rest: Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Rule {
-    #[serde(rename = "type")]
-    pub rule_type: String,
-    pub target: String,
+/// Define a net composited from many other net
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Composite {
+    pub name: Option<String>,
+    #[serde(rename = "type", default = "rule")]
+    pub composite_type: String,
     #[serde(flatten)]
     pub rest: Value,
 }
@@ -96,10 +98,10 @@ fn plugins() -> PathBuf {
 impl Config {
     pub async fn post_process(mut self) -> Result<Self> {
         if let Some(imports) = (&mut self).import.take() {
-            for (name, i) in imports {
-                crate::translate::post_process(&mut self, i)
+            for i in imports {
+                crate::translate::post_process(&mut self, i.clone())
                     .await
-                    .context(format!("post process of import: {}", name))?;
+                    .context(format!("post process of import: {:?}", i))?;
             }
         }
         Ok(self)

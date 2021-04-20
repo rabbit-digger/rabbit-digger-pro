@@ -16,6 +16,7 @@ struct ClashConfig {
     proxies: Vec<Proxy>,
     #[serde(rename = "proxy-groups")]
     proxy_groups: Vec<ProxyGroup>,
+    rules: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,6 +73,14 @@ impl Clash {
         Ok(net)
     }
 
+    // fn proxy_group_to_net(&self, p: ProxyGroup) -> Result<(String, ConfigRule)> {
+    //     Err(anyhow!("nyi"))
+    // }
+
+    fn proxy_group_name(&self, pg: impl AsRef<str>) -> String {
+        format!("proxy_groups.{}", pg.as_ref())
+    }
+
     fn prefix(&self, s: impl AsRef<str>) -> String {
         match &self.prefix {
             Some(prefix) => format!("{}.{}", prefix, s.as_ref()),
@@ -89,6 +98,16 @@ impl Clash {
                 Err(e) => log::warn!("proxy not translated: {:?}", e),
             };
         }
+
+        // for pg in clash_config.proxy_groups {
+        //     match self.proxy_group_to_net(pg) {
+        //         Ok((name, rule)) => {
+        //             config.ruleset.insert(self.prefix(name), rule);
+        //         }
+        //         Err(e) => log::warn!("proxy_group not translated: {:?}", e),
+        //     };
+        // }
+
         if let Some(target) = &self.target {
             config.server.insert(
                 self.prefix("socks_port"),

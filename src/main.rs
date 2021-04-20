@@ -16,13 +16,18 @@ struct Args {
         default_value = "config.yaml"
     )]
     config: PathBuf,
+
+    /// Write generated config to path
+    #[structopt(short, long, parse(from_os_str))]
+    write_config: Option<PathBuf>,
 }
 
 async fn real_main(args: Args) -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("rabbit_digger=trace")).init();
 
     let controller = controller::Controller::new();
-    let rabbit_digger = RabbitDigger::new(args.config)?;
+    let mut rabbit_digger = RabbitDigger::new(args.config)?;
+    rabbit_digger.write_config = args.write_config;
     rabbit_digger.run(&controller).await?;
 
     Ok(())

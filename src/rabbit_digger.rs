@@ -1,12 +1,15 @@
 use std::{collections::HashMap, fmt, path::PathBuf, time::Duration};
 
+use crate::composite;
 use crate::config;
 use crate::controller;
 use crate::plugins::load_plugins;
 use crate::registry::Registry;
-use crate::rule::Rule;
 use anyhow::{anyhow, Context, Result};
-use async_std::{fs::read_to_string, future::timeout};
+use async_std::{
+    fs::{read_to_string, File},
+    future::timeout,
+};
 use futures::{
     future::{ready, try_select, Either},
     pin_mut,
@@ -21,6 +24,7 @@ pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'stati
 pub struct RabbitDigger {
     config_path: PathBuf,
     plugin_loader: PluginLoader,
+    pub write_config: Option<PathBuf>,
 }
 
 impl RabbitDigger {
@@ -28,6 +32,7 @@ impl RabbitDigger {
         Ok(RabbitDigger {
             config_path,
             plugin_loader: Box::new(|cfg| load_plugins(cfg.plugin_path.clone())),
+            write_config: None,
         })
     }
     pub fn with_plugin_loader(
@@ -37,6 +42,7 @@ impl RabbitDigger {
         Ok(RabbitDigger {
             config_path,
             plugin_loader: Box::new(plugin_loader),
+            write_config: None,
         })
     }
     pub async fn run(&self, controller: &controller::Controller) -> Result<()> {
@@ -73,6 +79,12 @@ impl RabbitDigger {
 
         loop {
             log::info!("rabbit digger is starting...");
+            if let Some(path) = &self.write_config {
+                File::create(path)
+                    .await?
+                    .write_all(&serde_yaml::to_vec(&config)?)
+                    .await?;
+            }
             let run_fut = self.run_once(controller, config);
             pin_mut!(run_fut);
             let new_config = match try_select(run_fut, config_stream.try_next()).await {
@@ -102,7 +114,7 @@ impl RabbitDigger {
         let registry = (self.plugin_loader)(&config)?;
         log::debug!("registry: {:?}", registry);
 
-        let net = init_net(&registry, config.net, config.ruleset)?;
+        let net = init_net(&registry, config.net, config.composite)?;
         let servers = init_server(&registry, &net, config.server, wrap_net)?;
 
         log::info!("proxy {:#?}", net.keys());
@@ -155,7 +167,7 @@ impl fmt::Debug for ServerInfo {
 fn init_net(
     registry: &Registry,
     config: config::ConfigNet,
-    rule_config: config::ConfigRuleSet,
+    composite_config: config::ConfigComposite,
 ) -> Result<HashMap<String, Net>> {
     let mut net: HashMap<String, Net> = HashMap::new();
     let noop = Arc::new(NotImplementedNet);
@@ -190,8 +202,8 @@ fn init_net(
         load_net().map_err(|e| e.context(format!("Loading net {}", name)))?;
     }
 
-    for (name, i) in rule_config.into_iter() {
-        net.insert(name, Rule::new(net.clone(), i)?);
+    for (name, i) in composite_config.into_iter() {
+        net.insert(name, composite::build_composite(net.clone(), i)?);
     }
 
     Ok(net)
