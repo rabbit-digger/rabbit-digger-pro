@@ -79,6 +79,20 @@ pub struct Server {
     pub rest: Value,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfigRuleItem {
+    #[serde(rename = "type")]
+    pub rule_type: String,
+    pub target: String,
+    #[serde(flatten)]
+    pub rest: Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfigRule {
+    pub rule: Vec<ConfigRuleItem>,
+}
+
 pub(crate) fn local_chain() -> Chain {
     Chain::One("local".to_string())
 }

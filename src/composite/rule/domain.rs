@@ -5,10 +5,11 @@ use rd_interface::{config::from_value, Address};
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Method {
     Keyword,
     Suffix,
-    Prefix,
+    Match,
 }
 
 impl fmt::Display for Method {
@@ -16,7 +17,7 @@ impl fmt::Display for Method {
         f.write_str(match self {
             Method::Keyword => "keyword",
             Method::Suffix => "suffix",
-            Method::Prefix => "prefix",
+            Method::Match => "prefix",
         })
     }
 }
@@ -43,10 +44,17 @@ impl DomainMatcher {
         registry.register("domain", |value| {
             Ok(Box::new(from_value::<DomainMatcher>(value)?))
         });
-        registry.register("domain_prefix", |value| {
+        registry.register("domain_keyword", |value| {
             Ok(Box::new({
                 let mut this = from_value::<DomainMatcher>(value)?;
-                this.method = Method::Prefix;
+                this.method = Method::Keyword;
+                this
+            }))
+        });
+        registry.register("domain_match", |value| {
+            Ok(Box::new({
+                let mut this = from_value::<DomainMatcher>(value)?;
+                this.method = Method::Match;
                 this
             }))
         });
@@ -61,7 +69,7 @@ impl DomainMatcher {
     fn test(&self, domain: &str) -> bool {
         match self.method {
             Method::Keyword => domain.contains(&self.domain),
-            Method::Prefix => domain.starts_with(&self.domain),
+            Method::Match => domain == &self.domain,
             Method::Suffix => domain.ends_with(&self.domain),
         }
     }

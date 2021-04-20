@@ -203,7 +203,12 @@ fn init_net(
     }
 
     for (name, i) in composite_config.into_iter() {
-        net.insert(name, composite::build_composite(net.clone(), i)?);
+        let ctx = format!("Loading composite {}", name);
+        net.insert(
+            name,
+            composite::build_composite(net.clone(), i)
+                .context(ctx)?,
+        );
     }
 
     Ok(net)

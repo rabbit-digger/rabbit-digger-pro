@@ -5,29 +5,13 @@ mod matcher;
 
 use self::matcher::BoxMatcher;
 use self::{any::AnyMatcher, domain::DomainMatcher, ip::IPMatcher};
-use crate::config;
-use serde_derive::{Deserialize, Serialize};
-use serde_json::Value;
+use crate::config::{ConfigRule, ConfigRuleItem};
 use std::{collections::HashMap, io};
 
 use rd_interface::{
     async_trait, context::common_field::SourceAddress, Address, Arc, Context, INet, Net, Result,
     TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConfigRuleItem {
-    #[serde(rename = "type")]
-    pub rule_type: String,
-    pub target: String,
-    #[serde(flatten)]
-    pub rest: Value,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConfigRule {
-    rule: Vec<ConfigRuleItem>,
-}
 
 struct RuleItem {
     _rule_type: String,
