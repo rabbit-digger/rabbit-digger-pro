@@ -128,12 +128,19 @@ impl RabbitDigger {
         log::info!("server {:#?}", servers);
 
         let pool = ConnectionPool::new()?;
-        let mut tasks: FuturesUnordered<_> = servers
+        let mut server_tasks: FuturesUnordered<_> = servers
             .into_iter()
-            .map(|i| start_server(i.server, pool.clone()).boxed())
+            .map(|i| {
+                let name = i.name;
+                start_server(i.server, pool.clone())
+                    .map(|r| (name, r))
+                    .boxed()
+            })
             .collect();
 
-        while tasks.next().await.is_some() {}
+        while let Some((name, r)) = server_tasks.next().await {
+            log::info!("Server {} is stopped. Return: {:?}", name, r)
+        }
 
         log::info!("all servers are down, exit.");
 

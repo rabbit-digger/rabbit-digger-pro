@@ -27,28 +27,42 @@ fn no_addr() -> Error {
     ErrorKind::AddrNotAvailable.into()
 }
 
+fn host_to_address(host: &str, port: u16) -> Address {
+    match str::parse::<IpAddr>(host) {
+        Ok(ip) => {
+            let addr = SocketAddr::new(ip, port);
+            let addr = match addr {
+                SocketAddr::V4(v4) => Address::IPv4(v4),
+                SocketAddr::V6(v6) => Address::IPv6(v6),
+            };
+            addr
+        }
+        Err(_) => Address::Domain(host.to_string(), port),
+    }
+}
+
 impl IntoAddress for &str {
     fn into_address(self) -> Result<Address> {
-        let mut parts = self.rsplitn(2, ":");
-        let domain = parts.next().ok_or_else(no_addr)?;
+        let mut parts = self.splitn(2, ":");
+        let host = parts.next().ok_or_else(no_addr)?;
         let port: u16 = parts
             .next()
             .ok_or_else(no_addr)?
             .parse()
             .map_err(|_| no_addr())?;
-        Ok(Address::Domain(domain.to_string(), port))
+        Ok(host_to_address(host, port))
     }
 }
 
 impl IntoAddress for (&str, u16) {
     fn into_address(self) -> Result<Address> {
-        Ok(Address::Domain(self.0.to_string(), self.1))
+        Ok(host_to_address(self.0, self.1))
     }
 }
 
 impl IntoAddress for (String, u16) {
     fn into_address(self) -> Result<Address> {
-        Ok(Address::Domain(self.0, self.1))
+        Ok(host_to_address(&self.0, self.1))
     }
 }
 
