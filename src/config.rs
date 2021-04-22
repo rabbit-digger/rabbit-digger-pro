@@ -93,7 +93,7 @@ impl From<Option<Vec<String>>> for NetList {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum Composite {
     Rule(CompositeRule),
     Select,

@@ -1,10 +1,10 @@
 mod any;
 mod domain;
-mod ip;
+mod ip_cidr;
 mod matcher;
 
 use self::matcher::BoxMatcher;
-use self::{any::AnyMatcher, domain::DomainMatcher, ip::IPMatcher};
+use self::{any::AnyMatcher, domain::DomainMatcher, ip_cidr::IPMatcher};
 use crate::config::{CompositeRule, CompositeRuleItem};
 use std::{collections::HashMap, io};
 
