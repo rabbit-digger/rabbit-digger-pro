@@ -2,11 +2,15 @@ pub use crate::builtin::load_builtin;
 use crate::registry::Registry;
 use anyhow::Result;
 use libloading::{Library, Symbol};
-use std::{ffi::OsStr, fs::read_dir, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    fs::read_dir,
+    path::{Path, PathBuf},
+};
 
 const PLUGIN_EXTENSIONS: &'static [&'static str] = &["so", "dll"];
 
-pub fn load_plugin(path: PathBuf, registry: &mut rd_interface::Registry) -> Result<()> {
+pub fn load_plugin(path: &Path, registry: &mut rd_interface::Registry) -> Result<()> {
     log::trace!("Loading plugin: {:?}", path);
     let lib = Library::new(path)?;
     let init_plugin: Symbol<fn(&mut rd_interface::Registry) -> rd_interface::Result<()>> =
@@ -19,10 +23,11 @@ pub fn load_plugin(path: PathBuf, registry: &mut rd_interface::Registry) -> Resu
 
 pub fn load_plugins(path: PathBuf) -> Result<Registry> {
     let exts: Vec<&OsStr> = PLUGIN_EXTENSIONS.iter().map(|i| OsStr::new(i)).collect();
-    let dirs = read_dir(path);
+    let dirs = read_dir(&path);
     let mut registry = Registry::new();
 
     if dirs.is_err() {
+        log::error!("Error when reading dir: {:?}", path);
         load_builtin(&mut registry)?;
         return Ok(registry);
     }
@@ -31,7 +36,7 @@ pub fn load_plugins(path: PathBuf) -> Result<Registry> {
         let p = i?.path();
         if !p.is_dir() && exts.contains(&p.extension().unwrap_or_default()) {
             let mut r = rd_interface::Registry::new();
-            load_plugin(p.clone(), &mut r)?;
+            load_plugin(p.as_path(), &mut r)?;
             registry.add_registry(p.to_string_lossy().to_string(), r);
         }
     }
