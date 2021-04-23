@@ -7,6 +7,12 @@ pub use futures_io::{AsyncRead, AsyncWrite};
 pub use futures_util::future::RemoteHandle;
 pub use std::sync::Arc;
 
+pub trait IntoDyn<DynType> {
+    fn into_dyn(self) -> DynType
+    where
+        Self: Sized + 'static;
+}
+
 /// A TcpListener.
 #[async_trait]
 pub trait ITcpListener: Unpin + Send + Sync {
@@ -14,6 +20,15 @@ pub trait ITcpListener: Unpin + Send + Sync {
     async fn local_addr(&self) -> Result<SocketAddr>;
 }
 pub type TcpListener = Box<dyn ITcpListener>;
+
+impl<T: ITcpListener> IntoDyn<TcpListener> for T {
+    fn into_dyn(self) -> TcpListener
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
+}
 
 /// A TcpStream.
 #[async_trait]
@@ -23,6 +38,15 @@ pub trait ITcpStream: AsyncRead + AsyncWrite + Unpin + Send + Sync {
 }
 pub type TcpStream = Box<dyn ITcpStream>;
 
+impl<T: ITcpStream> IntoDyn<TcpStream> for T {
+    fn into_dyn(self) -> TcpStream
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
+}
+
 /// A UdpSocket.
 #[async_trait]
 pub trait IUdpSocket: Unpin + Send + Sync {
@@ -30,7 +54,16 @@ pub trait IUdpSocket: Unpin + Send + Sync {
     async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize>;
     async fn local_addr(&self) -> Result<SocketAddr>;
 }
-pub type UdpSocket = Box<dyn IUdpSocket>;
+pub type UdpSocket = Arc<dyn IUdpSocket>;
+
+impl<T: IUdpSocket> IntoDyn<UdpSocket> for T {
+    fn into_dyn(self) -> UdpSocket
+    where
+        Self: Sized + 'static,
+    {
+        Arc::new(self)
+    }
+}
 
 /// A Net.
 #[async_trait]
@@ -41,9 +74,27 @@ pub trait INet: Unpin + Send + Sync {
 }
 pub type Net = Arc<dyn INet>;
 
+impl<T: INet> IntoDyn<Net> for T {
+    fn into_dyn(self) -> Net
+    where
+        Self: Sized + 'static,
+    {
+        Arc::new(self)
+    }
+}
+
 /// A Server.
 #[async_trait]
 pub trait IServer: Unpin + Send + Sync {
     async fn start(&self, pool: ConnectionPool) -> Result<()>;
 }
 pub type Server = Box<dyn IServer>;
+
+impl<T: IServer> IntoDyn<Server> for T {
+    fn into_dyn(self) -> Server
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
+}

@@ -4,8 +4,8 @@ use super::{
 };
 use futures::{io::Cursor, prelude::*};
 use rd_interface::{
-    async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, IUdpSocket, IntoAddress, Net, Result,
-    TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, IUdpSocket, IntoAddress, IntoDyn, Net,
+    Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use std::{
     io::{self, Error, ErrorKind},
@@ -164,7 +164,7 @@ impl INet for Socks5Client {
 
         let addr = addr.to_socket_addr()?;
 
-        Ok(Box::new(Socks5UdpSocket(client, socket, addr)))
+        Ok(Socks5UdpSocket(client, socket, addr).into_dyn())
     }
     async fn tcp_connect(
         &self,
@@ -209,7 +209,7 @@ impl INet for Socks5Client {
             }
         };
 
-        Ok(Box::new(Socks5TcpStream(socket)))
+        Ok(Socks5TcpStream(socket).into_dyn())
     }
 
     async fn tcp_bind(

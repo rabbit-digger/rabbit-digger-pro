@@ -7,7 +7,9 @@ use async_std::{
     channel,
     task::{sleep, spawn},
 };
-use rd_interface::{async_trait, Address, Context, INet, Net, TcpListener, TcpStream, UdpSocket};
+use rd_interface::{
+    async_trait, Address, Context, INet, IntoDyn, Net, TcpListener, TcpStream, UdpSocket,
+};
 use std::{sync::Arc, time::Duration};
 
 struct Inner {}
@@ -38,7 +40,7 @@ impl INet for ControllerNet {
         let tcp = self.net.tcp_connect(ctx, addr.clone()).await?;
         let tcp = wrapper::TcpStream::new(tcp, self.sender.clone());
         tcp.send(EventType::NewTcp(addr));
-        Ok(Box::new(tcp))
+        Ok(tcp.into_dyn())
     }
 
     // TODO: wrap TcpListener
@@ -79,10 +81,11 @@ impl Controller {
         Controller { inner, sender }
     }
     pub fn get_net(&self, net: Net) -> Net {
-        Arc::new(ControllerNet {
+        ControllerNet {
             net,
             sender: self.sender.clone(),
-        })
+        }
+        .into_dyn()
     }
     pub async fn start(&mut self) -> Result<()> {
         Ok(())

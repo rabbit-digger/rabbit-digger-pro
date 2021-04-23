@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, fmt};
 
-use crate::{config::Value, INet, IServer, Net, Result, Server};
+use crate::{config::Value, INet, IServer, IntoDyn, Net, Result, Server};
 
 pub type NetFromConfig<T> = Box<dyn Fn(Vec<Net>, Value) -> Result<T>>;
 /// listen_net, net, config
@@ -34,7 +34,7 @@ impl Registry {
     ) {
         self.net.insert(
             name.into(),
-            Box::new(move |net, cfg| from_cfg(net, cfg).map(|n| Arc::new(n) as Net)),
+            Box::new(move |net, cfg| from_cfg(net, cfg).map(|n| n.into_dyn())),
         );
     }
     pub fn add_server<S: IServer + 'static>(
@@ -45,7 +45,7 @@ impl Registry {
         self.server.insert(
             name.into(),
             Box::new(move |listen_net, net, cfg| {
-                from_cfg(listen_net, net, cfg).map(|n| Box::new(n) as Server)
+                from_cfg(listen_net, net, cfg).map(|n| n.into_dyn())
             }),
         );
     }

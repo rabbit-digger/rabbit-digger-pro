@@ -7,7 +7,7 @@ use std::{
 
 use async_std::net;
 use rd_interface::{
-    async_trait, Address, INet, Registry, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, Address, INet, IntoDyn, Registry, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct LocalNet;
@@ -67,8 +67,8 @@ impl rd_interface::ITcpStream for CompatTcp {
     }
 }
 impl CompatTcp {
-    fn new(t: net::TcpStream) -> Box<CompatTcp> {
-        Box::new(CompatTcp(t))
+    fn new(t: net::TcpStream) -> CompatTcp {
+        CompatTcp(t)
     }
 }
 
@@ -76,7 +76,7 @@ impl CompatTcp {
 impl rd_interface::ITcpListener for Listener {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
         let (socket, addr) = self.0.accept().await?;
-        Ok((CompatTcp::new(socket), addr))
+        Ok((CompatTcp::new(socket).into_dyn(), addr))
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
@@ -109,7 +109,7 @@ impl INet for LocalNet {
         #[cfg(feature = "local_log")]
         log::trace!("local::tcp_connect {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
-        Ok(CompatTcp::new(net::TcpStream::connect(addr).await?))
+        Ok(CompatTcp::new(net::TcpStream::connect(addr).await?).into_dyn())
     }
 
     async fn tcp_bind(
@@ -120,14 +120,14 @@ impl INet for LocalNet {
         #[cfg(feature = "local_log")]
         log::trace!("local::tcp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
-        Ok(Box::new(Listener(net::TcpListener::bind(addr).await?)))
+        Ok(Listener(net::TcpListener::bind(addr).await?).into_dyn())
     }
 
     async fn udp_bind(&self, _ctx: &mut rd_interface::Context, addr: Address) -> Result<UdpSocket> {
         #[cfg(feature = "local_log")]
         log::trace!("local::udp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
-        Ok(Box::new(Udp(net::UdpSocket::bind(addr).await?)))
+        Ok(Udp(net::UdpSocket::bind(addr).await?).into_dyn())
     }
 }
 
