@@ -1,6 +1,6 @@
 use super::{
     auth::{auth_client, Method, NoAuth},
-    common::Address,
+    common::{pack_udp, parse_udp, Address},
 };
 use futures::{io::Cursor, prelude::*};
 use rd_interface::{
@@ -64,39 +64,19 @@ impl IUdpSocket for Socks5UdpSocket {
                 break len;
             }
         };
+        bytes.truncate(recv_len);
 
-        let mut cursor = Cursor::new(bytes);
-        let mut header = [0u8; 3];
-        cursor.read_exact(&mut header).await?;
-        let addr = match header[0..3] {
-            // TODO: support fragment sequence or at least give another error
-            [0x00, 0x00, 0x00] => Address::read(&mut cursor).await?,
-            _ => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "server response wrong RSV {} RSV {} FRAG {}",
-                        header[0], header[1], header[2]
-                    ),
-                )
-                .into())
-            }
-        };
-        let body_len = recv_len - cursor.position() as usize;
-        let to_copy = body_len.min(buf.len());
-        cursor.read_exact(&mut buf[..to_copy]).await?;
+        let (addr, payload) = parse_udp(&bytes).await?;
+        let to_copy = payload.len().min(buf.len());
+        buf.copy_from_slice(&payload[..to_copy]);
 
         Ok((to_copy, addr.to_socket_addr()?))
     }
 
     async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
         let addr: Address = addr.into();
-        let mut cursor = Cursor::new(Vec::new());
-        cursor.write_all(&[0x00, 0x00, 0x00]).await?;
-        addr.write(&mut cursor).await?;
-        cursor.write_all(buf).await?;
 
-        let bytes = cursor.into_inner();
+        let bytes = pack_udp(addr, buf).await?;
 
         self.0.send_to(&bytes, self.2).await
     }

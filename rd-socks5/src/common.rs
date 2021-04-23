@@ -149,3 +149,39 @@ pub async fn pack_send(
     w.write_all(&buf.into_inner()).await?;
     w.flush().await
 }
+
+pub async fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {
+    let mut cursor = futures::io::Cursor::new(buf);
+    let mut header = [0u8; 3];
+    cursor.read_exact(&mut header).await?;
+    let addr = match header[0..3] {
+        // TODO: support fragment sequence or at least give another error
+        [0x00, 0x00, 0x00] => Address::read(&mut cursor).await?,
+        _ => {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "server response wrong RSV {} RSV {} FRAG {}",
+                    header[0], header[1], header[2]
+                ),
+            )
+            .into())
+        }
+    };
+
+    let pos = cursor.position() as usize;
+
+    Ok((addr, &cursor.into_inner()[pos..]))
+}
+
+pub async fn pack_udp(addr: Address, buf: &[u8]) -> Result<Vec<u8>> {
+    let addr: Address = addr.into();
+    let mut cursor = futures::io::Cursor::new(Vec::new());
+    cursor.write_all(&[0x00, 0x00, 0x00]).await?;
+    addr.write(&mut cursor).await?;
+    cursor.write_all(buf).await?;
+
+    let bytes = cursor.into_inner();
+
+    Ok(bytes)
+}
