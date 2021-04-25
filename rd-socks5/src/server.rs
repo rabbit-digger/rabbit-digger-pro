@@ -9,7 +9,7 @@ use rd_interface::{
     UdpSocket,
 };
 use std::{
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
 };
 
@@ -21,7 +21,7 @@ struct ServerConfig {
 pub struct Socks5Server {
     config: Arc<ServerConfig>,
     listen_net: Net,
-    port: u16,
+    bind: String,
 }
 
 #[async_trait]
@@ -29,11 +29,9 @@ impl IServer for Socks5Server {
     async fn start(&self, pool: ConnectionPool) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(
-                &mut Context::new(),
-                SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), self.port).into_address()?,
-            )
+            .tcp_bind(&mut Context::new(), self.bind.into_address()?)
             .await?;
+
         self.serve_listener(pool, listener).await
     }
 }
@@ -107,9 +105,30 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
+                let dst = match dst {
+                    Address::IPv4(_) => {
+                        rd_interface::Address::IPv4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
+                    }
+                    Address::IPv6(_) => rd_interface::Address::IPv6(SocketAddrV6::new(
+                        Ipv6Addr::UNSPECIFIED,
+                        0,
+                        0,
+                        0,
+                    )),
+                    _ => {
+                        // TODO better error
+                        socket
+                            .write_all(&[
+                                0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                            ])
+                            .await?;
+                        socket.flush().await?;
+                        return Ok(());
+                    }
+                };
                 let out = match net.udp_bind(&mut new_context(addr).await, dst.into()).await {
                     Ok(socket) => socket,
-                    Err(_e) => {
+                    Err(e) => {
                         // TODO better error
                         socket
                             .write_all(&[
@@ -142,14 +161,14 @@ impl Socks5Server {
 
         Ok(())
     }
-    pub fn new(listen_net: Net, net: Net, port: u16) -> Self {
+    pub fn new(listen_net: Net, net: Net, bind: String) -> Self {
         Self {
             config: Arc::new(ServerConfig {
                 net,
                 methods: vec![Box::new(NoAuth)],
             }),
             listen_net,
-            port,
+            bind,
         }
     }
     pub async fn serve_listener(&self, pool: ConnectionPool, listener: TcpListener) -> Result<()> {

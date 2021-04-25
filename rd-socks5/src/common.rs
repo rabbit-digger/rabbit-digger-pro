@@ -4,6 +4,8 @@ use std::{
     io::{Cursor, Error, ErrorKind, Result},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
 };
+
+#[derive(Debug)]
 pub enum Address {
     IPv4(SocketAddrV4),
     IPv6(SocketAddrV6),

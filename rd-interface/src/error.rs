@@ -36,4 +36,10 @@ impl Error {
             _ => false,
         }
     }
+    pub fn is_addr_in_use(&self) -> bool {
+        match self {
+            Error::IO(e) => e.kind() == io::ErrorKind::AddrInUse,
+            _ => false,
+        }
+    }
 }
