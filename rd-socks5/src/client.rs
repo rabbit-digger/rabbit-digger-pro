@@ -68,7 +68,7 @@ impl IUdpSocket for Socks5UdpSocket {
 
         let (addr, payload) = parse_udp(&bytes).await?;
         let to_copy = payload.len().min(buf.len());
-        buf.copy_from_slice(&payload[..to_copy]);
+        buf[..to_copy].copy_from_slice(&payload[..to_copy]);
 
         Ok((to_copy, addr.to_socket_addr()?))
     }

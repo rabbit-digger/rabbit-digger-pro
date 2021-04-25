@@ -66,6 +66,13 @@ impl IntoAddress for (String, u16) {
     }
 }
 
+impl IntoAddress for (IpAddr, u16) {
+    fn into_address(self) -> Result<Address> {
+        let addr = SocketAddr::new(self.0, self.1);
+        Ok(addr.into())
+    }
+}
+
 impl IntoAddress for SocketAddr {
     fn into_address(self) -> Result<Address> {
         Ok(self.into())
@@ -83,6 +90,15 @@ impl From<SocketAddr> for Address {
         match addr {
             SocketAddr::V4(v4) => Address::IPv4(v4),
             SocketAddr::V6(v6) => Address::IPv6(v6),
+        }
+    }
+}
+
+impl From<(IpAddr, u16)> for Address {
+    fn from((ip, port): (IpAddr, u16)) -> Self {
+        match ip {
+            IpAddr::V4(v4) => Address::IPv4(SocketAddrV4::new(v4, port)),
+            IpAddr::V6(v6) => Address::IPv6(SocketAddrV6::new(v6, port, 0, 0)),
         }
     }
 }

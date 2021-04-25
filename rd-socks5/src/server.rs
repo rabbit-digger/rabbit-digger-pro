@@ -10,7 +10,7 @@ use rd_interface::{
 };
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 struct ServerConfig {
@@ -128,7 +128,7 @@ impl Socks5Server {
                 };
                 let out = match net.udp_bind(&mut new_context(addr).await, dst.into()).await {
                     Ok(socket) => socket,
-                    Err(e) => {
+                    Err(_e) => {
                         // TODO better error
                         socket
                             .write_all(&[
@@ -146,12 +146,15 @@ impl Socks5Server {
                 // success
                 let mut writer = Cursor::new(Vec::new());
                 writer.write_all(&[0x05, 0x00, 0x00]).await?;
-                let addr: Address = udp.local_addr().await.unwrap_or(default_addr).into();
+                let udp_ip = socket.local_addr().await?.ip();
+                let udp_port = udp.local_addr().await.unwrap_or(default_addr).port();
+                let addr: SocketAddr = (udp_ip, udp_port).into();
+                let addr: Address = addr.into();
                 addr.write(&mut writer).await?;
 
                 socket.write_all(&writer.into_inner()).await?;
 
-                let udp_channel = Socks5UdpSocket(udp, socket);
+                let udp_channel = Socks5UdpSocket(udp, socket, RwLock::new(None));
                 pool.connect_udp(udp_channel.into_dyn(), out).await?;
             }
             _ => {
@@ -185,7 +188,7 @@ impl Socks5Server {
     }
 }
 
-pub struct Socks5UdpSocket(UdpSocket, TcpStream);
+pub struct Socks5UdpSocket(UdpSocket, TcpStream, RwLock<Option<SocketAddr>>);
 
 #[async_trait]
 impl IUdpChannel for Socks5UdpSocket {
@@ -193,12 +196,16 @@ impl IUdpChannel for Socks5UdpSocket {
         // 259 is max size of address, atype 1 + domain len 1 + domain 255 + port 2
         let bytes_size = 259 + buf.len();
         let mut bytes = vec![0u8; bytes_size];
-        let (recv_len, _) = self.0.recv_from(&mut bytes).await?;
+        let (recv_len, from_addr) = self.0.recv_from(&mut bytes).await?;
+        let saved_addr = { *self.2.read().unwrap() };
+        if let None = saved_addr {
+            *self.2.write().unwrap() = Some(from_addr);
+        }
         bytes.truncate(recv_len);
 
         let (addr, payload) = parse_udp(&bytes).await?;
         let to_copy = payload.len().min(buf.len());
-        buf.copy_from_slice(&payload[..to_copy]);
+        buf[..to_copy].copy_from_slice(&payload[..to_copy]);
 
         Ok((to_copy, addr.to_socket_addr()?))
     }
@@ -208,6 +215,11 @@ impl IUdpChannel for Socks5UdpSocket {
 
         let bytes = pack_udp(saddr, buf).await?;
 
-        self.0.send_to(&bytes, addr).await
+        let addr = { *self.2.read().unwrap() };
+        Ok(if let Some(addr) = addr {
+            self.0.send_to(&bytes, addr).await?
+        } else {
+            0
+        })
     }
 }
