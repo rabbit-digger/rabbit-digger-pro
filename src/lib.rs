@@ -8,5 +8,5 @@ pub mod registry;
 pub mod translate;
 mod util;
 
-pub use rabbit_digger::RabbitDigger;
+pub use self::rabbit_digger::RabbitDigger;
 pub use registry::Registry;
