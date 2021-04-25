@@ -8,8 +8,7 @@ net:
 server:
   socks5:
     type: socks5
-    address: 127.0.0.1
-    port: 10888
+    bind: 127.0.0.1:10888
     net: rule
 composite:
   global:
