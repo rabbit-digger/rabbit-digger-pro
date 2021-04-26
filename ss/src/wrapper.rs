@@ -51,6 +51,7 @@ where
             write!(
                 f,
                 "a chiper from aes-128-gcm aes-256-gcm
+aes-128-cfb aes-192-cfb aes-256-cfb
 aes-128-ctr aes-192-ctr aes-256-ctr
 rc4-md5 chacha20-ietf chacha20-ietf-poly1305"
             )
@@ -63,6 +64,9 @@ rc4-md5 chacha20-ietf chacha20-ietf-poly1305"
             Ok(WrapCipher(match s {
                 "aes-128-gcm" => CipherKind::AES_128_GCM,
                 "aes-256-gcm" => CipherKind::AES_256_GCM,
+                "aes-128-cfb" => CipherKind::AES_128_CFB128,
+                "aes-192-cfb" => CipherKind::AES_192_CFB128,
+                "aes-256-cfb" => CipherKind::AES_256_CFB128,
                 "aes-128-ctr" => CipherKind::AES_128_CTR,
                 "aes-192-ctr" => CipherKind::AES_192_CTR,
                 "aes-256-ctr" => CipherKind::AES_256_CTR,
