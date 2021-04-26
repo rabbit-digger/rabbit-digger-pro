@@ -1,4 +1,5 @@
 pub mod alias;
+pub mod combine;
 pub mod forward;
 pub mod local;
 
@@ -9,6 +10,7 @@ pub fn load_builtin(registry: &mut Registry) -> Result<()> {
     let mut r = rd_interface::Registry::new();
 
     alias::init_plugin(&mut r)?;
+    combine::init_plugin(&mut r)?;
     forward::init_plugin(&mut r)?;
     local::init_plugin(&mut r)?;
 

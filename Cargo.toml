@@ -34,12 +34,12 @@ rd-socks5 = { path = "./rd-socks5", optional = true }
 rd-redir = { path = "./rd-redir", optional = true }
 
 async-graphql = { version = "2.0", optional = true }
-async-graphql-warp = { version = "2.0", optional = true }
-warp = { version = "0.3.0", optional = true }
+async-graphql-tide = { version = "2.0", optional = true }
+tide = { version = "0.16.0", optional = true, default-features = false, features = ["h1-server"] }
 
 [features]
 default = [ "gql", "translate", "with_plugins" ]
-gql = [ "async-graphql", "async-graphql-warp", "warp" ]
+gql = [ "async-graphql", "async-graphql-tide", "tide" ]
 translate = []
 local_log = []
 
