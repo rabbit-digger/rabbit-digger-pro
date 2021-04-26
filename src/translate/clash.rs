@@ -148,7 +148,7 @@ impl Clash {
                 }
                 .to_string();
                 CompositeRuleItem {
-                    rule_type: "domain_suffix".to_string(),
+                    rule_type: "domain".to_string(),
                     target,
                     rest: json!({ "domain": domain, "method": method }),
                 }
