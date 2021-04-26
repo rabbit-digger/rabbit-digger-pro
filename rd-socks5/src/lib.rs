@@ -21,8 +21,7 @@ struct ServerConfig {
     bind: String,
 }
 
-#[no_mangle]
-pub fn init_plugin(registry: &mut Registry) -> Result<()> {
+pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_net("socks5", |pr, cfg| {
         let Config { address, port } = from_value(cfg)?;
         Ok(Socks5Client::new(get_one_net(pr)?, address, port))
@@ -32,4 +31,10 @@ pub fn init_plugin(registry: &mut Registry) -> Result<()> {
         Ok(Socks5Server::new(listen_net, net, bind))
     });
     Ok(())
+}
+
+#[cfg(feature = "plugin")]
+#[no_mangle]
+pub fn init_plugin(registry: &mut Registry) -> Result<()> {
+    init(registry)
 }

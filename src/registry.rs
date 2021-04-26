@@ -67,6 +67,16 @@ impl Registry {
             server: HashMap::new(),
         }
     }
+    pub fn init_with_registry(
+        &mut self,
+        name: impl Into<String>,
+        init: impl Fn(&mut rd_interface::Registry) -> Result<()>,
+    ) -> Result<()> {
+        let mut r = rd_interface::Registry::new();
+        init(&mut r)?;
+        self.add_registry(name.into(), r);
+        Ok(())
+    }
     pub fn add_registry(&mut self, plugin_name: String, registry: rd_interface::Registry) {
         for (k, v) in registry.net {
             self.net.insert(

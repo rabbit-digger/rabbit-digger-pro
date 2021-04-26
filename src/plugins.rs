@@ -32,14 +32,23 @@ pub fn load_plugins(path: PathBuf) -> Result<Registry> {
         return Ok(registry);
     }
 
+    #[cfg(not(feature = "disable_plugins"))]
     for i in dirs? {
         let p = i?.path();
         if !p.is_dir() && exts.contains(&p.extension().unwrap_or_default()) {
-            let mut r = rd_interface::Registry::new();
-            load_plugin(p.as_path(), &mut r)?;
-            registry.add_registry(p.to_string_lossy().to_string(), r);
+            let name = p.to_string_lossy().to_string();
+            let r = registry.init_with_registry(name, |r| load_plugin(p.as_path(), r));
+            if let Err(e) = r {
+                log::warn!("Skip plugin: {} reason: {:?}", p.to_string_lossy(), e);
+            }
         }
     }
+
+    #[cfg(feature = "rd-socks5")]
+    registry.init_with_registry("socks5", |r| rd_socks5::init(r).map_err(Into::into))?;
+    #[cfg(feature = "rd-redir")]
+    registry.init_with_registry("redir", |r| rd_redir::init(r).map_err(Into::into))?;
+
     // Prevent builtin plugins from being tampered with
     load_builtin(&mut registry)?;
 

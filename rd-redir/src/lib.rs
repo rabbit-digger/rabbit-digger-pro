@@ -78,12 +78,17 @@ mod linux {
     }
 }
 
-#[no_mangle]
-pub fn init_plugin(registry: &mut Registry) -> Result<()> {
+pub fn init(registry: &mut Registry) -> Result<()> {
     #[cfg(target_os = "linux")]
     registry.add_server("redir", |_listen_net, net, cfg| {
         let cfg: RedirServerConfig = from_value(cfg)?;
         Ok(RedirServer::new(cfg, net))
     });
     Ok(())
+}
+
+#[cfg(feature = "plugin")]
+#[no_mangle]
+pub fn init_plugin(registry: &mut Registry) -> Result<()> {
+    init(registry)
 }

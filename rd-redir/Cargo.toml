@@ -14,5 +14,9 @@ libc = "0.2.91"
 socket2 = "0.4.0"
 log = "0.4"
 
+[features]
+default = []
+plugin = []
+
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
