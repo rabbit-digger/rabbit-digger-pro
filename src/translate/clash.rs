@@ -16,6 +16,12 @@ pub struct Clash {
     prefix: Option<String>,
     target: Option<String>,
     direct: Option<String>,
+    #[serde(default)]
+    disable_socks5: bool,
+    #[serde(default)]
+    disable_proxy_group: bool,
+    #[serde(default)]
+    disable_rule: bool,
     // reverse map from clash name to net name
     #[serde(skip)]
     name_map: HashMap<String, String>,
@@ -197,59 +203,62 @@ impl Clash {
             };
         }
 
-        let proxy_groups = topological_sort(
-            clash_config
-                .proxy_groups
-                .into_iter()
-                .map(|i| (i.name.clone(), i))
-                .collect(),
-            |i: &ProxyGroup| i.proxies.iter().collect(),
-        )
-        .ok_or(anyhow!("There is cyclic dependencies in proxy_groups"))?;
+        if !self.disable_proxy_group {
+            let proxy_groups = topological_sort(
+                clash_config
+                    .proxy_groups
+                    .into_iter()
+                    .map(|i| (i.name.clone(), i))
+                    .collect(),
+                |i: &ProxyGroup| i.proxies.iter().collect(),
+            )
+            .ok_or(anyhow!("There is cyclic dependencies in proxy_groups"))?;
 
-        for (old_name, pg) in proxy_groups {
-            let name = self.proxy_group_name(&old_name);
-            match self.proxy_group_to_composite(pg) {
-                Ok(rule) => {
-                    self.name_map.insert(old_name, name.clone());
-                    config.composite.insert(name, rule);
-                }
-                Err(e) => {
-                    log::warn!("proxy_group {} not translated: {:?}", old_name, e);
-                }
-            };
-        }
-
-        let mut rule = Vec::new();
-        for r in clash_config.rules {
-            match self.rule_to_rule(&r) {
-                Ok(r) => {
-                    rule.push(r);
-                }
-                Err(e) => log::warn!("rule '{}' not translated: {:?}", r, e),
+            for (old_name, pg) in proxy_groups {
+                let name = self.proxy_group_name(&old_name);
+                match self.proxy_group_to_composite(pg) {
+                    Ok(rule) => {
+                        self.name_map.insert(old_name, name.clone());
+                        config.composite.insert(name, rule);
+                    }
+                    Err(e) => {
+                        log::warn!("proxy_group {} not translated: {:?}", old_name, e);
+                    }
+                };
             }
         }
-        config.composite.insert(
-            self.prefix("clash_rule"),
-            CompositeName {
-                name: None,
-                net_list: None.into(),
-                composite: Composite::Rule(CompositeRule { rule }).into(),
-            },
-        );
 
-        config.server.insert(
-            self.prefix("socks_port"),
-            Server {
-                server_type: "socks5".to_string(),
-                listen: "local".to_string(),
-                net: self.target.clone().unwrap_or(self.prefix("clash_rule")),
-                rest: json!({
-                    "address": "0.0.0.0",
-                    "port": clash_config.socks_port,
-                }),
-            },
-        );
+        if !self.disable_rule {
+            let mut rule = Vec::new();
+            for r in clash_config.rules {
+                match self.rule_to_rule(&r) {
+                    Ok(r) => {
+                        rule.push(r);
+                    }
+                    Err(e) => log::warn!("rule '{}' not translated: {:?}", r, e),
+                }
+            }
+            config.composite.insert(
+                self.prefix("clash_rule"),
+                CompositeName {
+                    name: None,
+                    net_list: None.into(),
+                    composite: Composite::Rule(CompositeRule { rule }).into(),
+                },
+            );
+        }
+
+        if !self.disable_socks5 {
+            config.server.insert(
+                self.prefix("socks_port"),
+                Server {
+                    server_type: "socks5".to_string(),
+                    listen: "local".to_string(),
+                    net: self.target.clone().unwrap_or(self.prefix("clash_rule")),
+                    rest: json!({ "bind": format!("0.0.0.0:{}", clash_config.socks_port) }),
+                },
+            );
+        }
 
         Ok(())
     }
