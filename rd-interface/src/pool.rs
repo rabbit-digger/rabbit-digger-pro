@@ -26,7 +26,7 @@ impl ConnectionPool {
     }
     pub async fn connect_udp(&self, udp_channel: UdpChannel, udp: UdpSocket) -> crate::Result<()> {
         let in_side = async {
-            let mut buf = [0u8; 2048];
+            let mut buf = [0u8; crate::constant::UDP_BUFFER_SIZE];
             while let Ok((size, addr)) = udp_channel.recv_send_to(&mut buf).await {
                 let buf = &buf[..size];
                 udp.send_to(buf, addr).await?;
@@ -34,7 +34,7 @@ impl ConnectionPool {
             crate::Result::<()>::Ok(())
         };
         let out_side = async {
-            let mut buf = [0u8; 2048];
+            let mut buf = [0u8; crate::constant::UDP_BUFFER_SIZE];
             while let Ok((size, addr)) = udp.recv_from(&mut buf).await {
                 let buf = &buf[..size];
                 udp_channel.send_recv_from(buf, addr).await?;
