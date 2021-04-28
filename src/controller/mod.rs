@@ -87,7 +87,12 @@ impl Controller {
         }
         .into_dyn()
     }
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&self) -> Result<()> {
+        spawn(serve(self.inner.clone()));
         Ok(())
     }
+}
+
+async fn serve(inner: Arc<Inner>) {
+    //
 }

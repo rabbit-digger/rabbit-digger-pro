@@ -6,11 +6,11 @@ mod matcher;
 use self::matcher::BoxMatcher;
 use self::{any::AnyMatcher, domain::DomainMatcher, ip_cidr::IPMatcher};
 use crate::config::{CompositeRule, CompositeRuleItem};
-use std::{collections::HashMap, io};
+use std::{collections::HashMap, io, net::SocketAddr};
 
 use rd_interface::{
-    async_trait, context::common_field::SourceAddress, Address, Arc, Context, INet, Net, Result,
-    TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, context::common_field::SourceAddress, Address, Arc, Context, INet, IUdpSocket,
+    IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 
 struct RuleItem {
@@ -100,6 +100,29 @@ impl INet for Rule {
     }
 
     async fn udp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<UdpSocket> {
+        Ok(UdpRuleSocket::new().into_dyn())
+    }
+}
+
+struct UdpRuleSocket {}
+
+impl UdpRuleSocket {
+    fn new() -> UdpRuleSocket {
+        UdpRuleSocket {}
+    }
+}
+
+#[async_trait]
+impl IUdpSocket for UdpRuleSocket {
+    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        Err(NOT_IMPLEMENTED)
+    }
+
+    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
+        Err(NOT_IMPLEMENTED)
+    }
+
+    async fn local_addr(&self) -> Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
     }
 }
