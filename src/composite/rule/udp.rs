@@ -12,12 +12,12 @@ use futures::{
 };
 use lru_time_cache::LruCache;
 use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, Address, Arc, Context, IUdpSocket, Result, UdpSocket,
+    async_trait, constant::UDP_BUFFER_SIZE, Address, Context, IUdpSocket, Result, UdpSocket,
     NOT_IMPLEMENTED,
 };
 
 type UdpPacket = (Vec<u8>, SocketAddr);
-type NatTable = Arc<RwLock<LruCache<Address, DroppableUdpSocket>>>;
+type NatTable = RwLock<LruCache<Address, DroppableUdpSocket>>;
 
 pub struct UdpRuleSocket {
     rule: Rule,
@@ -59,10 +59,10 @@ impl Drop for DroppableUdpSocket {
 impl UdpRuleSocket {
     pub fn new(rule: Rule, context: Context) -> UdpRuleSocket {
         let (tx, rx) = bounded::<UdpPacket>(100);
-        let nat = Arc::new(RwLock::new(LruCache::with_expiry_duration_and_capacity(
+        let nat = RwLock::new(LruCache::with_expiry_duration_and_capacity(
             Duration::from_secs(10 * 60),
             100,
-        )));
+        ));
 
         UdpRuleSocket {
             rule,
