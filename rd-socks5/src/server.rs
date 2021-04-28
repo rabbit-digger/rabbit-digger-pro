@@ -4,9 +4,8 @@ use super::{
 };
 use futures::{io::Cursor, prelude::*};
 use rd_interface::{
-    async_trait, context::common_field::SourceAddress, pool::IUdpChannel, util::connect_tcp,
-    ConnectionPool, Context, IServer, IntoAddress, IntoDyn, Net, Result, TcpListener, TcpStream,
-    UdpSocket,
+    async_trait, pool::IUdpChannel, util::connect_tcp, ConnectionPool, Context, IServer,
+    IntoAddress, IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
@@ -36,15 +35,6 @@ impl IServer for Socks5Server {
     }
 }
 
-async fn new_context(addr: SocketAddr) -> Context {
-    let mut ctx = Context::new();
-    let _ = ctx
-        .insert_common::<SourceAddress>(SourceAddress { addr })
-        .await
-        .ok();
-    ctx
-}
-
 impl Socks5Server {
     async fn serve_connection(
         cfg: Arc<ServerConfig>,
@@ -67,7 +57,10 @@ impl Socks5Server {
             // VER: 5, CMD: 1(CONNECT), RSV: 0
             [0x05, 0x01, 0x00] => {
                 let dst = Address::read(&mut socket).await?.into();
-                let out = match net.tcp_connect(&mut new_context(addr).await, dst).await {
+                let out = match net
+                    .tcp_connect(&mut Context::from_socketaddr(addr), dst)
+                    .await
+                {
                     Ok(socket) => socket,
                     Err(_e) => {
                         // TODO better error
@@ -126,7 +119,10 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
-                let out = match net.udp_bind(&mut new_context(addr).await, dst.into()).await {
+                let out = match net
+                    .udp_bind(&mut Context::from_socketaddr(addr), dst.into())
+                    .await
+                {
                     Ok(socket) => socket,
                     Err(_e) => {
                         // TODO better error
@@ -140,7 +136,10 @@ impl Socks5Server {
                     }
                 };
                 let udp = net
-                    .udp_bind(&mut new_context(addr).await, "0.0.0.0:0".into_address()?)
+                    .udp_bind(
+                        &mut Context::from_socketaddr(addr),
+                        "0.0.0.0:0".into_address()?,
+                    )
                     .await?;
 
                 // success

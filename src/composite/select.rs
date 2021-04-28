@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use rd_interface::{
-    async_trait, config::from_value, context::common_field::PersistData, Address, Context, INet,
-    IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, Address, Context, INet, IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct SelectNet(Vec<Net>);
@@ -21,9 +20,8 @@ impl SelectNet {
 
         Ok(SelectNet(nets).into_dyn())
     }
-    async fn get(&self, ctx: &Context) -> Result<&Net> {
-        let data = ctx.get_common::<PersistData>().await?;
-        let mut index: usize = from_value(data.0)?;
+    async fn get(&self, _ctx: &Context) -> Result<&Net> {
+        let mut index: usize = 0;
 
         if index > self.0.len() {
             index = 0;

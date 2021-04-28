@@ -11,8 +11,7 @@ mod linux {
     use crate::util::OriginAddrExt;
     use async_net::{TcpListener, TcpStream};
     use rd_interface::{
-        async_trait, context::common_field::SourceAddress, util::connect_tcp, ConnectionPool,
-        Context, IServer, IntoAddress, Net, Result,
+        async_trait, util::connect_tcp, ConnectionPool, Context, IServer, IntoAddress, Net, Result,
     };
     use serde_derive::Deserialize;
 
@@ -32,15 +31,6 @@ mod linux {
             let listener = TcpListener::bind(&self.cfg.bind).await?;
             self.serve_listener(pool, listener).await
         }
-    }
-
-    async fn new_context(addr: SocketAddr) -> Context {
-        let mut ctx = Context::new();
-        let _ = ctx
-            .insert_common::<SourceAddress>(SourceAddress { addr })
-            .await
-            .ok();
-        ctx
     }
 
     impl RedirServer {
@@ -68,7 +58,7 @@ mod linux {
             let target = socket.origin_addr()?;
 
             let target_tcp = net
-                .tcp_connect(&mut new_context(addr).await, target.into_address()?)
+                .tcp_connect(&mut Context::from_socketaddr(addr), target.into_address()?)
                 .await?;
 
             connect_tcp(socket, target_tcp).await?;

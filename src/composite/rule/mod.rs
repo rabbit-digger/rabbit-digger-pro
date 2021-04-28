@@ -68,7 +68,6 @@ impl INet for Rule {
     async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
         let src = ctx
             .get_common::<SourceAddress>()
-            .await
             .map(|s| s.addr.to_string())
             .unwrap_or_default();
 

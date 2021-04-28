@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait, config::from_value, context::common_field::SourceAddress, util::connect_tcp, Arc,
-    ConnectionPool, Context, IServer, IntoAddress, Net, Registry, Result, TcpListener, TcpStream,
+    async_trait, config::from_value, util::connect_tcp, Arc, ConnectionPool, Context, IServer,
+    IntoAddress, Net, Registry, Result, TcpListener, TcpStream,
 };
 use serde_derive::Deserialize;
 
@@ -37,15 +37,6 @@ impl IServer for ForwardNet {
     }
 }
 
-async fn new_context(addr: SocketAddr) -> Context {
-    let mut ctx = Context::new();
-    let _ = ctx
-        .insert_common::<SourceAddress>(SourceAddress { addr })
-        .await
-        .ok();
-    ctx
-}
-
 impl ForwardNet {
     async fn serve_connection(
         cfg: Arc<ForwardConfig>,
@@ -54,7 +45,10 @@ impl ForwardNet {
         addr: SocketAddr,
     ) -> Result<()> {
         let target = net
-            .tcp_connect(&mut new_context(addr).await, cfg.target.into_address()?)
+            .tcp_connect(
+                &mut Context::from_socketaddr(addr),
+                cfg.target.into_address()?,
+            )
             .await?;
         connect_tcp(socket, target).await?;
         Ok(())
