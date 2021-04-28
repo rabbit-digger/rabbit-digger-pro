@@ -80,6 +80,14 @@ impl Context {
     pub fn get_common<T: CommonField>(&self) -> Result<T> {
         self.get(T::KEY)
     }
+    /// Add composite to composite_list
+    pub fn append_composite(&mut self, composite_name: impl Into<String>) {
+        self.composite_list.push(composite_name.into())
+    }
+    /// Get composite_list
+    pub fn composite_list(&self) -> &Vec<String> {
+        &self.composite_list
+    }
 }
 
 /// Common context keys and types

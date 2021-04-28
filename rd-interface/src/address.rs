@@ -5,7 +5,7 @@ use std::{
 };
 
 /// Address can be IPv4, IPv6 address or a domain with port.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord)]
 pub enum Address {
     IPv4(SocketAddrV4),
     IPv6(SocketAddrV6),
