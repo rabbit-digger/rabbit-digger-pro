@@ -46,15 +46,16 @@ impl Address {
     where
         R: AsyncRead + Unpin,
     {
-        let mut port = [0u8; 2];
-        reader.read_exact(&mut port).await?;
-        Ok((port[0] as u16) << 8 | port[1] as u16)
+        let mut buf = [0u8; 2];
+        reader.read_exact(&mut buf).await?;
+        let port = u16::from_be_bytes(buf);
+        Ok(port)
     }
     async fn write_port<W>(mut writer: W, port: u16) -> Result<()>
     where
         W: AsyncWrite + Unpin,
     {
-        writer.write_all(&[(port >> 8) as u8, port as u8]).await
+        writer.write_all(&port.to_be_bytes()).await
     }
     pub async fn write<W>(&self, mut writer: W) -> Result<()>
     where
@@ -103,8 +104,7 @@ impl Address {
                 let mut len = [0u8; 1];
                 reader.read_exact(&mut len).await?;
                 let len = len[0] as usize;
-                let mut domain = Vec::new();
-                domain.resize(len, 0);
+                let mut domain = vec![0u8; len];
                 reader.read_exact(&mut domain).await?;
 
                 let domain = String::from_utf8(domain).map_err(|e| {

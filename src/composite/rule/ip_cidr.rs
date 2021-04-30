@@ -55,8 +55,7 @@ impl fmt::Display for IPMatcher {
 impl Matcher for IPMatcher {
     fn match_rule(&self, _ctx: &rd_interface::Context, addr: &Address) -> MaybeAsync<bool> {
         match addr {
-            Address::IPv4(v4) => self.test(*v4.ip()),
-            Address::IPv6(v6) => self.test(*v6.ip()),
+            Address::SocketAddr(addr) => self.test(addr.ip()),
             // if it's a domain, try to parse it to SocketAddr.
             Address::Domain(domain, _) => match str::parse::<SocketAddr>(domain) {
                 Ok(addr) => self.test(addr.ip()),
