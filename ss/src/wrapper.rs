@@ -112,5 +112,3 @@ impl ITcpStream for WrapSSTcp {
         Err(NOT_IMPLEMENTED)
     }
 }
-
-unsafe impl Sync for WrapSSTcp {}
