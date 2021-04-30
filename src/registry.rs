@@ -53,10 +53,15 @@ impl fmt::Debug for ServerItem {
 
 impl fmt::Debug for Registry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Registry")
-            .field("net", &self.net)
-            .field("server", &self.server)
-            .finish()
+        writeln!(f, "Net")?;
+        for (k, v) in self.net.iter() {
+            writeln!(f, "\t{}: {}", k, v.plugin_name)?;
+        }
+        writeln!(f, "Server")?;
+        for (k, v) in self.server.iter() {
+            writeln!(f, "\t{}: {}", k, v.plugin_name)?;
+        }
+        Ok(())
     }
 }
 

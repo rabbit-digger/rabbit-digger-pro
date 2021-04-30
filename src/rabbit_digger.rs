@@ -114,7 +114,7 @@ impl RabbitDigger {
             move |net: Net| c.get_net(net)
         };
         let registry = (self.plugin_loader)(&config)?;
-        log::debug!("registry: {:?}", registry);
+        log::debug!("registry:\n{:#?}", registry);
 
         let net_cfg = config.net.into_iter().map(|(k, v)| (k, AllNet::Net(v)));
         let composite_cfg = config
