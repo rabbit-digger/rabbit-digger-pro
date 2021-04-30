@@ -24,8 +24,7 @@ impl Into<SSAddress> for WrapAddress {
     fn into(self) -> SSAddress {
         match self.0 {
             RDAddress::Domain(domain, port) => SSAddress::DomainNameAddress(domain, port),
-            RDAddress::IPv4(v4) => SSAddress::SocketAddress(SocketAddr::V4(v4)),
-            RDAddress::IPv6(v6) => SSAddress::SocketAddress(SocketAddr::V6(v6)),
+            RDAddress::SocketAddr(s) => SSAddress::SocketAddress(s),
         }
     }
 }
