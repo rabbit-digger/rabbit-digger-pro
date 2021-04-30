@@ -114,7 +114,7 @@ impl RabbitDigger {
             move |net: Net| c.get_net(net)
         };
         let registry = (self.plugin_loader)(&config)?;
-        log::debug!("registry:\n{:#?}", registry);
+        log::debug!("Registry:\n{}", registry);
 
         let net_cfg = config.net.into_iter().map(|(k, v)| (k, AllNet::Net(v)));
         let composite_cfg = config
@@ -125,7 +125,7 @@ impl RabbitDigger {
         let net = init_net(&registry, all_net)?;
         let servers = init_server(&registry, &net, config.server, wrap_net)?;
 
-        log::info!("server {:#?}", servers);
+        log::info!("Server:\n{}", ServerList(&servers));
 
         let pool = ConnectionPool::new()?;
         let mut server_tasks: FuturesUnordered<_> = servers
@@ -167,14 +167,24 @@ struct ServerInfo {
     config: Value,
 }
 
-impl fmt::Debug for ServerInfo {
+struct ServerList<'a>(&'a Vec<ServerInfo>);
+
+impl fmt::Display for ServerInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ServerInfo")
-            .field("name", &self.name)
-            .field("listen", &self.listen)
-            .field("net", &self.net)
-            .field("config", &self.config)
-            .finish()
+        write!(
+            f,
+            "{}: {} -> {} {}",
+            self.name, self.listen, self.net, self.config
+        )
+    }
+}
+
+impl<'a> fmt::Display for ServerList<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for i in self.0.iter() {
+            writeln!(f, "\t{}", i)?;
+        }
+        Ok(())
     }
 }
 
@@ -259,7 +269,7 @@ fn init_server(
                 &i.net,
                 &name
             ))?;
-            log::trace!("Loading server: {}", name);
+
             let server = server_item
                 .build(listen.clone(), wrapper(net.clone()), i.rest.clone())
                 .context(format!(

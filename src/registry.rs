@@ -51,7 +51,7 @@ impl fmt::Debug for ServerItem {
     }
 }
 
-impl fmt::Debug for Registry {
+impl fmt::Display for Registry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Net")?;
         for (k, v) in self.net.iter() {
