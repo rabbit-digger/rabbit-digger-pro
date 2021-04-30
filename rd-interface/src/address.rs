@@ -1,14 +1,13 @@
 use std::{
     fmt,
     io::{Error, ErrorKind, Result},
-    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, SocketAddr},
 };
 
 /// Address can be IPv4, IPv6 address or a domain with port.
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord)]
 pub enum Address {
-    IPv4(SocketAddrV4),
-    IPv6(SocketAddrV6),
+    SocketAddr(SocketAddr),
     Domain(String, u16),
 }
 
@@ -31,11 +30,7 @@ fn host_to_address(host: &str, port: u16) -> Address {
     match str::parse::<IpAddr>(host) {
         Ok(ip) => {
             let addr = SocketAddr::new(ip, port);
-            let addr = match addr {
-                SocketAddr::V4(v4) => Address::IPv4(v4),
-                SocketAddr::V6(v6) => Address::IPv6(v6),
-            };
-            addr
+            addr.into()
         }
         Err(_) => Address::Domain(host.to_string(), port),
     }
@@ -87,19 +82,13 @@ impl IntoAddress for Address {
 
 impl From<SocketAddr> for Address {
     fn from(addr: SocketAddr) -> Self {
-        match addr {
-            SocketAddr::V4(v4) => Address::IPv4(v4),
-            SocketAddr::V6(v6) => Address::IPv6(v6),
-        }
+        Address::SocketAddr(addr)
     }
 }
 
 impl From<(IpAddr, u16)> for Address {
     fn from((ip, port): (IpAddr, u16)) -> Self {
-        match ip {
-            IpAddr::V4(v4) => Address::IPv4(SocketAddrV4::new(v4, port)),
-            IpAddr::V6(v6) => Address::IPv6(SocketAddrV6::new(v6, port, 0, 0)),
-        }
+        Address::SocketAddr(SocketAddr::new(ip, port))
     }
 }
 
@@ -108,8 +97,7 @@ impl Address {
     /// Otherwise [AddrNotAvailable](std::io::ErrorKind::AddrNotAvailable) is returned.
     pub fn to_socket_addr(self) -> Result<SocketAddr> {
         match self {
-            Address::IPv4(v4) => Ok(SocketAddr::V4(v4)),
-            Address::IPv6(v6) => Ok(SocketAddr::V6(v6)),
+            Address::SocketAddr(s) => Ok(s),
             _ => Err(no_addr()),
         }
     }
@@ -120,8 +108,7 @@ impl Address {
         Fut: std::future::Future<Output = Result<SocketAddr>>,
     {
         match self {
-            Address::IPv4(v4) => Ok(SocketAddr::V4(*v4)),
-            Address::IPv6(v6) => Ok(SocketAddr::V6(*v6)),
+            Address::SocketAddr(s) => Ok(*s),
             Address::Domain(d, p) => match str::parse::<IpAddr>(d) {
                 Ok(ip) => Ok(SocketAddr::new(ip, *p)),
                 Err(_) => f(d.to_string(), *p).await,
@@ -134,8 +121,7 @@ impl fmt::Display for Address {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Address::Domain(domain, port) => write!(f, "{}:{}", domain, port),
-            Address::IPv4(v4) => write!(f, "{}", v4),
-            Address::IPv6(v6) => write!(f, "{}", v6),
+            Address::SocketAddr(s) => write!(f, "{}", s),
         }
     }
 }

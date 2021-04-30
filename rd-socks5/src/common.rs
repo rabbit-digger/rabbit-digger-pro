@@ -2,21 +2,19 @@ use futures::prelude::*;
 use rd_interface::{AsyncRead, AsyncWrite};
 use std::{
     io::{Cursor, Error, ErrorKind, Result},
-    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::SocketAddr,
 };
 
 #[derive(Debug)]
 pub enum Address {
-    IPv4(SocketAddrV4),
-    IPv6(SocketAddrV6),
+    SocketAddr(SocketAddr),
     Domain(String, u16),
 }
 
 impl From<rd_interface::Address> for Address {
     fn from(addr: rd_interface::Address) -> Self {
         match addr {
-            rd_interface::Address::IPv4(v4) => Address::IPv4(v4),
-            rd_interface::Address::IPv6(v6) => Address::IPv6(v6),
+            rd_interface::Address::SocketAddr(s) => Address::SocketAddr(s),
             rd_interface::Address::Domain(domain, port) => Address::Domain(domain, port),
         }
     }
@@ -25,8 +23,7 @@ impl From<rd_interface::Address> for Address {
 impl Into<rd_interface::Address> for Address {
     fn into(self) -> rd_interface::Address {
         match self {
-            Address::IPv4(v4) => rd_interface::Address::IPv4(v4),
-            Address::IPv6(v4) => rd_interface::Address::IPv6(v4),
+            Address::SocketAddr(s) => rd_interface::Address::SocketAddr(s),
             Address::Domain(domain, port) => rd_interface::Address::Domain(domain, port),
         }
     }
@@ -34,18 +31,14 @@ impl Into<rd_interface::Address> for Address {
 
 impl From<SocketAddr> for Address {
     fn from(addr: SocketAddr) -> Self {
-        match addr {
-            SocketAddr::V4(v4) => Address::IPv4(v4),
-            SocketAddr::V6(v6) => Address::IPv6(v6),
-        }
+        Address::SocketAddr(addr)
     }
 }
 
 impl Address {
     pub fn to_socket_addr(self) -> Result<SocketAddr> {
         match self {
-            Address::IPv4(v4) => Ok(SocketAddr::V4(v4)),
-            Address::IPv6(v6) => Ok(SocketAddr::V6(v6)),
+            Address::SocketAddr(s) => Ok(s),
             _ => Err(ErrorKind::AddrNotAvailable.into()),
         }
     }
@@ -68,15 +61,15 @@ impl Address {
         W: AsyncWrite + Unpin,
     {
         match self {
-            Address::IPv4(ip) => {
+            Address::SocketAddr(SocketAddr::V4(addr)) => {
                 writer.write_all(&[0x01]).await?;
-                writer.write_all(&ip.ip().octets()).await?;
-                Self::write_port(writer, ip.port()).await?;
+                writer.write_all(&addr.ip().octets()).await?;
+                Self::write_port(writer, addr.port()).await?;
             }
-            Address::IPv6(ip) => {
+            Address::SocketAddr(SocketAddr::V6(addr)) => {
                 writer.write_all(&[0x04]).await?;
-                writer.write_all(&ip.ip().octets()).await?;
-                Self::write_port(writer, ip.port()).await?;
+                writer.write_all(&addr.ip().octets()).await?;
+                Self::write_port(writer, addr.port()).await?;
             }
             Address::Domain(domain, port) => {
                 if domain.len() >= 256 {
@@ -101,7 +94,7 @@ impl Address {
             1 => {
                 let mut ip = [0u8; 4];
                 reader.read_exact(&mut ip).await?;
-                Address::IPv4(SocketAddrV4::new(
+                Address::SocketAddr(SocketAddr::new(
                     ip.into(),
                     Self::read_port(&mut reader).await?,
                 ))
@@ -126,11 +119,9 @@ impl Address {
             4 => {
                 let mut ip = [0u8; 16];
                 reader.read_exact(&mut ip).await?;
-                Address::IPv6(SocketAddrV6::new(
+                Address::SocketAddr(SocketAddr::new(
                     ip.into(),
                     Self::read_port(&mut reader).await?,
-                    0,
-                    0,
                 ))
             }
             _ => {

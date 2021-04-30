@@ -8,7 +8,7 @@ use rd_interface::{
     IntoAddress, IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
 use std::{
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     sync::{Arc, RwLock},
 };
 
@@ -99,15 +99,12 @@ impl Socks5Server {
                     }
                 };
                 let dst = match dst {
-                    Address::IPv4(_) => {
-                        rd_interface::Address::IPv4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
-                    }
-                    Address::IPv6(_) => rd_interface::Address::IPv6(SocketAddrV6::new(
-                        Ipv6Addr::UNSPECIFIED,
-                        0,
-                        0,
-                        0,
-                    )),
+                    Address::SocketAddr(SocketAddr::V4(_)) => rd_interface::Address::SocketAddr(
+                        SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
+                    ),
+                    Address::SocketAddr(SocketAddr::V6(_)) => rd_interface::Address::SocketAddr(
+                        SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
+                    ),
                     _ => {
                         // TODO better error
                         socket
