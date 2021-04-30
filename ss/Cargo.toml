@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.3" }
 # rd-interface = "0.3"
-shadowsocks = { version = "1.9.2", features = [ "stream-cipher" ] }
+shadowsocks = { version = "1.10.3", features = [ "stream-cipher", "aead-cipher-extra" ] }
 serde_derive = "1.0"
 serde = "1.0"
 tokio-util = { version = "0.6.3", features = [ "compat" ] }

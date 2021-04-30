@@ -8,7 +8,7 @@ use serde::{
     Deserializer,
 };
 use shadowsocks::{crypto::v1::CipherKind, relay::socks5::Address as SSAddress, ProxyClientStream};
-use std::{io, net::SocketAddr, pin, task};
+use std::{io, net::SocketAddr, pin, str::FromStr, task};
 use task::{Context, Poll};
 use tokio_util::compat::Compat;
 
@@ -53,7 +53,8 @@ where
                 "a chiper from aes-128-gcm aes-256-gcm
 aes-128-cfb aes-192-cfb aes-256-cfb
 aes-128-ctr aes-192-ctr aes-256-ctr
-rc4-md5 chacha20-ietf chacha20-ietf-poly1305"
+rc4-md5 chacha20-ietf
+chacha20-ietf-poly1305 xchacha20-ietf-poly1305"
             )
         }
 
@@ -61,21 +62,10 @@ rc4-md5 chacha20-ietf chacha20-ietf-poly1305"
         where
             E: de::Error,
         {
-            Ok(WrapCipher(match s {
-                "aes-128-gcm" => CipherKind::AES_128_GCM,
-                "aes-256-gcm" => CipherKind::AES_256_GCM,
-                "aes-128-cfb" => CipherKind::AES_128_CFB128,
-                "aes-192-cfb" => CipherKind::AES_192_CFB128,
-                "aes-256-cfb" => CipherKind::AES_256_CFB128,
-                "aes-128-ctr" => CipherKind::AES_128_CTR,
-                "aes-192-ctr" => CipherKind::AES_192_CTR,
-                "aes-256-ctr" => CipherKind::AES_256_CTR,
-                "rc4-md5" => CipherKind::SS_RC4_MD5,
-                "chacha20-ietf" => CipherKind::CHACHA20,
-                "chacha20-ietf-poly1305" => CipherKind::CHACHA20_POLY1305,
-
-                _ => return Err(de::Error::invalid_value(de::Unexpected::Str(s), &self)),
-            }))
+            match CipherKind::from_str(s) {
+                Ok(c) => Ok(WrapCipher(c)),
+                Err(_) => Err(de::Error::invalid_value(de::Unexpected::Str(s), &self)),
+            }
         }
     }
 
