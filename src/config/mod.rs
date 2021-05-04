@@ -155,6 +155,12 @@ impl Chain {
             Chain::Many(v) => v.clone(),
         }
     }
+    pub fn as_ref(&self) -> Vec<&str> {
+        match self {
+            Chain::One(s) => vec![&s],
+            Chain::Many(v) => v.iter().map(AsRef::as_ref).collect(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

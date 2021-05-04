@@ -1,63 +1,40 @@
 use crate::{config, controller::Inner};
-use async_graphql::{Interface, Object, Result};
+use async_graphql::{Interface, Object, Result, SimpleObject};
 use async_std::sync::RwLockReadGuard;
 
-pub struct IdNet<'a>(&'a str, &'a config::Net);
-pub struct IdServer<'a>(&'a str, &'a config::Server);
-
-#[Object(name = "Net")]
-impl<'a> IdNet<'a> {
-    async fn id(&self) -> &str {
-        &self.0
-    }
-    async fn r#type(&self) -> &str {
-        &self.1.net_type
-    }
-    async fn chain(&self) -> Vec<String> {
-        self.1.chain.to_vec()
-    }
-    // TODO: rest
-}
-#[Object(name = "Server")]
-impl<'a> IdServer<'a> {
-    async fn id(&self) -> &str {
-        &self.0
-    }
-    async fn r#type(&self) -> &str {
-        &self.1.server_type
-    }
-    async fn listen(&self) -> &str {
-        &self.1.listen
-    }
-    async fn net(&self) -> &str {
-        &self.1.net
-    }
+#[derive(SimpleObject)]
+pub struct Net<'a> {
+    id: &'a str,
+    r#type: &'a str,
+    chain: Vec<&'a str>,
     // TODO: rest
 }
 
-struct CompositeRule<'a>(&'a str, &'a config::CompositeRule);
-
-#[Object]
-impl<'a> CompositeRule<'a> {
-    async fn id(&self) -> &str {
-        &self.0
-    }
+#[derive(SimpleObject)]
+pub struct Server<'a> {
+    id: &'a str,
+    r#type: &'a str,
+    listen: &'a str,
+    net: &'a str,
+    // TODO: rest
 }
 
-struct CompositeSelect<'a>(&'a str, &'a config::NetList);
+#[derive(SimpleObject)]
+struct CompositeRule<'a> {
+    id: &'a str,
+    name: Option<&'a str>,
+}
 
-#[Object]
-impl<'a> CompositeSelect<'a> {
-    async fn id(&self) -> &str {
-        &self.0
-    }
-    async fn net_list(&self) -> Vec<&str> {
-        self.1.as_ref()
-    }
+#[derive(SimpleObject)]
+struct CompositeSelect<'a> {
+    id: &'a str,
+    name: Option<&'a str>,
+    net_list: Vec<&'a str>,
 }
 
 #[derive(Interface)]
-#[graphql(field(name = "id", type = "&str"))]
+#[graphql(field(name = "id", type = "&&str"))]
+#[graphql(field(name = "name", type = "&Option<&str>"))]
 enum Composite<'a> {
     Rule(CompositeRule<'a>),
     Select(CompositeSelect<'a>),
@@ -73,37 +50,56 @@ impl<'a> Config<'a> {
 
 #[Object]
 impl<'a> Config<'a> {
-    async fn net(&'a self) -> Result<Vec<IdNet<'a>>> {
+    async fn net(&'a self) -> Result<Vec<Net<'a>>> {
         let config = self.cfg();
         let net_list = config
             .net
             .iter()
-            .map(|(k, v)| IdNet(k, v))
+            .map(|(id, v)| Net {
+                id,
+                r#type: &v.net_type,
+                chain: v.chain.as_ref(),
+            })
             .collect::<Vec<_>>();
 
         Ok(net_list)
     }
-    async fn server(&'a self) -> Result<Vec<IdServer<'a>>> {
+    async fn server(&'a self) -> Result<Vec<Server<'a>>> {
         let config = self.cfg();
         let server_list = config
             .server
             .iter()
-            .map(|(k, v)| IdServer(k, v))
+            .map(|(id, v)| Server {
+                id,
+                r#type: &v.server_type,
+                listen: &v.listen,
+                net: &v.net,
+            })
             .collect::<Vec<_>>();
 
         Ok(server_list)
     }
     async fn composite(&'a self) -> Result<Vec<Composite<'a>>> {
         let config = self.cfg();
-        let server_list = config
-            .composite
-            .iter()
-            .map(|(k, v)| match &v.composite.0 {
-                config::Composite::Rule(rule) => Composite::Rule(CompositeRule(k, &rule)),
-                config::Composite::Select => Composite::Select(CompositeSelect(k, &v.net_list)),
-            })
-            .collect::<Vec<_>>();
+        let server_list = config.composite.iter().map(Into::into).collect::<Vec<_>>();
 
         Ok(server_list)
+    }
+}
+
+impl<'a> From<(&'a String, &'a config::CompositeName)> for Composite<'a> {
+    fn from((k, v): (&'a String, &'a config::CompositeName)) -> Self {
+        let k: &str = k;
+        match &v.composite.0 {
+            config::Composite::Rule(_rule) => Composite::Rule(CompositeRule {
+                id: k,
+                name: v.name.as_ref().map(AsRef::as_ref),
+            }),
+            config::Composite::Select => Composite::Select(CompositeSelect {
+                id: k,
+                name: v.name.as_ref().map(AsRef::as_ref),
+                net_list: v.net_list.as_ref(),
+            }),
+        }
     }
 }
