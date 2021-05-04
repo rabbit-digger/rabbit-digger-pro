@@ -2,7 +2,7 @@ use std::fmt;
 
 use super::matcher::{Matcher, MaybeAsync};
 use anyhow::Result;
-use rd_interface::{config::from_value, Address};
+use rd_interface::Address;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::from_str;
 

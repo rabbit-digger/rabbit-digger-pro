@@ -8,7 +8,7 @@ use async_graphql::{
 use async_std::task::spawn;
 use tide::{http::mime, Body, Response, StatusCode};
 
-use crate::{config, controller::Controller};
+use crate::controller::Controller;
 
 #[derive(SimpleObject)]
 struct Server {

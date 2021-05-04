@@ -4,7 +4,6 @@ use async_std::sync::RwLockReadGuard;
 
 pub struct IdNet<'a>(&'a str, &'a config::Net);
 pub struct IdServer<'a>(&'a str, &'a config::Server);
-// pub struct IdComposite<'a>(&'a str, &'a config::CompositeName);
 
 #[Object(name = "Net")]
 impl<'a> IdNet<'a> {

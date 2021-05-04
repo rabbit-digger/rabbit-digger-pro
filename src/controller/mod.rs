@@ -4,7 +4,6 @@ mod wrapper;
 use crate::config;
 
 use self::event::{Event, EventType};
-use anyhow::Result;
 use async_std::{
     channel,
     sync::{RwLock, RwLockReadGuard},
@@ -92,10 +91,6 @@ impl Controller {
         }
         .into_dyn()
     }
-    pub async fn start(&self) -> Result<()> {
-        spawn(serve(self.inner.clone()));
-        Ok(())
-    }
     pub async fn update_config(&self, config: config::Config) {
         self.inner.write().await.config = Some(config);
     }
@@ -108,8 +103,4 @@ impl Inner {
     pub fn config(&self) -> &Option<config::Config> {
         &self.config
     }
-}
-
-async fn serve(inner: Arc<RwLock<Inner>>) {
-    //
 }
