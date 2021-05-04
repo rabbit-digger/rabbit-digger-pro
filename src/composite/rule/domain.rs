@@ -1,8 +1,10 @@
 use std::fmt;
 
-use super::matcher::{Matcher, MatcherRegistry, MaybeAsync};
+use super::matcher::{Matcher, MaybeAsync};
+use anyhow::Result;
 use rd_interface::{config::from_value, Address};
 use serde_derive::{Deserialize, Serialize};
+use serde_json::from_str;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -40,31 +42,11 @@ fn default_method() -> Method {
 }
 
 impl DomainMatcher {
-    pub fn register(registry: &mut MatcherRegistry) {
-        registry.register("domain", |value| {
-            Ok(Box::new(from_value::<DomainMatcher>(value)?))
-        });
-        registry.register("domain_keyword", |value| {
-            Ok(Box::new({
-                let mut this = from_value::<DomainMatcher>(value)?;
-                this.method = Method::Keyword;
-                this
-            }))
-        });
-        registry.register("domain_match", |value| {
-            Ok(Box::new({
-                let mut this = from_value::<DomainMatcher>(value)?;
-                this.method = Method::Match;
-                this
-            }))
-        });
-        registry.register("domain_suffix", |value| {
-            Ok(Box::new({
-                let mut this = from_value::<DomainMatcher>(value)?;
-                this.method = Method::Suffix;
-                this
-            }))
-        });
+    pub fn new(method: String, domain: String) -> Result<DomainMatcher> {
+        Ok(DomainMatcher {
+            method: from_str(&method)?,
+            domain,
+        })
     }
     fn test(&self, domain: &str) -> bool {
         match self.method {

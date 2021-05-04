@@ -1,3 +1,5 @@
+pub(crate) mod default;
+
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{anyhow, Context, Result};
@@ -40,9 +42,9 @@ impl AllNet {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
-    #[serde(default = "plugins")]
+    #[serde(default = "default::plugins")]
     pub plugin_path: PathBuf,
     #[serde(default)]
     pub net: ConfigNet,
@@ -83,6 +85,10 @@ impl NetList {
 
     pub fn clone_net_list(&self) -> Result<Vec<String>> {
         self.0.clone().ok_or(anyhow!("net_list is required"))
+    }
+
+    pub fn as_ref(&self) -> Vec<&str> {
+        self.0.iter().flatten().map(AsRef::as_ref).collect()
     }
 }
 
@@ -129,7 +135,7 @@ impl<'de> serde::Deserialize<'de> for CompositeDefaultType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum Chain {
     One(String),
@@ -137,31 +143,37 @@ pub enum Chain {
 }
 
 impl Chain {
-    pub fn to_vec(self) -> Vec<String> {
+    pub fn into_vec(self) -> Vec<String> {
         match self {
             Chain::One(s) => vec![s],
             Chain::Many(v) => v,
         }
     }
+    pub fn to_vec(&self) -> Vec<String> {
+        match self {
+            Chain::One(s) => vec![s.clone()],
+            Chain::Many(v) => v.clone(),
+        }
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Net {
     #[serde(rename = "type")]
     pub net_type: String,
-    #[serde(default = "local_chain")]
+    #[serde(default = "default::local_chain")]
     pub chain: Chain,
     #[serde(flatten)]
     pub rest: Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Server {
     #[serde(rename = "type")]
     pub server_type: String,
-    #[serde(default = "local_string")]
+    #[serde(default = "default::local_string")]
     pub listen: String,
-    #[serde(default = "rule")]
+    #[serde(default = "default::rule")]
     pub net: String,
     #[serde(flatten)]
     pub rest: Value,
@@ -169,11 +181,9 @@ pub struct Server {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompositeRuleItem {
-    #[serde(rename = "type")]
-    pub rule_type: String,
     pub target: String,
     #[serde(flatten)]
-    pub rest: Value,
+    pub matcher: Matcher,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -181,24 +191,12 @@ pub struct CompositeRule {
     pub rule: Vec<CompositeRuleItem>,
 }
 
-pub(crate) fn local_chain() -> Chain {
-    Chain::One("local".to_string())
-}
-
-pub(crate) fn noop_chain() -> Chain {
-    Chain::One("noop".to_string())
-}
-
-fn local_string() -> String {
-    "local".to_string()
-}
-
-fn rule() -> String {
-    "rule".to_string()
-}
-
-fn plugins() -> PathBuf {
-    PathBuf::from("plugins")
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Matcher {
+    Domain { method: String, domain: String },
+    IpCidr { ip_cidr: String },
+    Any,
 }
 
 impl Config {

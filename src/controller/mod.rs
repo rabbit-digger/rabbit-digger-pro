@@ -1,10 +1,13 @@
 mod event;
 mod wrapper;
 
+use crate::config;
+
 use self::event::{Event, EventType};
 use anyhow::Result;
 use async_std::{
     channel,
+    sync::{RwLock, RwLockReadGuard},
     task::{sleep, spawn},
 };
 use rd_interface::{
@@ -12,7 +15,9 @@ use rd_interface::{
 };
 use std::{sync::Arc, time::Duration};
 
-struct Inner {}
+pub(crate) struct Inner {
+    config: Option<config::Config>,
+}
 
 #[derive(Debug)]
 pub struct TaskInfo {
@@ -21,7 +26,7 @@ pub struct TaskInfo {
 
 #[derive(Clone)]
 pub struct Controller {
-    inner: Arc<Inner>,
+    inner: Arc<RwLock<Inner>>,
     sender: channel::Sender<Event>,
 }
 
@@ -75,7 +80,7 @@ async fn process(rx: channel::Receiver<Event>) {
 
 impl Controller {
     pub fn new() -> Controller {
-        let inner = Arc::new(Inner {});
+        let inner = Arc::new(RwLock::new(Inner { config: None }));
         let (sender, rx) = channel::unbounded();
         spawn(process(rx));
         Controller { inner, sender }
@@ -91,8 +96,20 @@ impl Controller {
         spawn(serve(self.inner.clone()));
         Ok(())
     }
+    pub async fn update_config(&self, config: config::Config) {
+        self.inner.write().await.config = Some(config);
+    }
+    pub(crate) async fn inner<'a>(&'a self) -> RwLockReadGuard<'a, Inner> {
+        self.inner.read().await
+    }
 }
 
-async fn serve(inner: Arc<Inner>) {
+impl Inner {
+    pub fn config(&self) -> &Option<config::Config> {
+        &self.config
+    }
+}
+
+async fn serve(inner: Arc<RwLock<Inner>>) {
     //
 }

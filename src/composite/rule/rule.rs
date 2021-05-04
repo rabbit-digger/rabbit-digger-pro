@@ -1,7 +1,7 @@
-use super::matcher::{self, BoxMatcher};
+use super::matcher::BoxMatcher;
 use super::udp::UdpRuleSocket;
 use super::{any::AnyMatcher, domain::DomainMatcher, ip_cidr::IPMatcher};
-use crate::config::{CompositeRule, CompositeRuleItem};
+use crate::config::{CompositeRule, CompositeRuleItem, Matcher};
 use std::{collections::HashMap, io};
 
 use rd_interface::{
@@ -10,20 +10,17 @@ use rd_interface::{
 };
 
 pub struct RuleItem {
-    pub rule_type: String,
     pub target_name: String,
     pub target: Net,
     matcher: BoxMatcher,
 }
 
-fn get_matcher_registry() -> matcher::MatcherRegistry {
-    let mut registry = matcher::MatcherRegistry::new();
-
-    DomainMatcher::register(&mut registry);
-    AnyMatcher::register(&mut registry);
-    IPMatcher::register(&mut registry);
-
-    registry
+fn get_matcher(cfg: Matcher) -> anyhow::Result<BoxMatcher> {
+    Ok(match cfg {
+        Matcher::Any => Box::new(AnyMatcher::new()),
+        Matcher::Domain { method, domain } => Box::new(DomainMatcher::new(method, domain)?),
+        Matcher::IpCidr { ip_cidr } => Box::new(IPMatcher::new(ip_cidr)?),
+    })
 }
 
 #[derive(Clone)]
@@ -33,27 +30,20 @@ pub struct Rule {
 
 impl Rule {
     fn new(net: HashMap<String, Net>, config: CompositeRule) -> anyhow::Result<Rule> {
-        let registry = get_matcher_registry();
         let rule = config
             .rule
             .into_iter()
-            .map(
-                |CompositeRuleItem {
-                     rule_type,
-                     target,
-                     rest,
-                 }| {
-                    Ok(RuleItem {
-                        matcher: registry.get(&rule_type, rest)?,
-                        rule_type,
-                        target: net
-                            .get(&target)
-                            .ok_or(anyhow::anyhow!("target is not found: {}", target))?
-                            .to_owned(),
-                        target_name: target,
-                    })
-                },
-            )
+            .map(|CompositeRuleItem { target, matcher }| {
+                let matcher = get_matcher(matcher)?;
+                Ok(RuleItem {
+                    matcher,
+                    target: net
+                        .get(&target)
+                        .ok_or(anyhow::anyhow!("target is not found: {}", target))?
+                        .to_owned(),
+                    target_name: target,
+                })
+            })
             .collect::<anyhow::Result<Vec<_>>>()?;
         let rule = Arc::new(rule);
 

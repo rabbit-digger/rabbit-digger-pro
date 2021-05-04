@@ -63,10 +63,14 @@ impl RabbitDigger {
             .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)))
             .and_then(|c: config::Config| c.post_process());
         pin_mut!(config_stream);
-        self._run(controller, config_stream).await
+        self.run_with_config_stream(controller, config_stream).await
     }
 
-    async fn _run<S>(&self, controller: &controller::Controller, mut config_stream: S) -> Result<()>
+    async fn run_with_config_stream<S>(
+        &self,
+        controller: &controller::Controller,
+        mut config_stream: S,
+    ) -> Result<()>
     where
         S: Stream<Item = Result<config::Config>> + Unpin,
     {
@@ -87,6 +91,8 @@ impl RabbitDigger {
                     .write_all(&serde_yaml::to_vec(&config)?)
                     .await?;
             }
+
+            controller.update_config(config.clone()).await;
             let run_fut = self.run_once(controller, config);
             pin_mut!(run_fut);
             let new_config = match try_select(run_fut, config_stream.try_next()).await {
@@ -101,6 +107,7 @@ impl RabbitDigger {
                 }
                 Err(Either::Right((e, _))) => return Err(e),
             };
+
             config = match new_config {
                 Some(v) => v,
                 None => return Ok(()),
@@ -208,7 +215,7 @@ fn init_net(
                     let net_item = registry.get_net(&i.net_type)?;
                     let chains = i
                         .chain
-                        .to_vec()
+                        .into_vec()
                         .into_iter()
                         .map(|s| {
                             net.get(&s).map(|s| s.clone()).ok_or(anyhow!(

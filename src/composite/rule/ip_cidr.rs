@@ -1,9 +1,11 @@
 use std::{fmt, net::SocketAddr, str::FromStr};
 
-use super::matcher::{Matcher, MatcherRegistry, MaybeAsync};
-use rd_interface::{config::from_value, Address};
+use super::matcher::{Matcher, MaybeAsync};
+use anyhow::Result;
+use rd_interface::Address;
 use serde::de::{self, Deserialize, Deserializer};
 use serde_derive::Deserialize;
+use serde_json::from_str;
 use smoltcp::wire::{IpAddress, IpCidr};
 
 #[derive(Debug)]
@@ -35,10 +37,10 @@ pub struct IPMatcher {
 }
 
 impl IPMatcher {
-    pub fn register(registry: &mut MatcherRegistry) {
-        registry.register("ip_cidr", |value| {
-            Ok(Box::new(from_value::<IPMatcher>(value)?))
-        });
+    pub fn new(ip_cidr: String) -> Result<IPMatcher> {
+        Ok(IPMatcher {
+            ip_cidr: from_str(&ip_cidr)?,
+        })
     }
     fn test(&self, address: impl Into<IpAddress>) -> bool {
         let address: IpAddress = address.into();

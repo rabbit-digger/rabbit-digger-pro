@@ -1,3 +1,5 @@
+mod model;
+
 use anyhow::Result;
 use async_graphql::{
     http::{playground_source, GraphQLPlaygroundConfig},
@@ -6,24 +8,46 @@ use async_graphql::{
 use async_std::task::spawn;
 use tide::{http::mime, Body, Response, StatusCode};
 
-use crate::controller::Controller;
+use crate::{config, controller::Controller};
 
 #[derive(SimpleObject)]
-pub struct Demo {
-    pub id: usize,
+struct Server {
+    id: String,
+    r#type: String,
+    listen: String,
+    net: String,
+    // TODO: rest
+}
+
+#[derive(SimpleObject)]
+struct Composite {
+    name: Option<String>,
+    net_list: Option<Vec<String>>,
 }
 
 pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-    async fn demo(&self, _ctx: &Context<'_>) -> Demo {
-        Demo { id: 42 }
+    async fn config<'a>(
+        &'a self,
+        ctx: &Context<'a>,
+    ) -> async_graphql::Result<Option<model::Config<'a>>> {
+        let ctl = ctx.data::<Controller>()?;
+        let inner = ctl.inner().await;
+
+        if inner.config().is_none() {
+            return Ok(None);
+        }
+
+        Ok(Some(model::Config(inner)))
     }
 }
 
 pub async fn serve(bind: String, controller: &Controller) -> Result<()> {
-    let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription).finish();
+    let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
+        .data(controller.clone())
+        .finish();
 
     let mut app = tide::new();
     app.at("/graphql")

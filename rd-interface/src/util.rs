@@ -6,9 +6,9 @@ use crate::{
     Address, Context, Result, NOT_IMPLEMENTED,
 };
 use futures_util::{
-    future::{try_join, BoxFuture},
+    future::{try_select, BoxFuture, Either},
     io::copy,
-    AsyncReadExt, AsyncWriteExt,
+    pin_mut, AsyncReadExt, AsyncWriteExt,
 };
 use std::{
     collections::VecDeque,
@@ -22,23 +22,30 @@ use std::{
 pub async fn connect_tcp(
     t1: impl AsyncRead + AsyncWrite,
     t2: impl AsyncRead + AsyncWrite,
-) -> io::Result<(u64, u64)> {
+) -> io::Result<()> {
     let (mut read_1, mut write_1) = t1.split();
     let (mut read_2, mut write_2) = t2.split();
 
-    try_join(
-        async {
-            let r = copy(&mut read_1, &mut write_2).await;
-            write_2.close().await?;
-            r
-        },
-        async {
-            let r = copy(&mut read_2, &mut write_1).await;
-            write_1.close().await?;
-            r
-        },
-    )
-    .await
+    let fut1 = async {
+        let r = copy(&mut read_1, &mut write_2).await;
+        write_2.close().await?;
+        r
+    };
+    let fut2 = async {
+        let r = copy(&mut read_2, &mut write_1).await;
+        write_1.close().await?;
+        r
+    };
+
+    pin_mut!(fut1);
+    pin_mut!(fut2);
+
+    match try_select(fut1, fut2).await {
+        Ok(_) => {}
+        Err(Either::Left((e, _))) | Err(Either::Right((e, _))) => return Err(e),
+    };
+
+    Ok(())
 }
 
 pub struct PeekableTcpStream {

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::{
     config::{
-        local_chain, noop_chain, Composite, CompositeName, CompositeRule, CompositeRuleItem,
-        Config, Net, Server,
+        default, Composite, CompositeName, CompositeRule, CompositeRuleItem, Config, Matcher, Net,
+        Server,
     },
     util::topological_sort,
 };
@@ -60,7 +60,7 @@ pub fn from_config(value: Value) -> Result<Clash> {
 fn ghost_net() -> Net {
     Net {
         net_type: "alias".to_string(),
-        chain: noop_chain(),
+        chain: default::noop_chain(),
         rest: Value::Null,
     }
 }
@@ -80,7 +80,7 @@ impl Clash {
                 let params: Param = serde_json::from_value(p.rest)?;
                 Net {
                     net_type: "shadowsocks".to_string(),
-                    chain: local_chain(),
+                    chain: default::local_chain(),
                     rest: json!({
                         "server": params.server,
                         "port": params.port,
@@ -138,7 +138,7 @@ impl Clash {
         let rule_type = ps_next()?;
         let item = match rule_type {
             "DOMAIN-SUFFIX" | "DOMAIN-KEYWORD" | "DOMAIN" => {
-                let domain = ps_next()?;
+                let domain = ps_next()?.to_string();
                 let target = self.get_target(ps_next()?)?;
                 let method = match rule_type {
                     "DOMAIN-SUFFIX" => "suffix",
@@ -148,26 +148,23 @@ impl Clash {
                 }
                 .to_string();
                 CompositeRuleItem {
-                    rule_type: "domain".to_string(),
                     target,
-                    rest: json!({ "domain": domain, "method": method }),
+                    matcher: Matcher::Domain { method, domain },
                 }
             }
             "IP-CIDR" | "IP-CIDR6" => {
-                let ip_cidr = ps_next()?;
+                let ip_cidr = ps_next()?.to_string();
                 let target = self.get_target(ps_next()?)?;
                 CompositeRuleItem {
-                    rule_type: "ip_cidr".to_string(),
                     target,
-                    rest: json!({ "ip_cidr": ip_cidr }),
+                    matcher: Matcher::IpCidr { ip_cidr },
                 }
             }
             "MATCH" => {
                 let target = self.get_target(ps_next()?)?;
                 CompositeRuleItem {
-                    rule_type: "any".to_string(),
                     target,
-                    rest: json!({}),
+                    matcher: Matcher::Any,
                 }
             }
             _ => return Err(anyhow!("Rule prefix {} is not supported", rule_type)),
