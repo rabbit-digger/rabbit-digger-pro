@@ -17,7 +17,7 @@ use rd_interface::{
 };
 
 type UdpPacket = (Vec<u8>, SocketAddr);
-type NatTable = RwLock<LruCache<Address, DroppableUdpSocket>>;
+type NatTable = RwLock<LruCache<String, DroppableUdpSocket>>;
 
 pub struct UdpRuleSocket {
     rule: Rule,
@@ -25,6 +25,7 @@ pub struct UdpRuleSocket {
     nat: NatTable,
     tx: Sender<UdpPacket>,
     rx: Receiver<UdpPacket>,
+    bind_addr: Address,
 }
 
 struct DroppableUdpSocket(UdpSocket, Option<oneshot::Sender<()>>);
@@ -57,7 +58,7 @@ impl Drop for DroppableUdpSocket {
 }
 
 impl UdpRuleSocket {
-    pub fn new(rule: Rule, context: Context) -> UdpRuleSocket {
+    pub fn new(rule: Rule, context: Context, bind_addr: Address) -> UdpRuleSocket {
         let (tx, rx) = bounded::<UdpPacket>(100);
         let nat = RwLock::new(LruCache::with_expiry_duration_and_capacity(
             Duration::from_secs(10 * 60),
@@ -70,6 +71,7 @@ impl UdpRuleSocket {
             nat,
             tx,
             rx,
+            bind_addr,
         }
     }
 }
@@ -91,10 +93,12 @@ impl IUdpSocket for UdpRuleSocket {
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
         let mut ctx = self.context.clone();
-        let nat_has = self.nat.read().await.contains_key(&addr);
+        let out_net: &str = &self.rule.get_rule(&mut ctx, &addr).await?.target_name;
+
+        let nat_has = self.nat.read().await.contains_key(out_net);
 
         if nat_has {
-            if let Some(udp) = self.nat.write().await.get(&addr) {
+            if let Some(udp) = self.nat.write().await.get(out_net) {
                 return udp.0.send_to(buf, addr).await;
             }
         }
@@ -104,14 +108,14 @@ impl IUdpSocket for UdpRuleSocket {
             .get_rule(&mut ctx, &addr)
             .await?
             .target
-            .udp_bind(&mut ctx, addr.clone())
+            .udp_bind(&mut ctx, self.bind_addr.clone())
             .await?;
         let size = udp.send_to(buf, addr.clone()).await?;
 
-        self.nat
-            .write()
-            .await
-            .insert(addr.clone(), DroppableUdpSocket::new(udp, self.tx.clone()));
+        self.nat.write().await.insert(
+            out_net.to_owned(),
+            DroppableUdpSocket::new(udp, self.tx.clone()),
+        );
 
         Ok(size)
     }
