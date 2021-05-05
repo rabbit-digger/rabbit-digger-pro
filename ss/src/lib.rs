@@ -78,10 +78,7 @@ impl INet for SSNet {
 
     async fn udp_bind(&self, ctx: &mut rd_interface::Context, _addr: Address) -> Result<UdpSocket> {
         let cfg = self.config.clone();
-        let socket = self
-            .net
-            .udp_bind(ctx, (cfg.server.as_ref(), cfg.port).into_address()?)
-            .await?;
+        let socket = self.net.udp_bind(ctx, "0.0.0.0:0".into_address()?).await?;
         let svr_cfg = ServerConfig::new((cfg.server, cfg.port), cfg.password, cfg.cipher.into());
         let udp = WrapSSUdp::new(self.context.clone(), socket, &svr_cfg);
         Ok(udp.into_dyn())
