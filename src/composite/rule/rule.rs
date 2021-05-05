@@ -49,7 +49,7 @@ impl Rule {
 
         Ok(Rule { rule })
     }
-    pub async fn get_rule(&self, ctx: &mut Context, target: &Address) -> Result<&RuleItem> {
+    pub async fn get_rule(&self, ctx: &Context, target: &Address) -> Result<&RuleItem> {
         let src = ctx
             .get_common::<SourceAddress>()
             .map(|s| s.addr.to_string())
@@ -64,7 +64,6 @@ impl Rule {
                     &target,
                     &rule.matcher
                 );
-                ctx.append_composite(&rule.target_name);
                 return Ok(&rule);
             }
         }
@@ -73,6 +72,11 @@ impl Rule {
         Err(rd_interface::Error::IO(
             io::ErrorKind::ConnectionRefused.into(),
         ))
+    }
+    pub async fn get_rule_append(&self, ctx: &mut Context, target: &Address) -> Result<&RuleItem> {
+        let rule = self.get_rule(ctx, target).await?;
+        ctx.append_composite(&rule.target_name);
+        Ok(rule)
     }
 }
 
@@ -99,7 +103,7 @@ impl INet for RuleNet {
 
         let r = self
             .rule
-            .get_rule(ctx, &addr)
+            .get_rule_append(ctx, &addr)
             .await?
             .target
             .tcp_connect(ctx, addr.clone())

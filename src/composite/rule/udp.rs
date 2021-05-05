@@ -3,7 +3,7 @@ use std::{net::SocketAddr, time::Duration};
 use super::rule::Rule;
 use async_std::{
     channel::{bounded, Receiver, Sender},
-    sync::RwLock,
+    sync::Mutex,
     task::spawn,
 };
 use futures::{
@@ -17,12 +17,13 @@ use rd_interface::{
 };
 
 type UdpPacket = (Vec<u8>, SocketAddr);
-type NatTable = RwLock<LruCache<String, DroppableUdpSocket>>;
+type NatTable = Mutex<LruCache<String, DroppableUdpSocket>>;
 
 pub struct UdpRuleSocket {
     rule: Rule,
     context: Context,
     nat: NatTable,
+    cache: Mutex<LruCache<Address, String>>,
     tx: Sender<UdpPacket>,
     rx: Receiver<UdpPacket>,
     bind_addr: Address,
@@ -60,7 +61,7 @@ impl Drop for DroppableUdpSocket {
 impl UdpRuleSocket {
     pub fn new(rule: Rule, context: Context, bind_addr: Address) -> UdpRuleSocket {
         let (tx, rx) = bounded::<UdpPacket>(100);
-        let nat = RwLock::new(LruCache::with_expiry_duration_and_capacity(
+        let nat = Mutex::new(LruCache::with_expiry_duration_and_capacity(
             Duration::from_secs(10 * 60),
             100,
         ));
@@ -69,9 +70,23 @@ impl UdpRuleSocket {
             rule,
             context,
             nat,
+            cache: Mutex::new(LruCache::with_expiry_duration_and_capacity(
+                Duration::from_secs(10 * 60),
+                100,
+            )),
             tx,
             rx,
             bind_addr,
+        }
+    }
+    async fn get_net_name<'a>(&'a self, ctx: &Context, addr: &Address) -> Result<String> {
+        let mut c = self.cache.lock().await;
+        if let Some(v) = c.get(addr) {
+            Ok(v.to_string())
+        } else {
+            let out_net = self.rule.get_rule(ctx, addr).await?.target_name.to_string();
+            c.insert(addr.clone(), out_net.clone());
+            Ok(out_net)
         }
     }
 }
@@ -92,32 +107,30 @@ impl IUdpSocket for UdpRuleSocket {
     }
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        let mut ctx = self.context.clone();
-        let out_net: &str = &self.rule.get_rule(&mut ctx, &addr).await?.target_name;
+        let out_net = self.get_net_name(&self.context, &addr).await?;
 
-        let nat_has = self.nat.read().await.contains_key(out_net);
-
-        if nat_has {
-            if let Some(udp) = self.nat.write().await.get(out_net) {
+        {
+            if let Some(udp) = self.nat.lock().await.get(&out_net) {
                 return udp.0.send_to(buf, addr).await;
             }
         }
 
         let udp = self
             .rule
-            .get_rule(&mut ctx, &addr)
+            .get_rule(&self.context, &addr)
             .await?
             .target
-            .udp_bind(&mut ctx, self.bind_addr.clone())
+            .udp_bind(&mut self.context.clone(), self.bind_addr.clone())
             .await?;
-        let size = udp.send_to(buf, addr.clone()).await?;
 
-        self.nat.write().await.insert(
-            out_net.to_owned(),
-            DroppableUdpSocket::new(udp, self.tx.clone()),
-        );
+        {
+            self.nat.lock().await.insert(
+                out_net,
+                DroppableUdpSocket::new(udp.clone(), self.tx.clone()),
+            );
+        }
 
-        Ok(size)
+        Ok(udp.send_to(buf, addr.clone()).await?)
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
