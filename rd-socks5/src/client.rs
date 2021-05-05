@@ -73,12 +73,12 @@ impl IUdpSocket for Socks5UdpSocket {
         Ok((to_copy, addr.to_socket_addr()?))
     }
 
-    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
+    async fn send_to(&self, buf: &[u8], addr: rd_interface::Address) -> Result<usize> {
         let addr: Address = addr.into();
 
         let bytes = pack_udp(addr, buf).await?;
 
-        self.0.send_to(&bytes, self.2).await
+        self.0.send_to(&bytes, self.2.into()).await
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {

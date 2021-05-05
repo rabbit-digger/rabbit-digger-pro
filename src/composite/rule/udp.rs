@@ -89,14 +89,13 @@ impl IUdpSocket for UdpRuleSocket {
         Ok((to_copy, addr))
     }
 
-    async fn send_to(&self, buf: &[u8], saddr: SocketAddr) -> Result<usize> {
+    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
         let mut ctx = self.context.clone();
-        let addr: Address = saddr.into();
         let nat_has = self.nat.read().await.contains_key(&addr);
 
         if nat_has {
             if let Some(udp) = self.nat.write().await.get(&addr) {
-                return udp.0.send_to(buf, saddr).await;
+                return udp.0.send_to(buf, addr).await;
             }
         }
 
@@ -107,7 +106,7 @@ impl IUdpSocket for UdpRuleSocket {
             .target
             .udp_bind(&mut ctx, addr.clone())
             .await?;
-        let size = udp.send_to(buf, saddr).await?;
+        let size = udp.send_to(buf, addr.clone()).await?;
 
         self.nat
             .write()

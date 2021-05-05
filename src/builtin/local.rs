@@ -90,7 +90,8 @@ impl rd_interface::IUdpSocket for Udp {
         self.0.recv_from(buf).await.map_err(Into::into)
     }
 
-    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
+    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
+        let addr = addr.resolve(lookup_host).await?;
         self.0.send_to(buf, addr).await.map_err(Into::into)
     }
 

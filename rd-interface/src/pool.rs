@@ -6,7 +6,7 @@ use futures_util::{
     task::{SpawnError, SpawnExt},
 };
 
-use crate::{async_trait, Result, UdpSocket};
+use crate::{async_trait, Address, Result, UdpSocket};
 
 #[derive(Clone)]
 pub struct ConnectionPool {
@@ -48,7 +48,7 @@ impl ConnectionPool {
 
 #[async_trait]
 pub trait IUdpChannel: Send + Sync {
-    async fn recv_send_to(&self, data: &mut [u8]) -> Result<(usize, SocketAddr)>;
+    async fn recv_send_to(&self, data: &mut [u8]) -> Result<(usize, Address)>;
     async fn send_recv_from(&self, data: &[u8], addr: SocketAddr) -> Result<usize>;
 }
 type UdpChannel = Arc<dyn IUdpChannel>;

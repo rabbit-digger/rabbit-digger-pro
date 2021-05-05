@@ -51,7 +51,7 @@ impl<T: ITcpStream> IntoDyn<TcpStream> for T {
 #[async_trait]
 pub trait IUdpSocket: Unpin + Send + Sync {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)>;
-    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize>;
+    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize>;
     async fn local_addr(&self) -> Result<SocketAddr>;
 }
 pub type UdpSocket = Arc<dyn IUdpSocket>;

@@ -188,7 +188,7 @@ pub struct Socks5UdpSocket(UdpSocket, TcpStream, RwLock<Option<SocketAddr>>);
 
 #[async_trait]
 impl IUdpChannel for Socks5UdpSocket {
-    async fn recv_send_to(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+    async fn recv_send_to(&self, buf: &mut [u8]) -> Result<(usize, rd_interface::Address)> {
         // 259 is max size of address, atype 1 + domain len 1 + domain 255 + port 2
         let bytes_size = 259 + buf.len();
         let mut bytes = vec![0u8; bytes_size];
@@ -203,7 +203,7 @@ impl IUdpChannel for Socks5UdpSocket {
         let to_copy = payload.len().min(buf.len());
         buf[..to_copy].copy_from_slice(&payload[..to_copy]);
 
-        Ok((to_copy, addr.to_socket_addr()?))
+        Ok((to_copy, addr.into()))
     }
 
     async fn send_recv_from(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
@@ -213,7 +213,7 @@ impl IUdpChannel for Socks5UdpSocket {
 
         let addr = { *self.2.read().unwrap() };
         Ok(if let Some(addr) = addr {
-            self.0.send_to(&bytes, addr).await?
+            self.0.send_to(&bytes, addr.into()).await?
         } else {
             0
         })
