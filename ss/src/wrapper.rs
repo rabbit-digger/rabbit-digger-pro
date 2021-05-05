@@ -1,13 +1,18 @@
+use crate::udp::{decrypt_payload, encrypt_payload};
+use bytes::BytesMut;
 use pin::Pin;
 use rd_interface::{
-    async_trait, Address as RDAddress, AsyncRead, AsyncWrite, ITcpStream, TcpStream,
-    NOT_IMPLEMENTED,
+    async_trait, Address as RDAddress, AsyncRead, AsyncWrite, ITcpStream, IUdpSocket, TcpStream,
+    UdpSocket, NOT_IMPLEMENTED,
 };
 use serde::{
     de::{self, Visitor},
     Deserializer,
 };
-use shadowsocks::{crypto::v1::CipherKind, relay::socks5::Address as SSAddress, ProxyClientStream};
+use shadowsocks::{
+    context::SharedContext, crypto::v1::CipherKind, relay::socks5::Address as SSAddress,
+    ProxyClientStream, ServerAddr, ServerConfig,
+};
 use std::{io, net::SocketAddr, pin, str::FromStr, task};
 use task::{Context, Poll};
 use tokio_util::compat::Compat;
@@ -109,5 +114,102 @@ impl ITcpStream for WrapSSTcp {
 
     async fn local_addr(&self) -> rd_interface::Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
+    }
+}
+
+pub struct WrapSSUdp {
+    context: SharedContext,
+    socket: UdpSocket,
+    method: CipherKind,
+    key: Box<[u8]>,
+    server_addr: RDAddress,
+}
+
+impl WrapSSUdp {
+    pub fn new(context: SharedContext, socket: UdpSocket, svr_cfg: &ServerConfig) -> Self {
+        let key = svr_cfg.key().to_vec().into_boxed_slice();
+        let method = svr_cfg.method();
+        let server_addr = match svr_cfg.addr().clone() {
+            ServerAddr::DomainName(d, p) => RDAddress::Domain(d, p),
+            ServerAddr::SocketAddr(s) => RDAddress::SocketAddr(s),
+        };
+
+        WrapSSUdp {
+            context,
+            socket,
+            method,
+            key,
+            server_addr,
+        }
+    }
+}
+
+#[async_trait]
+impl IUdpSocket for WrapSSUdp {
+    async fn local_addr(&self) -> rd_interface::Result<SocketAddr> {
+        Err(NOT_IMPLEMENTED)
+    }
+
+    async fn recv_from(&self, recv_buf: &mut [u8]) -> rd_interface::Result<(usize, SocketAddr)> {
+        // Waiting for response from server SERVER -> CLIENT
+        let (recv_n, target_addr) = self.socket.recv_from(recv_buf).await?;
+        let (n, addr) = decrypt_payload(
+            &self.context,
+            self.method,
+            &self.key,
+            &mut recv_buf[..recv_n],
+        )
+        .await?;
+
+        log::trace!(
+            "UDP server client receive from {}, addr {}, packet length {} bytes, payload length {} bytes",
+            target_addr,
+            addr,
+            recv_n,
+            n,
+        );
+
+        Ok((
+            n,
+            match addr {
+                SSAddress::DomainNameAddress(_, _) => unreachable!("Udp recv_from domain name"),
+                SSAddress::SocketAddress(s) => s,
+            },
+        ))
+    }
+
+    async fn send_to(&self, payload: &[u8], target: RDAddress) -> rd_interface::Result<usize> {
+        let mut send_buf = BytesMut::new();
+        let addr: SSAddress = WrapAddress(target).into();
+        encrypt_payload(
+            &self.context,
+            self.method,
+            &self.key,
+            &addr,
+            payload,
+            &mut send_buf,
+        );
+
+        log::trace!(
+            "UDP server client send to, addr {}, payload length {} bytes, packet length {} bytes",
+            addr,
+            payload.len(),
+            send_buf.len()
+        );
+
+        let send_len = self
+            .socket
+            .send_to(&send_buf, self.server_addr.clone())
+            .await?;
+
+        if send_buf.len() != send_len {
+            log::warn!(
+                "UDP server client send {} bytes, but actually sent {} bytes",
+                send_buf.len(),
+                send_len
+            );
+        }
+
+        Ok(send_len)
     }
 }

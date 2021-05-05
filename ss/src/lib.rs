@@ -1,11 +1,12 @@
+mod udp;
 mod wrapper;
 
 use rd_interface::{
     async_trait,
     config::{from_value, Value},
     util::get_one_net,
-    Address, Arc, INet, IntoAddress, Net, Registry, Result, TcpListener, TcpStream, UdpSocket,
-    NOT_IMPLEMENTED,
+    Address, Arc, INet, IntoAddress, IntoDyn, Net, Registry, Result, TcpListener, TcpStream,
+    UdpSocket, NOT_IMPLEMENTED,
 };
 use serde_derive::Deserialize;
 use shadowsocks::{
@@ -14,7 +15,7 @@ use shadowsocks::{
     ProxyClientStream,
 };
 use tokio_util::compat::*;
-use wrapper::{WrapAddress, WrapCipher, WrapSSTcp};
+use wrapper::{WrapAddress, WrapCipher, WrapSSTcp, WrapSSUdp};
 
 #[derive(Debug, Deserialize, Clone)]
 struct SSNetConfig {
@@ -64,7 +65,7 @@ impl INet for SSNet {
             WrapAddress(addr),
         )
         .compat();
-        Ok(Box::new(WrapSSTcp(client)))
+        Ok(WrapSSTcp(client).into_dyn())
     }
 
     async fn tcp_bind(
@@ -75,12 +76,15 @@ impl INet for SSNet {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn udp_bind(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: Address,
-    ) -> Result<UdpSocket> {
-        Err(NOT_IMPLEMENTED)
+    async fn udp_bind(&self, ctx: &mut rd_interface::Context, _addr: Address) -> Result<UdpSocket> {
+        let cfg = self.config.clone();
+        let socket = self
+            .net
+            .udp_bind(ctx, (cfg.server.as_ref(), cfg.port).into_address()?)
+            .await?;
+        let svr_cfg = ServerConfig::new((cfg.server, cfg.port), cfg.password, cfg.cipher.into());
+        let udp = WrapSSUdp::new(self.context.clone(), socket, &svr_cfg);
+        Ok(udp.into_dyn())
     }
 }
 
