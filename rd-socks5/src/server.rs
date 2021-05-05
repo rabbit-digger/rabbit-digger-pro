@@ -14,6 +14,7 @@ use std::{
 
 struct ServerConfig {
     net: Net,
+    listen_net: Net,
     methods: Vec<Box<dyn Method + Send + Sync>>,
 }
 
@@ -43,7 +44,11 @@ impl Socks5Server {
         pool: ConnectionPool,
     ) -> Result<()> {
         let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
-        let ServerConfig { net, methods, .. } = &*cfg;
+        let ServerConfig {
+            net,
+            methods,
+            listen_net,
+        } = &*cfg;
 
         auth_server(
             &mut socket,
@@ -132,7 +137,7 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
-                let udp = net
+                let udp = listen_net
                     .udp_bind(
                         &mut Context::from_socketaddr(addr),
                         "0.0.0.0:0".into_address()?,
@@ -164,6 +169,7 @@ impl Socks5Server {
         Self {
             config: Arc::new(ServerConfig {
                 net,
+                listen_net: listen_net.clone(),
                 methods: vec![Box::new(NoAuth)],
             }),
             listen_net,
