@@ -1,17 +1,30 @@
-use std::fmt;
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt,
+};
 
 use super::matcher::{Matcher, MaybeAsync};
 use anyhow::Result;
 use rd_interface::Address;
-use serde_derive::{Deserialize, Serialize};
-use serde_json::from_str;
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug)]
 pub enum Method {
     Keyword,
     Suffix,
     Match,
+}
+
+impl TryFrom<String> for Method {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(match value.as_ref() {
+            "keyword" => Method::Keyword,
+            "suffix" => Method::Suffix,
+            "match" => Method::Match,
+            _ => return Err(anyhow::anyhow!("Unsupported method: {}", value)),
+        })
+    }
 }
 
 impl fmt::Display for Method {
@@ -24,9 +37,8 @@ impl fmt::Display for Method {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug)]
 pub struct DomainMatcher {
-    #[serde(default = "default_method")]
     method: Method,
     domain: String,
 }
@@ -37,14 +49,10 @@ impl fmt::Display for DomainMatcher {
     }
 }
 
-fn default_method() -> Method {
-    Method::Suffix
-}
-
 impl DomainMatcher {
     pub fn new(method: String, domain: String) -> Result<DomainMatcher> {
         Ok(DomainMatcher {
-            method: from_str(&method)?,
+            method: method.try_into()?,
             domain,
         })
     }
