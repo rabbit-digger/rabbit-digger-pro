@@ -71,7 +71,7 @@ mod linux {
 pub fn init(_registry: &mut Registry) -> Result<()> {
     #[cfg(target_os = "linux")]
     _registry.add_server("redir", |_listen_net, net, cfg| {
-        let cfg: RedirServerConfig = config::from_value::from_value(cfg)?;
+        let cfg: RedirServerConfig = rd_interface::config::from_value(cfg)?;
         Ok(RedirServer::new(cfg, net))
     });
     Ok(())
