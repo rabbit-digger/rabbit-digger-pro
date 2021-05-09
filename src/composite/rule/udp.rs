@@ -109,10 +109,8 @@ impl IUdpSocket for UdpRuleSocket {
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
         let out_net = self.get_net_name(&self.context, &addr).await?;
 
-        {
-            if let Some(udp) = self.nat.lock().await.get(&out_net) {
-                return udp.0.send_to(buf, addr).await;
-            }
+        if let Some(udp) = self.nat.lock().await.get(&out_net) {
+            return udp.0.send_to(buf, addr).await;
         }
 
         let udp = self
@@ -123,12 +121,10 @@ impl IUdpSocket for UdpRuleSocket {
             .udp_bind(&mut self.context.clone(), self.bind_addr.clone())
             .await?;
 
-        {
-            self.nat.lock().await.insert(
-                out_net,
-                DroppableUdpSocket::new(udp.clone(), self.tx.clone()),
-            );
-        }
+        self.nat.lock().await.insert(
+            out_net,
+            DroppableUdpSocket::new(udp.clone(), self.tx.clone()),
+        );
 
         Ok(udp.send_to(buf, addr.clone()).await?)
     }
