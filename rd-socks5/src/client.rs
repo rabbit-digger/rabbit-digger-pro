@@ -1,15 +1,16 @@
-use super::{
-    auth::{auth_client, Method, NoAuth},
-    common::{pack_udp, parse_udp, Address},
+use crate::protocol::{
+    AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
 };
-use futures::{io::Cursor, prelude::*};
+
+use super::common::{pack_udp, parse_udp, Address};
+use futures::{io::BufWriter, prelude::*};
 use rd_interface::{
-    async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, IUdpSocket, IntoAddress, IntoDyn, Net,
-    Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, error::map_other, AsyncRead, AsyncWrite, INet, ITcpStream, IUdpSocket,
+    IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use std::{
-    io::{self, Error, ErrorKind},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    io,
+    net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -17,7 +18,6 @@ use std::{
 pub struct Socks5Client {
     address: String,
     port: u16,
-    methods: Vec<Box<dyn Method + Send + Sync>>,
     pr: Net,
 }
 
@@ -104,45 +104,13 @@ impl INet for Socks5Client {
         ctx: &mut rd_interface::Context,
         addr: rd_interface::Address,
     ) -> Result<UdpSocket> {
-        let client = self.pr.udp_bind(ctx, addr).await?;
         let mut socket = self.pr.tcp_connect(ctx, self.server()?).await?;
 
-        auth_client(&mut socket, &self.methods()).await?;
+        let req = CommandRequest::udp_associate(addr.clone().into_address()?.into());
+        let resp = self.send_command(&mut socket, req).await?;
+        let client = self.pr.udp_bind(ctx, addr.clone()).await?;
 
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
-        let mut buf = Cursor::new(Vec::new());
-        buf.write_all(&[0x05u8, 0x03u8, 0x00u8]).await?;
-        let addr: Address = addr.into();
-        addr.write(&mut buf).await?;
-        socket.write_all(&buf.into_inner()).await?;
-        socket.flush().await?;
-
-        // server reply. VER, REP, RSV
-        let mut buf = [0u8; 3];
-        socket.read_exact(&mut buf).await?;
-        // TODO: set address to socket
-        let addr = match buf[0..3] {
-            [0x05, 0x00, 0x00] => Address::read(&mut socket).await?,
-            [0x05, err] => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!("server response error {}", err),
-                )
-                .into())
-            }
-            _ => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "server response wrong VER {} REP {} RSV {}",
-                        buf[0], buf[1], buf[2]
-                    ),
-                )
-                .into())
-            }
-        };
-
-        let addr = addr.to_socket_addr()?;
+        let addr = resp.address.to_socket_addr()?;
 
         Ok(Socks5UdpSocket(client, socket, addr).into_dyn())
     }
@@ -153,41 +121,8 @@ impl INet for Socks5Client {
     ) -> Result<TcpStream> {
         let mut socket = self.pr.tcp_connect(ctx, self.server()?).await?;
 
-        auth_client(&mut socket, &self.methods()).await?;
-
-        // connect
-        // VER: 5, CMD: 1(connect)
-        let mut buf = Cursor::new(Vec::new());
-        buf.write_all(&[0x05u8, 0x01, 0x00]).await?;
-        let addr: Address = addr.into_address()?.into();
-        addr.write(&mut buf).await?;
-        socket.write_all(&buf.into_inner()).await?;
-        socket.flush().await?;
-
-        // server reply. VER, REP, RSV
-        let mut buf = [0u8; 3];
-        socket.read_exact(&mut buf).await?;
-        // TODO: set address to socket
-        let _addr = match buf[0..3] {
-            [0x05, 0x00, 0x00] => Address::read(&mut socket).await?,
-            [0x05, err] => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!("server response error {}", err),
-                )
-                .into())
-            }
-            _ => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "server response wrong VER {} REP {} RSV {}",
-                        buf[0], buf[1], buf[2]
-                    ),
-                )
-                .into())
-            }
-        };
+        let req = CommandRequest::connect(addr.into_address()?.into());
+        let _resp = self.send_command(&mut socket, req).await?;
 
         Ok(Socks5TcpStream(socket).into_dyn())
     }
@@ -203,19 +138,38 @@ impl INet for Socks5Client {
 
 impl Socks5Client {
     pub fn new(pr: Net, address: String, port: u16) -> Self {
-        Self {
-            address,
-            port,
-            pr,
-            methods: vec![Box::new(NoAuth)],
-        }
-    }
-    fn methods(&self) -> Vec<&(dyn Method + Send + Sync)> {
-        self.methods.iter().map(|i| &**i).collect::<Vec<_>>()
+        Self { address, port, pr }
     }
     fn server(&self) -> Result<rd_interface::Address> {
         (self.address.as_str(), self.port)
             .into_address()
             .map_err(Into::into)
+    }
+    async fn send_command(
+        &self,
+        socket: &mut TcpStream,
+        command_req: CommandRequest,
+    ) -> Result<CommandResponse> {
+        let (mut rx, tx) = socket.split();
+        let mut tx = BufWriter::with_capacity(512, tx);
+
+        let version = Version::V5;
+        let auth_req = AuthRequest::new(vec![AuthMethod::Noauth]);
+        version.write(&mut tx).await.map_err(map_other)?;
+        auth_req.write(&mut tx).await.map_err(map_other)?;
+        tx.flush().await?;
+
+        Version::read(&mut rx).await.map_err(map_other)?;
+        let resp = AuthResponse::read(&mut rx).await.map_err(map_other)?;
+        if resp.method() != AuthMethod::Noauth {
+            return Err(rd_interface::Error::Other("Auth failed".to_string().into()));
+        }
+
+        command_req.write(&mut tx).await.map_err(map_other)?;
+        tx.flush().await?;
+
+        let command_resp = CommandResponse::read(rx).await.map_err(map_other)?;
+
+        Ok(command_resp)
     }
 }

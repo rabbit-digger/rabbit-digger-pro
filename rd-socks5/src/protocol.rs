@@ -19,6 +19,8 @@ pub enum Error {
     InvalidCommand(u8),
     #[error("Invalid command reply: {0}")]
     InvalidCommandReply(u8),
+    #[error("Command reply with error: {0:?}")]
+    CommandReply(CommandReply),
     #[error("IO error: {0:?}")]
     Io(#[from] io::Error),
 }
@@ -83,6 +85,9 @@ impl Into<u8> for AuthMethod {
 pub struct AuthRequest(Vec<AuthMethod>);
 
 impl AuthRequest {
+    pub fn new(methods: impl Into<Vec<AuthMethod>>) -> AuthRequest {
+        AuthRequest(methods.into())
+    }
     pub async fn read(mut reader: impl AsyncRead + Unpin) -> Result<AuthRequest> {
         let count = &mut [0u8];
         reader.read_exact(count).await?;
@@ -114,7 +119,7 @@ impl AuthRequest {
         self.0
             .iter()
             .enumerate()
-            .find(|(a, m)| auth.contains(*m))
+            .find(|(_, m)| auth.contains(*m))
             .map(|(v, _)| AuthMethod::from(v as u8))
             .unwrap_or(AuthMethod::NoAcceptableMethod)
     }
@@ -136,6 +141,9 @@ impl AuthResponse {
         writer.write_all(&[self.0.into()]).await?;
         Ok(())
     }
+    pub fn method(&self) -> AuthMethod {
+        self.0
+    }
 }
 
 #[derive(Debug)]
@@ -151,6 +159,18 @@ pub struct CommandRequest {
 }
 
 impl CommandRequest {
+    pub fn connect(address: Address) -> CommandRequest {
+        CommandRequest {
+            command: Command::Connect,
+            address,
+        }
+    }
+    pub fn udp_associate(address: Address) -> CommandRequest {
+        CommandRequest {
+            command: Command::UdpAssociate,
+            address,
+        }
+    }
     pub async fn read(mut reader: impl AsyncRead + Unpin) -> Result<CommandRequest> {
         let buf = &mut [0u8; 3];
         reader.read_exact(buf).await?;
@@ -186,7 +206,7 @@ impl CommandRequest {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub enum CommandReply {
     Succeeded,
     GeneralSocksServerFailure,
@@ -279,6 +299,10 @@ impl CommandResponse {
         let reply = CommandReply::from_u8(buf[1])?;
 
         let address = Address::read(reader).await?;
+
+        if reply != CommandReply::Succeeded {
+            return Err(Error::CommandReply(reply));
+        }
 
         Ok(CommandResponse { reply, address })
     }

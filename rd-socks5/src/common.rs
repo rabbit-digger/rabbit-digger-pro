@@ -1,7 +1,7 @@
 use futures::prelude::*;
 use rd_interface::{AsyncRead, AsyncWrite};
 use std::{
-    io::{Cursor, Error, ErrorKind, Result},
+    io::{Error, ErrorKind, Result},
     net::{Ipv4Addr, SocketAddr},
 };
 
@@ -138,15 +138,6 @@ impl Address {
             }
         })
     }
-}
-pub async fn pack_send(
-    mut w: impl AsyncWrite + Unpin,
-    f: impl Fn(&mut Cursor<Vec<u8>>) -> Result<()>,
-) -> Result<()> {
-    let mut buf = Cursor::new(Vec::with_capacity(1024));
-    f(&mut buf)?;
-    w.write_all(&buf.into_inner()).await?;
-    w.flush().await
 }
 
 pub async fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {

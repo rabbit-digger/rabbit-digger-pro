@@ -1,10 +1,8 @@
-mod auth;
 mod client;
 mod common;
 mod protocol;
 mod server;
 
-pub use auth::NoAuth;
 pub use client::Socks5Client;
 pub use server::Socks5Server;
 
