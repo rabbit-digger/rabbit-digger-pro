@@ -129,7 +129,7 @@ impl RabbitDigger {
             .into_iter()
             .map(|(k, v)| (k, AllNet::Composite(v)));
         let all_net = net_cfg.chain(composite_cfg).collect();
-        let net = init_net(&registry, all_net)?;
+        let net = init_net(&registry, all_net, &config.server)?;
         let servers = init_server(&registry, &net, config.server, wrap_net)?;
 
         log::info!("Server:\n{}", ServerList(&servers));
@@ -218,12 +218,17 @@ fn clone_net_by_net_list(
 fn init_net(
     registry: &Registry,
     mut all_net: HashMap<String, config::AllNet>,
+    server: &config::ConfigServer,
 ) -> Result<HashMap<String, Net>> {
     let mut net: HashMap<String, Net> = HashMap::new();
     let noop = Arc::new(NotImplementedNet);
 
     all_net.insert("noop".to_string(), AllNet::Noop);
     all_net.insert("local".to_string(), AllNet::Local);
+    all_net.insert(
+        "_".to_string(),
+        AllNet::Root(server.values().map(|i| i.net.clone()).collect()),
+    );
 
     let all_net = topological_sort(all_net, AllNet::get_dependency)
         .ok_or(anyhow!("There is cyclic dependencies in net",))?;
@@ -267,6 +272,7 @@ fn init_net(
             AllNet::Noop => {
                 net.insert(name, noop.clone());
             }
+            AllNet::Root(_) => {}
         }
     }
 

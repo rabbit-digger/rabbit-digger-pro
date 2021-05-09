@@ -17,6 +17,7 @@ pub enum AllNet {
     Composite(CompositeName),
     Local,
     Noop,
+    Root(Vec<String>),
 }
 
 impl AllNet {
@@ -31,6 +32,7 @@ impl AllNet {
                 Composite::Rule(CompositeRule { rule }) => rule.iter().map(|i| &i.target).collect(),
                 Composite::Select => net_list.iter().collect(),
             },
+            AllNet::Root(v) => v.iter().collect(),
             _ => Vec::new(),
         }
     }
