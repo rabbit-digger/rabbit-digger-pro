@@ -1,7 +1,7 @@
 mod address;
 pub mod constant;
 pub mod context;
-mod error;
+pub mod error;
 mod interface;
 pub mod pool;
 pub mod registry;

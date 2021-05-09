@@ -1,8 +1,9 @@
-use super::{
-    auth::{auth_server, Method, NoAuth},
-    common::{pack_udp, parse_udp, Address},
+use super::common::{pack_udp, parse_udp, Address};
+use crate::protocol::{
+    self, AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
 };
-use futures::{io::Cursor, prelude::*};
+use futures::{io::BufWriter, prelude::*};
+use protocol::Command;
 use rd_interface::{
     async_trait, pool::IUdpChannel, util::connect_tcp, ConnectionPool, Context, IServer,
     IntoAddress, IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
@@ -15,7 +16,6 @@ use std::{
 struct ServerConfig {
     net: Net,
     listen_net: Net,
-    methods: Vec<Box<dyn Method + Send + Sync>>,
 }
 
 pub struct Socks5Server {
@@ -39,71 +39,54 @@ impl IServer for Socks5Server {
 impl Socks5Server {
     async fn serve_connection(
         cfg: Arc<ServerConfig>,
-        mut socket: TcpStream,
+        socket: TcpStream,
         addr: SocketAddr,
         pool: ConnectionPool,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
-        let ServerConfig {
-            net,
-            methods,
-            listen_net,
-        } = &*cfg;
+        let ServerConfig { net, listen_net } = &*cfg;
+        let local_ip = socket.local_addr().await?.ip();
+        let (mut rx, tx) = socket.split();
+        let mut tx = BufWriter::with_capacity(512, tx);
 
-        auth_server(
-            &mut socket,
-            &methods.iter().map(|i| &**i).collect::<Vec<_>>(),
-        )
-        .await?;
+        let version = Version::read(&mut rx).await?;
+        let auth_req = AuthRequest::read(&mut rx).await?;
 
-        let mut buf = [0u8; 3];
-        socket.read_exact(&mut buf).await?;
-        match buf {
-            // VER: 5, CMD: 1(CONNECT), RSV: 0
-            [0x05, 0x01, 0x00] => {
-                let dst = Address::read(&mut socket).await?.into();
+        let method = auth_req.select_from(&[AuthMethod::Noauth]);
+        let auth_resp = AuthResponse::new(method);
+        // TODO: do auth here
+
+        version.write(&mut tx).await?;
+        auth_resp.write(&mut tx).await?;
+        tx.flush().await?;
+
+        let cmd_req = CommandRequest::read(&mut rx).await?;
+
+        match cmd_req.command {
+            Command::Connect => {
+                let dst = cmd_req.address.into();
                 let out = match net
                     .tcp_connect(&mut Context::from_socketaddr(addr), dst)
                     .await
                 {
                     Ok(socket) => socket,
-                    Err(_e) => {
-                        // TODO better error
-                        socket
-                            .write_all(&[
-                                0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                            ])
-                            .await?;
-                        socket.flush().await?;
+                    Err(e) => {
+                        CommandResponse::error(e).write(&mut tx).await?;
+                        tx.flush().await?;
                         return Ok(());
                     }
                 };
 
-                // success
-                let mut writer = Cursor::new(Vec::new());
-                writer.write_all(&[0x05, 0x00, 0x00]).await?;
                 let addr: Address = out.local_addr().await.unwrap_or(default_addr).into();
-                addr.write(&mut writer).await?;
+                CommandResponse::success(addr).write(&mut tx).await?;
+                tx.flush().await?;
 
-                socket.write_all(&writer.into_inner()).await?;
+                let socket = rx.reunite(tx.into_inner()).unwrap();
 
                 connect_tcp(out, socket).await?;
             }
-            // UDP
-            [0x05, 0x03, 0x00] => {
-                let dst = match Address::read(&mut socket).await {
-                    Ok(a) => a,
-                    Err(_) => {
-                        socket
-                            .write_all(&[
-                                0x05, 0x08, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                            ])
-                            .await?;
-                        socket.flush().await?;
-                        return Ok(());
-                    }
-                };
-                let dst = match dst {
+            Command::UdpAssociate => {
+                let dst = match cmd_req.address {
                     Address::SocketAddr(SocketAddr::V4(_)) => rd_interface::Address::SocketAddr(
                         SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
                     ),
@@ -111,13 +94,13 @@ impl Socks5Server {
                         SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
                     ),
                     _ => {
-                        // TODO better error
-                        socket
-                            .write_all(&[
-                                0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                            ])
-                            .await?;
-                        socket.flush().await?;
+                        CommandResponse::reply_error(
+                            protocol::CommandReply::AddressTypeNotSupported,
+                        )
+                        .write(&mut tx)
+                        .await?;
+
+                        tx.flush().await?;
                         return Ok(());
                     }
                 };
@@ -126,14 +109,9 @@ impl Socks5Server {
                     .await
                 {
                     Ok(socket) => socket,
-                    Err(_e) => {
-                        // TODO better error
-                        socket
-                            .write_all(&[
-                                0x05, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                            ])
-                            .await?;
-                        socket.flush().await?;
+                    Err(e) => {
+                        CommandResponse::error(e).write(&mut tx).await?;
+                        tx.flush().await?;
                         return Ok(());
                     }
                 };
@@ -145,15 +123,21 @@ impl Socks5Server {
                     .await?;
 
                 // success
-                let mut writer = Cursor::new(Vec::new());
-                writer.write_all(&[0x05, 0x00, 0x00]).await?;
-                let udp_ip = socket.local_addr().await?.ip();
-                let udp_port = udp.local_addr().await.unwrap_or(default_addr).port();
-                let addr: SocketAddr = (udp_ip, udp_port).into();
+                let udp_port = match udp.local_addr().await {
+                    Ok(a) => a.port(),
+                    Err(e) => {
+                        CommandResponse::error(e).write(&mut tx).await?;
+                        tx.flush().await?;
+                        return Ok(());
+                    }
+                };
+                let addr: SocketAddr = (local_ip, udp_port).into();
                 let addr: Address = addr.into();
-                addr.write(&mut writer).await?;
 
-                socket.write_all(&writer.into_inner()).await?;
+                CommandResponse::success(addr).write(&mut tx).await?;
+                tx.flush().await?;
+
+                let socket = rx.reunite(tx.into_inner()).unwrap();
 
                 let udp_channel = Socks5UdpSocket(udp, socket, RwLock::new(None));
                 pool.connect_udp(udp_channel.into_dyn(), out).await?;
@@ -170,7 +154,6 @@ impl Socks5Server {
             config: Arc::new(ServerConfig {
                 net,
                 listen_net: listen_net.clone(),
-                methods: vec![Box::new(NoAuth)],
             }),
             listen_net,
             bind,

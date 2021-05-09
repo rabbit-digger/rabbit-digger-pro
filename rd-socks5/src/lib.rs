@@ -1,6 +1,7 @@
 mod auth;
 mod client;
 mod common;
+mod protocol;
 mod server;
 
 pub use auth::NoAuth;

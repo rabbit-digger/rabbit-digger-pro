@@ -2,13 +2,19 @@ use futures::prelude::*;
 use rd_interface::{AsyncRead, AsyncWrite};
 use std::{
     io::{Cursor, Error, ErrorKind, Result},
-    net::SocketAddr,
+    net::{Ipv4Addr, SocketAddr},
 };
 
 #[derive(Debug)]
 pub enum Address {
     SocketAddr(SocketAddr),
     Domain(String, u16),
+}
+
+impl Default for Address {
+    fn default() -> Self {
+        Address::SocketAddr(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0))
+    }
 }
 
 impl From<rd_interface::Address> for Address {

@@ -156,7 +156,6 @@ pub struct CombineNet {
     pub udp_bind: Net,
 }
 
-#[async_trait]
 impl INet for CombineNet {
     #[inline(always)]
     fn tcp_connect<'life0: 'a, 'life1: 'a, 'a>(

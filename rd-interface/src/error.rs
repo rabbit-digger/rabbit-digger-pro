@@ -20,6 +20,10 @@ pub enum Error {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub const NOT_IMPLEMENTED: Error = Error::NotImplemented;
 
+pub fn map_other(e: impl std::error::Error + Send + Sync + 'static) -> Error {
+    Error::Other(e.into())
+}
+
 impl From<Error> for io::Error {
     fn from(e: Error) -> Self {
         match e {
