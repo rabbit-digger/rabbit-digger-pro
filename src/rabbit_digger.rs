@@ -208,7 +208,7 @@ fn clone_net_by_net_list(
             Ok((
                 target.clone(),
                 net.get(target)
-                    .ok_or(anyhow::anyhow!("target is not found: {}", target))?
+                    .ok_or(anyhow!("target is not found: {}", target))?
                     .to_owned(),
             ))
         })

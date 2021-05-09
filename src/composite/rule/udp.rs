@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, time::Duration};
 
-use super::rule::Rule;
+use super::rule_net::Rule;
 use async_std::{
     channel::{bounded, Receiver, Sender},
     sync::Mutex,
