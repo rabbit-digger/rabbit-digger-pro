@@ -195,6 +195,26 @@ impl<'a> fmt::Display for ServerList<'a> {
     }
 }
 
+fn clone_net_by_net_list(
+    net: &HashMap<String, Net>,
+    net_list: &Vec<String>,
+) -> Result<HashMap<String, Net>> {
+    if net_list.len() == 0 {
+        return Ok(net.clone());
+    }
+    net_list
+        .into_iter()
+        .map(|target| {
+            Ok((
+                target.clone(),
+                net.get(target)
+                    .ok_or(anyhow::anyhow!("target is not found: {}", target))?
+                    .to_owned(),
+            ))
+        })
+        .collect::<Result<HashMap<_, _>>>()
+}
+
 fn init_net(
     registry: &Registry,
     mut all_net: HashMap<String, config::AllNet>,
@@ -215,7 +235,6 @@ fn init_net(
                     let net_item = registry.get_net(&i.net_type)?;
                     let chains = i
                         .chain
-                        .into_vec()
                         .into_iter()
                         .map(|s| {
                             net.get(&s).map(|s| s.clone()).ok_or(anyhow!(
@@ -238,7 +257,7 @@ fn init_net(
             AllNet::Composite(i) => {
                 net.insert(
                     name.to_string(),
-                    composite::build_composite(net.clone(), i)
+                    composite::build_composite(clone_net_by_net_list(&net, &i.net_list)?, i)
                         .context(format!("Loading composite {}", name))?,
                 );
             }

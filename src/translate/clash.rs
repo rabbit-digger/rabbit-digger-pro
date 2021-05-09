@@ -119,7 +119,7 @@ impl Clash {
         Ok(match p.proxy_group_type.as_ref() {
             "select" => CompositeName {
                 name: Some(p.name),
-                net_list: Some(net_list).into(),
+                net_list,
                 composite: Composite::Select {}.into(),
             },
             _ => {
@@ -239,7 +239,7 @@ impl Clash {
                 self.prefix("clash_rule"),
                 CompositeName {
                     name: None,
-                    net_list: None.into(),
+                    net_list: Vec::new(),
                     composite: Composite::Rule(CompositeRule { rule }).into(),
                 },
             );

@@ -1,13 +1,11 @@
 use std::path::PathBuf;
 
-use super::Chain;
-
-pub(crate) fn local_chain() -> Chain {
-    Chain::One("local".to_string())
+pub(crate) fn local_chain() -> Vec<String> {
+    vec!["local".to_string()]
 }
 
-pub(crate) fn noop_chain() -> Chain {
-    Chain::One("noop".to_string())
+pub(crate) fn noop_chain() -> Vec<String> {
+    vec!["noop".to_string()]
 }
 
 pub(crate) fn local_string() -> String {

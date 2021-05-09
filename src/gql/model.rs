@@ -6,7 +6,7 @@ use async_std::sync::RwLockReadGuard;
 pub struct Net<'a> {
     id: &'a str,
     r#type: &'a str,
-    chain: Vec<&'a str>,
+    chain: &'a Vec<String>,
     // TODO: rest
 }
 
@@ -29,7 +29,7 @@ struct CompositeRule<'a> {
 struct CompositeSelect<'a> {
     id: &'a str,
     name: Option<&'a str>,
-    net_list: Vec<&'a str>,
+    net_list: &'a Vec<String>,
 }
 
 #[derive(Interface)]
@@ -58,7 +58,7 @@ impl<'a> Config<'a> {
             .map(|(id, v)| Net {
                 id,
                 r#type: &v.net_type,
-                chain: v.chain.as_ref(),
+                chain: &v.chain,
             })
             .collect::<Vec<_>>();
 
@@ -98,7 +98,7 @@ impl<'a> From<(&'a String, &'a config::CompositeName)> for Composite<'a> {
             config::Composite::Select => Composite::Select(CompositeSelect {
                 id: k,
                 name: v.name.as_ref().map(AsRef::as_ref),
-                net_list: v.net_list.as_ref(),
+                net_list: &v.net_list,
             }),
         }
     }

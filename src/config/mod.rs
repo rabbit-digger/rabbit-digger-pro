@@ -1,10 +1,11 @@
 pub(crate) mod default;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, mem::replace, path::PathBuf};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use rd_interface::config::Value;
 use serde_derive::{Deserialize, Serialize};
+use serde_with::{serde_as, OneOrMany};
 
 pub type ConfigNet = HashMap<String, Net>;
 pub type ConfigServer = HashMap<String, Server>;
@@ -21,28 +22,21 @@ pub enum AllNet {
 impl AllNet {
     pub fn get_dependency(&self) -> Vec<&String> {
         match self {
-            AllNet::Net(Net { chain, .. }) => match chain {
-                Chain::One(s) => vec![s],
-                Chain::Many(v) => v.iter().collect(),
-            },
+            AllNet::Net(Net { chain, .. }) => chain.iter().collect(),
             AllNet::Composite(CompositeName {
                 composite,
                 net_list,
                 ..
             }) => match &composite.0 {
                 Composite::Rule(CompositeRule { rule }) => rule.iter().map(|i| &i.target).collect(),
-                Composite::Select => net_list
-                    .0
-                    .as_ref()
-                    .map(|i| i.iter().collect())
-                    .unwrap_or_default(),
+                Composite::Select => net_list.iter().collect(),
             },
             _ => Vec::new(),
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Config {
     #[serde(default = "default::plugins")]
     pub plugin_path: PathBuf,
@@ -52,7 +46,8 @@ pub struct Config {
     pub server: ConfigServer,
     #[serde(default)]
     pub composite: ConfigComposite,
-    pub import: Option<Vec<Import>>,
+    #[serde(default)]
+    pub import: Vec<Import>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -65,37 +60,14 @@ pub struct Import {
     pub rest: Value,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct NetList(pub Option<Vec<String>>);
-
 /// Define a net composited from many other net
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompositeName {
     pub name: Option<String>,
     #[serde(default)]
-    pub net_list: NetList,
+    pub net_list: Vec<String>,
     #[serde(flatten)]
     pub composite: CompositeDefaultType,
-}
-
-impl NetList {
-    pub fn into_net_list(self) -> Result<Vec<String>> {
-        self.0.ok_or(anyhow!("net_list is required"))
-    }
-
-    pub fn clone_net_list(&self) -> Result<Vec<String>> {
-        self.0.clone().ok_or(anyhow!("net_list is required"))
-    }
-
-    pub fn as_ref(&self) -> Vec<&str> {
-        self.0.iter().flatten().map(AsRef::as_ref).collect()
-    }
-}
-
-impl From<Option<Vec<String>>> for NetList {
-    fn from(i: Option<Vec<String>>) -> Self {
-        NetList(i)
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -163,12 +135,14 @@ impl Chain {
     }
 }
 
+#[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Net {
     #[serde(rename = "type")]
     pub net_type: String,
+    #[serde_as(deserialize_as = "OneOrMany<_>")]
     #[serde(default = "default::local_chain")]
-    pub chain: Chain,
+    pub chain: Vec<String>,
     #[serde(flatten)]
     pub rest: Value,
 }
@@ -207,13 +181,21 @@ pub enum Matcher {
 
 impl Config {
     pub async fn post_process(mut self) -> Result<Self> {
-        if let Some(imports) = (&mut self).import.take() {
-            for i in imports {
-                crate::translate::post_process(&mut self, i.clone())
-                    .await
-                    .context(format!("post process of import: {:?}", i))?;
-            }
+        let imports = replace(&mut self.import, Vec::new());
+        for i in imports {
+            let mut temp_config = Config::default();
+            crate::translate::post_process(&mut temp_config, i.clone())
+                .await
+                .context(format!("post process of import: {:?}", i))?;
+            self.merge(temp_config);
         }
         Ok(self)
+    }
+    pub fn merge(&mut self, other: Config) {
+        self.plugin_path = other.plugin_path;
+        self.net.extend(other.net);
+        self.server.extend(other.server);
+        self.composite.extend(other.composite);
+        self.import.extend(other.import);
     }
 }

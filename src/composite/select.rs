@@ -7,17 +7,11 @@ use rd_interface::{
 pub struct SelectNet(Vec<Net>);
 
 impl SelectNet {
-    pub fn new(net: HashMap<String, Net>, list: Vec<String>) -> anyhow::Result<Net> {
-        let nets = list
-            .into_iter()
-            .map(|target| {
-                Ok(net
-                    .get(&target)
-                    .ok_or(anyhow::anyhow!("target is not found: {}", target))?
-                    .to_owned())
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-
+    pub fn new(net: HashMap<String, Net>) -> anyhow::Result<Net> {
+        let nets = net.into_iter().map(|(_, v)| v).collect::<Vec<_>>();
+        if nets.len() == 0 {
+            return Err(anyhow::anyhow!("net_list is required"));
+        }
         Ok(SelectNet(nets).into_dyn())
     }
     async fn get(&self, _ctx: &Context) -> Result<&Net> {

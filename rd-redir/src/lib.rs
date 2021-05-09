@@ -2,7 +2,7 @@ mod util;
 
 #[cfg(target_os = "linux")]
 use linux::{RedirServer, RedirServerConfig};
-use rd_interface::{config::from_value, Registry, Result};
+use rd_interface::{Registry, Result};
 
 #[cfg(target_os = "linux")]
 mod linux {
@@ -68,10 +68,10 @@ mod linux {
     }
 }
 
-pub fn init(registry: &mut Registry) -> Result<()> {
+pub fn init(_registry: &mut Registry) -> Result<()> {
     #[cfg(target_os = "linux")]
-    registry.add_server("redir", |_listen_net, net, cfg| {
-        let cfg: RedirServerConfig = from_value(cfg)?;
+    _registry.add_server("redir", |_listen_net, net, cfg| {
+        let cfg: RedirServerConfig = config::from_value::from_value(cfg)?;
         Ok(RedirServer::new(cfg, net))
     });
     Ok(())
