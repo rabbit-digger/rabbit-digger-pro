@@ -62,7 +62,7 @@ impl UdpRuleSocket {
     pub fn new(rule: Rule, context: Context, bind_addr: Address) -> UdpRuleSocket {
         let (tx, rx) = bounded::<UdpPacket>(100);
         let nat = Mutex::new(LruCache::with_expiry_duration_and_capacity(
-            Duration::from_secs(10 * 60),
+            Duration::from_secs(60),
             100,
         ));
 

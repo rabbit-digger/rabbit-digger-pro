@@ -40,6 +40,8 @@ impl AllNet {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Config {
+    #[serde(default)]
+    pub id: String,
     #[serde(default = "default::plugins")]
     pub plugin_path: PathBuf,
     #[serde(default)]
@@ -59,7 +61,7 @@ pub struct Import {
     pub format: String,
     pub path: PathBuf,
     #[serde(flatten)]
-    pub rest: Value,
+    pub opt: Value,
 }
 
 /// Define a net composited from many other net
@@ -146,7 +148,7 @@ pub struct Net {
     #[serde(default = "default::local_chain")]
     pub chain: Vec<String>,
     #[serde(flatten)]
-    pub rest: Value,
+    pub opt: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -158,7 +160,7 @@ pub struct Server {
     #[serde(default = "default::rule")]
     pub net: String,
     #[serde(flatten)]
-    pub rest: Value,
+    pub opt: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

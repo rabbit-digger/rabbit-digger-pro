@@ -10,21 +10,6 @@ use tide::{http::mime, Body, Response, StatusCode};
 
 use crate::controller::Controller;
 
-#[derive(SimpleObject)]
-struct Server {
-    id: String,
-    r#type: String,
-    listen: String,
-    net: String,
-    // TODO: rest
-}
-
-#[derive(SimpleObject)]
-struct Composite {
-    name: Option<String>,
-    net_list: Option<Vec<String>>,
-}
-
 pub struct QueryRoot;
 
 #[Object]

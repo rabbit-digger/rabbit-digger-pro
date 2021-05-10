@@ -9,13 +9,15 @@ use async_std::{
     sync::{RwLock, RwLockReadGuard},
     task::{sleep, spawn},
 };
+use futures::FutureExt;
 use rd_interface::{
     async_trait, Address, Context, INet, IntoDyn, Net, TcpListener, TcpStream, UdpSocket,
 };
-use std::{sync::Arc, time::Duration};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 pub(crate) struct Inner {
     config: Option<config::Config>,
+    events: VecDeque<Event>,
 }
 
 #[derive(Debug)]
@@ -62,7 +64,7 @@ impl INet for ControllerNet {
     }
 }
 
-async fn process(rx: channel::Receiver<Event>) {
+async fn process(rx: channel::Receiver<Event>, inner: Arc<RwLock<Inner>>) {
     loop {
         let e = match rx.try_recv() {
             Ok(e) => e,
@@ -73,15 +75,22 @@ async fn process(rx: channel::Receiver<Event>) {
             Err(channel::TryRecvError::Closed) => break,
         };
 
-        log::trace!("Event {:?}", e);
+        let mut inner = inner.write().await;
+        inner.events.push_back(e);
+        while let Some(Ok(e)) = rx.recv().now_or_never() {
+            inner.events.push_back(e);
+        }
     }
 }
 
 impl Controller {
     pub fn new() -> Controller {
-        let inner = Arc::new(RwLock::new(Inner { config: None }));
+        let inner = Arc::new(RwLock::new(Inner {
+            config: None,
+            events: VecDeque::new(),
+        }));
         let (sender, rx) = channel::unbounded();
-        spawn(process(rx));
+        spawn(process(rx, inner.clone()));
         Controller { inner, sender }
     }
     pub fn get_net(&self, net: Net) -> Net {
@@ -100,7 +109,7 @@ impl Controller {
 }
 
 impl Inner {
-    pub fn config(&self) -> &Option<config::Config> {
-        &self.config
+    pub fn config(&self) -> Option<&config::Config> {
+        self.config.as_ref()
     }
 }

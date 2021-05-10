@@ -15,7 +15,7 @@ pub async fn post_process(config: &mut Config, import: Import) -> Result<()> {
     let content = read_to_string(import.path).await?;
     match import.format.as_ref() {
         "clash" => {
-            clash::from_config(import.rest)?
+            clash::from_config(import.opt)?
                 .process(config, content)
                 .await?
         }

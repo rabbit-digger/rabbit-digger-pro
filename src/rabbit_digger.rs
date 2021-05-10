@@ -250,7 +250,7 @@ fn init_net(
                         })
                         .collect::<Result<Vec<_>>>()?;
 
-                    let proxy = net_item.build(chains, i.rest).context(format!(
+                    let proxy = net_item.build(chains, i.opt).context(format!(
                         "Failed to build net {:?}. Please check your config.",
                         name
                     ))?;
@@ -303,7 +303,7 @@ fn init_server(
             ))?;
 
             let server = server_item
-                .build(listen.clone(), wrapper(net.clone()), i.rest.clone())
+                .build(listen.clone(), wrapper(net.clone()), i.opt.clone())
                 .context(format!(
                     "Failed to build server {:?}. Please check your config.",
                     name
@@ -311,7 +311,7 @@ fn init_server(
             servers.push(ServerInfo {
                 name: name.to_string(),
                 server,
-                config: i.rest,
+                config: i.opt,
                 listen: i.listen,
                 net: i.net,
             });

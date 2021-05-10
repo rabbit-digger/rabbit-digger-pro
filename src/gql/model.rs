@@ -1,13 +1,14 @@
 use crate::{config, controller::Inner};
-use async_graphql::{Interface, Object, Result, SimpleObject};
+use async_graphql::{types::OutputJson, Interface, Object, Result, SimpleObject};
 use async_std::sync::RwLockReadGuard;
+use serde_json::Value;
 
 #[derive(SimpleObject)]
 pub struct Net<'a> {
     id: &'a str,
     r#type: &'a str,
     chain: &'a Vec<String>,
-    // TODO: rest
+    opt: OutputJson<&'a Value>,
 }
 
 #[derive(SimpleObject)]
@@ -16,7 +17,7 @@ pub struct Server<'a> {
     r#type: &'a str,
     listen: &'a str,
     net: &'a str,
-    // TODO: rest
+    opt: OutputJson<&'a Value>,
 }
 
 #[derive(SimpleObject)]
@@ -43,8 +44,8 @@ enum Composite<'a> {
 pub(crate) struct Config<'a>(pub RwLockReadGuard<'a, Inner>);
 
 impl<'a> Config<'a> {
-    fn cfg(&'a self) -> &config::Config {
-        &self.0.config().as_ref().unwrap()
+    fn cfg(&self) -> &config::Config {
+        &self.0.config().unwrap()
     }
 }
 
@@ -59,6 +60,7 @@ impl<'a> Config<'a> {
                 id,
                 r#type: &v.net_type,
                 chain: &v.chain,
+                opt: OutputJson(&v.opt),
             })
             .collect::<Vec<_>>();
 
@@ -74,6 +76,7 @@ impl<'a> Config<'a> {
                 r#type: &v.server_type,
                 listen: &v.listen,
                 net: &v.net,
+                opt: OutputJson(&v.opt),
             })
             .collect::<Vec<_>>();
 

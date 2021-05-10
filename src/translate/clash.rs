@@ -42,7 +42,7 @@ struct Proxy {
     #[serde(rename = "type")]
     proxy_type: String,
     #[serde(flatten)]
-    rest: Value,
+    opt: Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,7 +61,7 @@ fn ghost_net() -> Net {
     Net {
         net_type: "alias".to_string(),
         chain: default::noop_chain(),
-        rest: Value::Null,
+        opt: Value::Null,
     }
 }
 
@@ -77,11 +77,11 @@ impl Clash {
                     password: String,
                     udp: Option<bool>,
                 }
-                let params: Param = serde_json::from_value(p.rest)?;
+                let params: Param = serde_json::from_value(p.opt)?;
                 Net {
                     net_type: "shadowsocks".to_string(),
                     chain: default::local_chain(),
-                    rest: json!({
+                    opt: json!({
                         "server": params.server,
                         "port": params.port,
                         "cipher": params.cipher,
@@ -252,7 +252,7 @@ impl Clash {
                     server_type: "socks5".to_string(),
                     listen: "local".to_string(),
                     net: self.target.clone().unwrap_or(self.prefix("clash_rule")),
-                    rest: json!({ "bind": format!("0.0.0.0:{}", clash_config.socks_port) }),
+                    opt: json!({ "bind": format!("0.0.0.0:{}", clash_config.socks_port) }),
                 },
             );
         }
