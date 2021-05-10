@@ -1,5 +1,6 @@
 mod client;
 mod common;
+mod http_server;
 mod protocol;
 mod server;
 mod socks5_server;
@@ -29,6 +30,10 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_server("socks5", |listen_net, net, cfg| {
         let ServerConfig { bind } = from_value(cfg)?;
         Ok(server::Socks5::new(listen_net, net, bind))
+    });
+    registry.add_server("http", |listen_net, net, cfg| {
+        let ServerConfig { bind } = from_value(cfg)?;
+        Ok(server::Http::new(listen_net, net, bind))
     });
     Ok(())
 }
