@@ -3,7 +3,7 @@ mod model;
 use anyhow::Result;
 use async_graphql::{
     http::{playground_source, GraphQLPlaygroundConfig},
-    Context, EmptyMutation, EmptySubscription, Object, Schema, SimpleObject,
+    Context, EmptyMutation, EmptySubscription, Object, Schema,
 };
 use async_std::task::spawn;
 use tide::{http::mime, Body, Response, StatusCode};

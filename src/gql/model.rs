@@ -24,21 +24,57 @@ pub struct Server<'a> {
 struct CompositeRule<'a> {
     id: &'a str,
     name: Option<&'a str>,
+    composite_type: &'a str,
+    rule: Vec<Matcher<'a>>,
 }
 
 #[derive(SimpleObject)]
 struct CompositeSelect<'a> {
     id: &'a str,
     name: Option<&'a str>,
+    composite_type: &'a str,
     net_list: &'a Vec<String>,
 }
 
 #[derive(Interface)]
 #[graphql(field(name = "id", type = "&&str"))]
 #[graphql(field(name = "name", type = "&Option<&str>"))]
+#[graphql(field(name = "composite_type", type = "&&str"))]
 enum Composite<'a> {
     Rule(CompositeRule<'a>),
     Select(CompositeSelect<'a>),
+}
+
+#[derive(SimpleObject)]
+struct MatcherDomain<'a> {
+    target: &'a str,
+    matcher_type: &'a str,
+
+    method: &'a str,
+    domain: &'a str,
+}
+
+#[derive(SimpleObject)]
+struct MatcherIpCidr<'a> {
+    target: &'a str,
+    matcher_type: &'a str,
+
+    ip_cidr: &'a str,
+}
+
+#[derive(SimpleObject)]
+struct MatcherAny<'a> {
+    target: &'a str,
+    matcher_type: &'a str,
+}
+
+#[derive(Interface)]
+#[graphql(field(name = "target", type = "&&str"))]
+#[graphql(field(name = "matcher_type", type = "&&str"))]
+enum Matcher<'a> {
+    Domain(MatcherDomain<'a>),
+    IpCidr(MatcherIpCidr<'a>),
+    Any(MatcherAny<'a>),
 }
 
 pub(crate) struct Config<'a>(pub RwLockReadGuard<'a, Inner>);
@@ -94,14 +130,43 @@ impl<'a> From<(&'a String, &'a config::CompositeName)> for Composite<'a> {
     fn from((k, v): (&'a String, &'a config::CompositeName)) -> Self {
         let k: &str = k;
         match &v.composite.0 {
-            config::Composite::Rule(_rule) => Composite::Rule(CompositeRule {
+            config::Composite::Rule(rule) => Composite::Rule(CompositeRule {
                 id: k,
                 name: v.name.as_ref().map(AsRef::as_ref),
+                composite_type: "rule",
+                rule: rule.rule.iter().map(Into::into).collect(),
             }),
             config::Composite::Select => Composite::Select(CompositeSelect {
                 id: k,
                 name: v.name.as_ref().map(AsRef::as_ref),
+                composite_type: "select",
                 net_list: &v.net_list,
+            }),
+        }
+    }
+}
+
+impl<'a> From<&'a config::CompositeRuleItem> for Matcher<'a> {
+    fn from(rule: &'a config::CompositeRuleItem) -> Self {
+        let target = rule.target.as_ref();
+
+        match &rule.matcher {
+            config::Matcher::Domain { method, domain } => Matcher::Domain(MatcherDomain {
+                target,
+                matcher_type: "domain",
+
+                method,
+                domain,
+            }),
+            config::Matcher::IpCidr { ip_cidr } => Matcher::IpCidr(MatcherIpCidr {
+                target,
+                matcher_type: "ip_cidr",
+
+                ip_cidr,
+            }),
+            config::Matcher::Any => Matcher::Any(MatcherAny {
+                target,
+                matcher_type: "any",
             }),
         }
     }
