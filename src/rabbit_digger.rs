@@ -5,7 +5,7 @@ use crate::config;
 use crate::controller;
 use crate::plugins::load_plugins;
 use crate::registry::Registry;
-use crate::util::topological_sort;
+use crate::util::{topological_sort, DebounceStreamExt};
 use anyhow::{anyhow, Context, Result};
 use async_std::{
     fs::{read_to_string, File},
@@ -52,13 +52,13 @@ impl RabbitDigger {
         let config_stream = notify_stream(&config_path, RecursiveMode::Recursive)?;
 
         let config_stream = stream::once(async { Ok(()) })
-            .chain(async_std::stream::StreamExt::delay(
+            .chain(
                 config_stream
                     .try_filter(|e| ready(e.kind.is_modify()))
                     .map_err(Into::<anyhow::Error>::into)
-                    .map(|_| Ok(())),
-                Duration::from_millis(100),
-            ))
+                    .map(|_| Ok(()))
+                    .debounce(Duration::from_millis(100)),
+            )
             .and_then(move |_| read_to_string(config_path.clone()).map_err(Into::into))
             .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)))
             .and_then(|c: config::Config| c.post_process());
