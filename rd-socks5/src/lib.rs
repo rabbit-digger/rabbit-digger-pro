@@ -2,9 +2,10 @@ mod client;
 mod common;
 mod protocol;
 mod server;
+mod socks5_server;
 
 pub use client::Socks5Client;
-pub use server::Socks5Server;
+pub use socks5_server::Socks5Server;
 
 use rd_interface::{config::from_value, util::get_one_net, Registry, Result};
 use serde_derive::Deserialize;
@@ -27,7 +28,7 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     });
     registry.add_server("socks5", |listen_net, net, cfg| {
         let ServerConfig { bind } = from_value(cfg)?;
-        Ok(Socks5Server::new(listen_net, net, bind))
+        Ok(server::Socks5::new(listen_net, net, bind))
     });
     Ok(())
 }
