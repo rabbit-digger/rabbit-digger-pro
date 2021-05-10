@@ -58,7 +58,7 @@ impl INet for ControllerNet {
         self.net.tcp_bind(ctx, addr).await
     }
 
-    // TODO: wrap TcpListener
+    // TODO: wrap UdpSocket
     async fn udp_bind(&self, ctx: &mut Context, addr: Address) -> rd_interface::Result<UdpSocket> {
         self.net.udp_bind(ctx, addr).await
     }

@@ -1,33 +1,16 @@
 mod model;
+mod query;
 
 use anyhow::Result;
 use async_graphql::{
     http::{playground_source, GraphQLPlaygroundConfig},
-    Context, EmptyMutation, EmptySubscription, Object, Schema,
+    EmptyMutation, EmptySubscription, Schema,
 };
 use async_std::task::spawn;
+use query::QueryRoot;
 use tide::{http::mime, Body, Response, StatusCode};
 
 use crate::controller::Controller;
-
-pub struct QueryRoot;
-
-#[Object]
-impl QueryRoot {
-    async fn config<'a>(
-        &'a self,
-        ctx: &Context<'a>,
-    ) -> async_graphql::Result<Option<model::Config<'a>>> {
-        let ctl = ctx.data::<Controller>()?;
-        let inner = ctl.inner().await;
-
-        if inner.config().is_none() {
-            return Ok(None);
-        }
-
-        Ok(Some(model::Config(inner)))
-    }
-}
 
 pub async fn serve(bind: String, controller: &Controller) -> Result<()> {
     let schema = Schema::build(QueryRoot, EmptyMutation, EmptySubscription)
