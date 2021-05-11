@@ -13,7 +13,7 @@ use tokio::io::{split, AsyncWriteExt, BufWriter};
 pub struct Socks5Client {
     address: String,
     port: u16,
-    pr: Net,
+    net: Net,
 }
 
 pub struct Socks5TcpStream(TcpStream);
@@ -74,11 +74,11 @@ impl INet for Socks5Client {
         ctx: &mut rd_interface::Context,
         addr: rd_interface::Address,
     ) -> Result<UdpSocket> {
-        let mut socket = self.pr.tcp_connect(ctx, self.server()?).await?;
+        let mut socket = self.net.tcp_connect(ctx, self.server()?).await?;
 
         let req = CommandRequest::udp_associate(addr.clone().into_address()?.into());
         let resp = self.send_command(&mut socket, req).await?;
-        let client = self.pr.udp_bind(ctx, addr.clone()).await?;
+        let client = self.net.udp_bind(ctx, addr.clone()).await?;
 
         let addr = resp.address.to_socket_addr()?;
 
@@ -89,7 +89,7 @@ impl INet for Socks5Client {
         ctx: &mut rd_interface::Context,
         addr: rd_interface::Address,
     ) -> Result<TcpStream> {
-        let mut socket = self.pr.tcp_connect(ctx, self.server()?).await?;
+        let mut socket = self.net.tcp_connect(ctx, self.server()?).await?;
 
         let req = CommandRequest::connect(addr.into_address()?.into());
         let _resp = self.send_command(&mut socket, req).await?;
@@ -107,8 +107,8 @@ impl INet for Socks5Client {
 }
 
 impl Socks5Client {
-    pub fn new(pr: Net, address: String, port: u16) -> Self {
-        Self { address, port, pr }
+    pub fn new(net: Net, address: String, port: u16) -> Self {
+        Self { address, port, net }
     }
     fn server(&self) -> Result<rd_interface::Address> {
         (self.address.as_str(), self.port)
