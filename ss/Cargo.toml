@@ -14,6 +14,3 @@ tokio-util = { version = "0.6.3", features = [ "compat" ] }
 bytes = "1.0"
 log = "0.4"
 byte_string = "1.0"
-
-[lib]
-crate-type = ["cdylib"]
