@@ -11,7 +11,6 @@ use shadowsocks::{
     context::Context,
     ProxyClientStream,
 };
-use tokio_util::compat::*;
 use wrapper::{WrapAddress, WrapCipher, WrapSSTcp, WrapSSUdp};
 
 #[derive(Debug, Deserialize, Clone)]
@@ -51,16 +50,14 @@ impl INet for SSNet {
         let stream = self
             .net
             .tcp_connect(ctx, (cfg.server.as_ref(), cfg.port).into_address()?)
-            .await?
-            .compat();
+            .await?;
         let svr_cfg = ServerConfig::new((cfg.server, cfg.port), cfg.password, cfg.cipher.into());
         let client = ProxyClientStream::from_stream(
             self.context.clone(),
             stream,
             &svr_cfg,
             WrapAddress(addr),
-        )
-        .compat();
+        );
         Ok(WrapSSTcp(client).into_dyn())
     }
 

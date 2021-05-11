@@ -1,8 +1,7 @@
 use crate::udp::{decrypt_payload, encrypt_payload};
 use bytes::BytesMut;
-use pin::Pin;
 use rd_interface::{
-    async_trait, Address as RDAddress, AsyncRead, AsyncWrite, ITcpStream, IUdpSocket, TcpStream,
+    async_trait, impl_async_read_write, Address as RDAddress, ITcpStream, IUdpSocket, TcpStream,
     UdpSocket, NOT_IMPLEMENTED,
 };
 use serde::{
@@ -13,9 +12,7 @@ use shadowsocks::{
     context::SharedContext, crypto::v1::CipherKind, relay::socks5::Address as SSAddress,
     ProxyClientStream, ServerAddr, ServerConfig,
 };
-use std::{io, net::SocketAddr, pin, str::FromStr, task};
-use task::{Context, Poll};
-use tokio_util::compat::Compat;
+use std::{net::SocketAddr, str::FromStr};
 
 pub struct WrapAddress(pub RDAddress);
 
@@ -76,35 +73,9 @@ chacha20-ietf-poly1305 xchacha20-ietf-poly1305"
     de.deserialize_str(StrVisitor(&std::marker::PhantomData))
 }
 
-pub struct WrapSSTcp(pub Compat<ProxyClientStream<Compat<TcpStream>>>);
+pub struct WrapSSTcp(pub ProxyClientStream<TcpStream>);
 
-impl AsyncRead for WrapSSTcp {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.0).poll_read(cx, buf)
-    }
-}
-
-impl AsyncWrite for WrapSSTcp {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.0).poll_write(cx, buf)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.0).poll_flush(cx)
-    }
-
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.0).poll_close(cx)
-    }
-}
+impl_async_read_write!(WrapSSTcp, 0);
 
 #[async_trait]
 impl ITcpStream for WrapSSTcp {
