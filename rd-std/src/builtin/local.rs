@@ -108,6 +108,7 @@ impl INet for LocalNet {
 impl NetFactory for LocalNet {
     const NAME: &'static str = "local";
     type Config = ();
+    type Net = Self;
 
     fn new(_nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {
         Ok(LocalNet::new())

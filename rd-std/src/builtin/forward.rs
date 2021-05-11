@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait, registry::ServerFactory, util::connect_tcp, Arc, ConnectionPool, Context,
-    IServer, IntoAddress, Net, Result, TcpListener, TcpStream,
+    async_trait, registry::ServerFactory, util::connect_tcp, Arc, ConnectionPool, Context, IServer,
+    IntoAddress, Net, Result, TcpListener, TcpStream,
 };
 use serde_derive::Deserialize;
 
@@ -69,8 +69,8 @@ impl ForwardNet {
 
 impl ServerFactory for ForwardNet {
     const NAME: &'static str = "forward";
-
     type Config = ForwardConfig;
+    type Server = Self;
 
     fn new(listen_net: Net, net: Net, config: Self::Config) -> Result<Self> {
         Ok(ForwardNet::new(listen_net, net, config))

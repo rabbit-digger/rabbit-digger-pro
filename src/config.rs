@@ -15,8 +15,6 @@ pub type ConfigComposite = HashMap<String, CompositeName>;
 pub enum AllNet {
     Net(Net),
     Composite(CompositeName),
-    Local,
-    Noop,
     Root(Vec<String>),
 }
 
@@ -33,7 +31,6 @@ impl AllNet {
                 Composite::Select => net_list.iter().collect(),
             },
             AllNet::Root(v) => v.iter().collect(),
-            _ => Vec::new(),
         }
     }
 }

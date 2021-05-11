@@ -53,6 +53,7 @@ impl INet for AliasNet {
 impl NetFactory for AliasNet {
     const NAME: &'static str = "alias";
     type Config = ();
+    type Net = Self;
 
     fn new(nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {
         Ok(AliasNet::new(get_one_net(nets)?))

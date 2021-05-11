@@ -14,7 +14,7 @@ use futures::{
     stream::{self, FuturesUnordered, Stream},
     StreamExt,
 };
-use rd_interface::{Arc, ConnectionPool, Net, NotImplementedNet, Server, Value};
+use rd_interface::{ConnectionPool, Net, Server, Value};
 use tokio::time::timeout;
 
 pub type PluginLoader = Box<dyn Fn(&config::Config, &mut Registry) -> Result<()> + 'static>;
@@ -127,12 +127,6 @@ impl RabbitDigger {
     }
 }
 
-fn get_local(registry: &Registry) -> Result<Net> {
-    let net_item = &registry.get_net("local")?;
-    let local = net_item.build(Vec::new(), Value::Null)?;
-    Ok(local)
-}
-
 async fn start_server(server: Server, pool: ConnectionPool) -> Result<()> {
     server.start(pool).await?;
     Ok(())
@@ -193,10 +187,23 @@ fn init_net(
     server: &config::ConfigServer,
 ) -> Result<HashMap<String, Net>> {
     let mut net: HashMap<String, Net> = HashMap::new();
-    let noop = Arc::new(NotImplementedNet);
 
-    all_net.insert("noop".to_string(), AllNet::Noop);
-    all_net.insert("local".to_string(), AllNet::Local);
+    all_net.insert(
+        "noop".to_string(),
+        AllNet::Net(config::Net {
+            net_type: "noop".to_string(),
+            chain: Vec::new(),
+            opt: Value::Null,
+        }),
+    );
+    all_net.insert(
+        "local".to_string(),
+        AllNet::Net(config::Net {
+            net_type: "local".to_string(),
+            chain: Vec::new(),
+            opt: Value::Null,
+        }),
+    );
     all_net.insert(
         "_".to_string(),
         AllNet::Root(server.values().map(|i| i.net.clone()).collect()),
@@ -237,12 +244,6 @@ fn init_net(
                     composite::build_composite(clone_net_by_net_list(&net, &i.net_list)?, i)
                         .context(format!("Loading composite {}", name))?,
                 );
-            }
-            AllNet::Local => {
-                net.insert(name, get_local(&registry)?);
-            }
-            AllNet::Noop => {
-                net.insert(name, noop.clone());
             }
             AllNet::Root(_) => {}
         }

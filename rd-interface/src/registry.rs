@@ -35,15 +35,13 @@ impl Registry {
     }
 }
 
-pub trait NetFactory: INet + Sized + 'static {
+pub trait NetFactory {
     const NAME: &'static str;
     type Config: DeserializeOwned;
+    type Net: INet + Sized + 'static;
 
-    fn new(nets: Vec<Net>, config: Self::Config) -> Result<Self>;
-    fn into_dyn() -> FromConfig<Net>
-    where
-        Self: Sized + 'static,
-    {
+    fn new(nets: Vec<Net>, config: Self::Config) -> Result<Self::Net>;
+    fn into_dyn() -> FromConfig<Net> {
         Box::new(move |nets, cfg| {
             serde_json::from_value(cfg)
                 .map_err(Into::<crate::Error>::into)
@@ -53,15 +51,13 @@ pub trait NetFactory: INet + Sized + 'static {
     }
 }
 
-pub trait ServerFactory: IServer + Sized + 'static {
+pub trait ServerFactory {
     const NAME: &'static str;
     type Config: DeserializeOwned;
+    type Server: IServer + Sized + 'static;
 
-    fn new(listen_net: Net, net: Net, config: Self::Config) -> Result<Self>;
-    fn into_dyn() -> FromConfig<Server>
-    where
-        Self: Sized + 'static,
-    {
+    fn new(listen_net: Net, net: Net, config: Self::Config) -> Result<Self::Server>;
+    fn into_dyn() -> FromConfig<Server> {
         Box::new(move |mut nets, cfg| {
             serde_json::from_value(cfg)
                 .map_err(Into::<crate::Error>::into)

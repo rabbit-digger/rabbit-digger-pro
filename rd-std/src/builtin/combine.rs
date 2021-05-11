@@ -60,6 +60,7 @@ impl INet for CombineNet {
 impl NetFactory for CombineNet {
     const NAME: &'static str = "combine";
     type Config = ();
+    type Net = Self;
 
     fn new(nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {
         CombineNet::new(nets)

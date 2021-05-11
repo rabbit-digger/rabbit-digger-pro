@@ -72,8 +72,8 @@ mod linux {
 
     impl ServerFactory for RedirServer {
         const NAME: &'static str = "redir";
-
         type Config = RedirServerConfig;
+        type Server = Self;
 
         fn new(_listen_net: Net, net: Net, config: Self::Config) -> Result<Self> {
             Ok(RedirServer::new(config, net))

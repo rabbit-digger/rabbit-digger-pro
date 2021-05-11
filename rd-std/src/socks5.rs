@@ -27,6 +27,7 @@ pub struct ServerConfig {
 impl NetFactory for Socks5Client {
     const NAME: &'static str = "socks5";
     type Config = Config;
+    type Net = Self;
 
     fn new(net: Vec<rd_interface::Net>, config: Self::Config) -> Result<Self> {
         Ok(Socks5Client::new(
@@ -40,6 +41,7 @@ impl NetFactory for Socks5Client {
 impl ServerFactory for server::Socks5 {
     const NAME: &'static str = "socks5";
     type Config = ServerConfig;
+    type Server = Self;
 
     fn new(listen_net: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
         Ok(server::Socks5::new(listen_net, net, bind))
