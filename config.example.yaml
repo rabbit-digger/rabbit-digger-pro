@@ -20,12 +20,15 @@ composite:
     name: 规则判断
     rule:
       - type: domain
+        method: keyword
         target: socks5
         domain: twitter.com
       - type: domain
+        method: keyword
         target: socks5
         domain: .twimg.com
       - type: domain
+        method: keyword
         target: socks5
         domain: t.co
       - type: any
@@ -37,8 +40,3 @@ composite:
     rule:
       - type: any
         target: local
-
-# import:
-#   - type: clash
-#     path: ./clash.yaml
-#     target: rule
