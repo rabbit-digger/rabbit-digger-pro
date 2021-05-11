@@ -1,11 +1,13 @@
 use futures::future::BoxFuture;
-use rd_interface::{Address, Context, INet, Registry, Result, TcpListener, TcpStream, UdpSocket};
+use rd_interface::{
+    registry::NetFactory, Address, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
+};
 
 pub struct CombineNet(rd_interface::Net, rd_interface::Net, rd_interface::Net);
 
 impl CombineNet {
     fn new(mut nets: Vec<rd_interface::Net>) -> rd_interface::Result<CombineNet> {
-        if nets.len() != 1 {
+        if nets.len() != 3 {
             return Err(rd_interface::Error::Other(
                 "Must have one net".to_string().into(),
             ));
@@ -55,7 +57,11 @@ impl INet for CombineNet {
     }
 }
 
-pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net("combine", |nets, _| CombineNet::new(nets));
-    Ok(())
+impl NetFactory for CombineNet {
+    const NAME: &'static str = "combine";
+    type Config = ();
+
+    fn new(nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {
+        CombineNet::new(nets)
+    }
 }

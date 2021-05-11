@@ -76,9 +76,3 @@ pub fn init(_registry: &mut Registry) -> Result<()> {
     });
     Ok(())
 }
-
-#[cfg(feature = "plugin")]
-#[no_mangle]
-pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    init(registry)
-}

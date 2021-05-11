@@ -7,7 +7,8 @@ use std::{
 
 use async_std::net;
 use rd_interface::{
-    async_trait, Address, INet, IntoDyn, Registry, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, registry::NetFactory, Address, INet, IntoDyn, Result, TcpListener, TcpStream,
+    UdpSocket,
 };
 
 pub struct LocalNet;
@@ -132,7 +133,11 @@ impl INet for LocalNet {
     }
 }
 
-pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net("local", |_, _| Ok(LocalNet::new()));
-    Ok(())
+impl NetFactory for LocalNet {
+    const NAME: &'static str = "local";
+    type Config = ();
+
+    fn new(_nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {
+        Ok(LocalNet::new())
+    }
 }
