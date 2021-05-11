@@ -1,13 +1,14 @@
 use futures::{future::BoxFuture, Future, FutureExt};
-use pin_project_lite::pin_project;
 use std::{fmt, pin, task};
 
-pin_project! {
-    #[project = EnumProj]
-    pub(super) enum MaybeAsync<T> {
-        Sync{ value: Option<T> },
-        Async{ future: BoxFuture<'static, T> },
-    }
+pub(super) enum MaybeAsync<T> {
+    Sync {
+        value: Option<T>,
+    },
+    #[allow(dead_code)]
+    Async {
+        future: BoxFuture<'static, T>,
+    },
 }
 
 impl<T> From<T> for MaybeAsync<T> {
@@ -16,15 +17,15 @@ impl<T> From<T> for MaybeAsync<T> {
     }
 }
 
-impl<T> Future for MaybeAsync<T> {
+impl<T: Unpin> Future for MaybeAsync<T> {
     type Output = T;
 
     fn poll(self: pin::Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
-        match self.project() {
-            EnumProj::Sync { value } => {
+        match self.get_mut() {
+            MaybeAsync::Sync { value } => {
                 task::Poll::Ready(value.take().expect("Don't poll twice on MaybeAsync"))
             }
-            EnumProj::Async { future } => future.poll_unpin(cx),
+            MaybeAsync::Async { future } => future.poll_unpin(cx),
         }
     }
 }
