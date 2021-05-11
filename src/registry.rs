@@ -78,7 +78,7 @@ impl Registry {
         self.add_registry(name.into(), r);
         Ok(())
     }
-    pub fn add_registry(&mut self, plugin_name: String, registry: rd_interface::Registry) {
+    fn add_registry(&mut self, plugin_name: String, registry: rd_interface::Registry) {
         for (k, v) in registry.net {
             self.net.insert(
                 k,

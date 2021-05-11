@@ -1,10 +1,10 @@
 use std::{collections::HashMap, fmt, future::ready, time::Duration};
 
-use crate::composite;
 use crate::config;
 use crate::controller;
 use crate::registry::Registry;
 use crate::util::topological_sort;
+use crate::{builtin::load_builtin, composite};
 use anyhow::{anyhow, Context, Result};
 use async_std::future::timeout;
 use config::AllNet;
@@ -17,7 +17,7 @@ use futures::{
 };
 use rd_interface::{Arc, ConnectionPool, Net, NotImplementedNet, Server, Value};
 
-pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'static>;
+pub type PluginLoader = Box<dyn Fn(&config::Config, &mut Registry) -> Result<()> + 'static>;
 pub struct RabbitDigger {
     plugin_loader: PluginLoader,
 }
@@ -25,7 +25,7 @@ pub struct RabbitDigger {
 impl RabbitDigger {
     pub fn new() -> Result<RabbitDigger> {
         Ok(RabbitDigger {
-            plugin_loader: Box::new(|_| Ok(Registry::new())),
+            plugin_loader: Box::new(|_, _| Ok(())),
         })
     }
     pub async fn run(
@@ -89,7 +89,10 @@ impl RabbitDigger {
             let c = ctl.clone();
             move |net: Net| c.get_net(net)
         };
-        let registry = (self.plugin_loader)(&config)?;
+        let mut registry = Registry::new();
+
+        load_builtin(&mut registry)?;
+        (self.plugin_loader)(&config, &mut registry)?;
         log::debug!("Registry:\n{}", registry);
 
         let net_cfg = config.net.into_iter().map(|(k, v)| (k, AllNet::Net(v)));
