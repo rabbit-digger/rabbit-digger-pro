@@ -4,6 +4,7 @@ mod wrapper;
 use crate::config;
 
 use self::event::{Event, EventType};
+use anyhow::Result;
 use async_std::{
     channel,
     sync::{RwLock, RwLockReadGuard},
@@ -15,7 +16,7 @@ use rd_interface::{
 };
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
-pub(crate) struct Inner {
+pub struct Inner {
     config: Option<config::Config>,
     events: VecDeque<Event>,
 }
@@ -100,10 +101,23 @@ impl Controller {
         }
         .into_dyn()
     }
-    pub async fn update_config(&self, config: config::Config) {
-        self.inner.write().await.config = Some(config);
+    pub(crate) async fn update_config(&self, config: config::Config) -> Result<()> {
+        let mut inner = self.inner.write().await;
+        if inner.config.is_some() {
+            anyhow::bail!("this controller already has a config")
+        }
+        inner.config = Some(config);
+        Ok(())
     }
-    pub(crate) async fn inner<'a>(&'a self) -> RwLockReadGuard<'a, Inner> {
+    pub(crate) async fn remove_config(&self) -> Result<()> {
+        let mut inner = self.inner.write().await;
+        if inner.config.is_none() {
+            anyhow::bail!("failed to remove config from controller")
+        }
+        inner.config = None;
+        Ok(())
+    }
+    pub async fn lock<'a>(&'a self) -> RwLockReadGuard<'a, Inner> {
         self.inner.read().await
     }
 }

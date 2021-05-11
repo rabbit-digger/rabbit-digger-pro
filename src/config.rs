@@ -1,8 +1,8 @@
-pub(crate) mod default;
+pub mod default;
 
-use std::{collections::HashMap, mem::replace, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rd_interface::config::Value;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, OneOrMany};
@@ -184,17 +184,6 @@ pub enum Matcher {
 }
 
 impl Config {
-    pub async fn post_process(mut self) -> Result<Self> {
-        let imports = replace(&mut self.import, Vec::new());
-        for i in imports {
-            let mut temp_config = Config::default();
-            crate::translate::post_process(&mut temp_config, i.clone())
-                .await
-                .context(format!("post process of import: {:?}", i))?;
-            self.merge(temp_config);
-        }
-        Ok(self)
-    }
     pub fn merge(&mut self, other: Config) {
         self.plugin_path = other.plugin_path;
         self.net.extend(other.net);

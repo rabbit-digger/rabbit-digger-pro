@@ -1,66 +1,42 @@
-use std::{collections::HashMap, fmt, path::PathBuf, time::Duration};
+use std::{collections::HashMap, fmt, future::ready, time::Duration};
 
 use crate::composite;
 use crate::config;
 use crate::controller;
-use crate::plugins::load_plugins;
 use crate::registry::Registry;
-use crate::util::{topological_sort, DebounceStreamExt};
+use crate::util::topological_sort;
 use anyhow::{anyhow, Context, Result};
-use async_std::{fs::read_to_string, future::timeout};
+use async_std::future::timeout;
 use config::AllNet;
 use futures::{
-    future::{ready, try_select, Either},
+    future::{try_select, Either},
     pin_mut,
     prelude::*,
     stream::{self, FuturesUnordered, Stream},
     StreamExt,
 };
-use notify_stream::{notify::RecursiveMode, notify_stream};
 use rd_interface::{config::Value, Arc, ConnectionPool, Net, NotImplementedNet, Server};
 
 pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'static>;
 pub struct RabbitDigger {
-    config_path: PathBuf,
     plugin_loader: PluginLoader,
 }
 
 impl RabbitDigger {
-    pub fn new(config_path: PathBuf) -> Result<RabbitDigger> {
+    pub fn new() -> Result<RabbitDigger> {
         Ok(RabbitDigger {
-            config_path,
-            plugin_loader: Box::new(|cfg| load_plugins(cfg.plugin_path.clone())),
+            plugin_loader: Box::new(|_| Ok(Registry::new())),
         })
     }
-    pub fn with_plugin_loader(
-        config_path: PathBuf,
-        plugin_loader: impl Fn(&config::Config) -> Result<Registry> + 'static,
-    ) -> Result<RabbitDigger> {
-        Ok(RabbitDigger {
-            config_path,
-            plugin_loader: Box::new(plugin_loader),
-        })
+    pub async fn run(
+        &self,
+        controller: &controller::Controller,
+        config: config::Config,
+    ) -> Result<()> {
+        let config_stream = stream::once(ready(Ok(config)));
+        self.run_stream(controller, config_stream).await
     }
-    pub async fn run(&self, controller: &controller::Controller) -> Result<()> {
-        let config_path = self.config_path.clone();
-        let config_stream = notify_stream(&config_path, RecursiveMode::Recursive)?;
-
-        let config_stream = stream::once(async { Ok(()) })
-            .chain(
-                config_stream
-                    .try_filter(|e| ready(e.kind.is_modify()))
-                    .map_err(Into::<anyhow::Error>::into)
-                    .map(|_| Ok(()))
-                    .debounce(Duration::from_millis(100)),
-            )
-            .and_then(move |_| read_to_string(config_path.clone()).map_err(Into::into))
-            .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)))
-            .and_then(|c: config::Config| c.post_process());
-        pin_mut!(config_stream);
-        self.run_with_config_stream(controller, config_stream).await
-    }
-
-    async fn run_with_config_stream<S>(
+    pub async fn run_stream<S>(
         &self,
         controller: &controller::Controller,
         mut config_stream: S,
@@ -80,7 +56,7 @@ impl RabbitDigger {
         loop {
             log::info!("rabbit digger is starting...");
 
-            controller.update_config(config.clone()).await;
+            controller.update_config(config.clone()).await?;
             let run_fut = self.run_once(controller, config);
             pin_mut!(run_fut);
             let new_config = match try_select(run_fut, config_stream.try_next()).await {
@@ -95,6 +71,7 @@ impl RabbitDigger {
                 }
                 Err(Either::Right((e, _))) => return Err(e),
             };
+            controller.remove_config().await?;
 
             config = match new_config {
                 Some(v) => v,
@@ -103,7 +80,11 @@ impl RabbitDigger {
         }
     }
 
-    async fn run_once(&self, ctl: &controller::Controller, config: config::Config) -> Result<()> {
+    pub async fn run_once(
+        &self,
+        ctl: &controller::Controller,
+        config: config::Config,
+    ) -> Result<()> {
         let wrap_net = {
             let c = ctl.clone();
             move |net: Net| c.get_net(net)

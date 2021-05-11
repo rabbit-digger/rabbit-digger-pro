@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use async_std::fs::read_to_string;
 use env_logger::Env;
-use rabbit_digger::{controller, RabbitDigger};
+use rabbit_digger::{config::Config, controller, RabbitDigger};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -21,10 +22,13 @@ struct Args {
 async fn real_main(args: Args) -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("rabbit_digger=trace")).init();
 
+    let content = read_to_string(args.config).await?;
+    let config: Config = serde_yaml::from_str(&content)?;
+
     let controller = controller::Controller::new();
 
-    let rabbit_digger = RabbitDigger::new(args.config)?;
-    rabbit_digger.run(&controller).await?;
+    let rabbit_digger = RabbitDigger::new()?;
+    rabbit_digger.run(&controller, config).await?;
 
     Ok(())
 }
