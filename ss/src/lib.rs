@@ -3,7 +3,7 @@ mod wrapper;
 
 use rd_interface::{
     async_trait, registry::NetFactory, util::get_one_net, Address, Arc, INet, IntoAddress, IntoDyn,
-    Net, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    Net, Registry, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use serde_derive::Deserialize;
 use shadowsocks::{
@@ -81,8 +81,15 @@ impl INet for SSNet {
 impl NetFactory for SSNet {
     const NAME: &'static str = "shadowsocks";
     type Config = SSNetConfig;
+    type Net = Self;
 
-    fn new(nets: Vec<rd_interface::Net>, config: Self::Config) -> Result<Self> {
+    fn new(nets: Vec<Net>, config: Self::Config) -> Result<Self> {
         Ok(SSNet::new(get_one_net(nets)?, config))
     }
+}
+
+pub fn init(registry: &mut Registry) -> Result<()> {
+    registry.add_net::<SSNet>();
+
+    Ok(())
 }

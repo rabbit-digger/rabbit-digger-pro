@@ -12,7 +12,7 @@ use futures::{
     stream::{self, StreamExt, TryStreamExt},
 };
 use notify_stream::{notify::RecursiveMode, notify_stream};
-use rabbit_digger::{controller, RabbitDigger};
+use rabbit_digger::{controller, RabbitDigger, Registry};
 use structopt::StructOpt;
 use tokio::fs::read_to_string;
 
@@ -39,6 +39,12 @@ struct Args {
     write_config: Option<PathBuf>,
 }
 
+fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> Result<()> {
+    // #[cfg(feature = "ss")]
+    registry.init_with_registry("ss", ss::init)?;
+    Ok(())
+}
+
 async fn write_config(path: PathBuf, cfg: &rabbit_digger::Config) -> Result<()> {
     let content = serde_yaml::to_string(cfg)?;
     tokio::fs::write(path, content.as_bytes()).await?;
@@ -46,7 +52,10 @@ async fn write_config(path: PathBuf, cfg: &rabbit_digger::Config) -> Result<()> 
 }
 
 async fn real_main(args: Args) -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("rabbit_digger=trace")).init();
+    env_logger::Builder::from_env(
+        Env::default().default_filter_or("rabbit_digger=trace,rabbit_digger_pro=trace"),
+    )
+    .init();
 
     let controller = controller::Controller::new();
 
@@ -54,7 +63,9 @@ async fn real_main(args: Args) -> Result<()> {
         // TODO
     }
 
-    let rabbit_digger = RabbitDigger::new()?;
+    let mut rabbit_digger = RabbitDigger::new()?;
+    rabbit_digger.plugin_loader = Box::new(plugin_loader);
+
     let config_path = args.config.clone();
     let config_stream = notify_stream(&config_path, RecursiveMode::Recursive)?;
     let write_config_path = args.write_config;
