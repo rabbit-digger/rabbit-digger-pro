@@ -8,7 +8,7 @@ use rd_interface::{Registry, Result};
 mod linux {
     use std::net::SocketAddr;
 
-    use crate::util::OriginAddrExt;
+    use super::util::OriginAddrExt;
     use async_net::{TcpListener, TcpStream};
     use rd_interface::{
         async_trait, registry::ServerFactory, util::connect_tcp, ConnectionPool, Context, IServer,

@@ -5,7 +5,7 @@ use futures::{
 use std::{convert::TryInto, io};
 use thiserror::Error;
 
-use crate::common::Address;
+use super::common::Address;
 
 #[derive(Debug, Error)]
 pub enum Error {

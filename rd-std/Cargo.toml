@@ -1,23 +1,28 @@
 [package]
-name = "rd-socks5"
+name = "rd-std"
 version = "0.1.0"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+# common
 rd-interface = { version = "0.3", path = "../rd-interface" }
 futures = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 log = "0.4"
-http = { version = "0.2.4", optional = true }
 thiserror = "1.0"
 anyhow = "1.0"
+
+# http
+http = { version = "0.2.4", optional = true }
+
+# redir
+libc = "0.2.91"
+socket2 = "0.4.0"
+async-net = "1.5"
 
 [features]
 default = ["http_server"]
 plugin = []
 http_server = []
-
-[lib]
-crate-type = ["cdylib", "rlib"]

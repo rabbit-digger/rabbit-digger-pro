@@ -7,10 +7,8 @@ use crate::registry::Registry;
 use anyhow::Result;
 
 pub fn load_builtin(registry: &mut Registry) -> Result<()> {
-    #[cfg(feature = "rd-socks5")]
-    registry.init_with_registry("socks5", |r| rd_socks5::init(r).map_err(Into::into))?;
-    #[cfg(feature = "rd-redir")]
-    registry.init_with_registry("redir", |r| rd_redir::init(r).map_err(Into::into))?;
+    #[cfg(feature = "rd-std")]
+    registry.init_with_registry("std", |r| rd_std::init(r).map_err(Into::into))?;
 
     registry.init_with_registry("builtin", |r| {
         r.add_net::<alias::AliasNet>();

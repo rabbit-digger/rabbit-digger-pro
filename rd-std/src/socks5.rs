@@ -1,12 +1,10 @@
 mod client;
 mod common;
-mod http_server;
 mod protocol;
 mod server;
-mod socks5_server;
 
 pub use client::Socks5Client;
-pub use socks5_server::Socks5Server;
+pub use server::Socks5Server;
 
 use rd_interface::{
     registry::{NetFactory, ServerFactory},

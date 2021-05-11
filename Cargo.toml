@@ -30,21 +30,16 @@ async-trait = "0.1.42"
 once_cell = "1.7.2"
 topological-sort = "0.1"
 lru_time_cache = "0.11"
-rd-socks5 = { path = "./rd-socks5", optional = true }
-rd-redir = { path = "./rd-redir", optional = true }
+rd-std = { path = "./rd-std", optional = true }
 
 [features]
-default = [ "with_plugins" ]
+default = [ "rd-std" ]
 local_log = []
-
-disable_plugins = []
-with_plugins = [ "rd-socks5", "rd-redir" ]
 
 [workspace]
 members = [
     "rd-interface",
-    "rd-socks5",
-    "rd-redir",
+    "rd-std",
 ]
 
 [profile.release]

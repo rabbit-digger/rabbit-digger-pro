@@ -1,4 +1,4 @@
-use crate::protocol::{
+use super::protocol::{
     AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
 };
 
