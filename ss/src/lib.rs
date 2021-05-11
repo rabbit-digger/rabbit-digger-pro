@@ -2,11 +2,8 @@ mod udp;
 mod wrapper;
 
 use rd_interface::{
-    async_trait,
-    config::{from_value, Value},
-    util::get_one_net,
-    Address, Arc, INet, IntoAddress, IntoDyn, Net, Registry, Result, TcpListener, TcpStream,
-    UdpSocket, NOT_IMPLEMENTED,
+    async_trait, registry::NetFactory, util::get_one_net, Address, Arc, INet, IntoAddress, IntoDyn,
+    Net, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use serde_derive::Deserialize;
 use shadowsocks::{
@@ -18,7 +15,7 @@ use tokio_util::compat::*;
 use wrapper::{WrapAddress, WrapCipher, WrapSSTcp, WrapSSUdp};
 
 #[derive(Debug, Deserialize, Clone)]
-struct SSNetConfig {
+pub struct SSNetConfig {
     server: String,
     port: u16,
     password: String,
@@ -33,14 +30,13 @@ pub struct SSNet {
 }
 
 impl SSNet {
-    fn new(net: Net, config: Value) -> rd_interface::Result<SSNet> {
+    fn new(net: Net, config: SSNetConfig) -> SSNet {
         let context = Arc::new(Context::new(ServerType::Local));
-        let config: SSNetConfig = from_value(config)?;
-        Ok(SSNet {
+        SSNet {
             net,
             context,
             config,
-        })
+        }
     }
 }
 
@@ -85,11 +81,11 @@ impl INet for SSNet {
     }
 }
 
-#[no_mangle]
-pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_net("shadowsocks", |nets, config| {
-        SSNet::new(get_one_net(nets)?, config)
-    });
+impl NetFactory for SSNet {
+    const NAME: &'static str = "shadowsocks";
+    type Config = SSNetConfig;
 
-    Ok(())
+    fn new(nets: Vec<rd_interface::Net>, config: Self::Config) -> Result<Self> {
+        Ok(SSNet::new(get_one_net(nets)?, config))
+    }
 }
