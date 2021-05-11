@@ -2,7 +2,6 @@ use super::common::{pack_udp, parse_udp, Address};
 use super::protocol::{
     self, AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
 };
-use futures::{io::BufWriter, prelude::*};
 use protocol::Command;
 use rd_interface::{
     async_trait, pool::IUdpChannel, util::connect_tcp, ConnectionPool, Context, IServer,
@@ -12,6 +11,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     sync::{Arc, RwLock},
 };
+use tokio::io::{split, AsyncWriteExt, BufWriter};
 
 struct Config {
     net: Net,
@@ -33,7 +33,7 @@ impl Socks5Server {
         let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
         let Config { net, listen_net } = &*self.cfg;
         let local_ip = socket.local_addr().await?.ip();
-        let (mut rx, tx) = socket.split();
+        let (mut rx, tx) = split(socket);
         let mut tx = BufWriter::with_capacity(512, tx);
 
         let version = Version::read(&mut rx).await?;
@@ -68,7 +68,7 @@ impl Socks5Server {
                 CommandResponse::success(addr).write(&mut tx).await?;
                 tx.flush().await?;
 
-                let socket = rx.reunite(tx.into_inner()).unwrap();
+                let socket = rx.unsplit(tx.into_inner());
 
                 connect_tcp(out, socket).await?;
             }
@@ -124,7 +124,7 @@ impl Socks5Server {
                 CommandResponse::success(addr).write(&mut tx).await?;
                 tx.flush().await?;
 
-                let socket = rx.reunite(tx.into_inner()).unwrap();
+                let socket = rx.unsplit(tx.into_inner());
 
                 let udp_channel = Socks5UdpSocket(udp, socket, RwLock::new(None));
                 pool.connect_udp(udp_channel.into_dyn(), out).await?;

@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use async_std::fs::read_to_string;
 use env_logger::Env;
 use rabbit_digger::{config::Config, controller, RabbitDigger};
 use structopt::StructOpt;
+use tokio::fs::read_to_string;
 
 #[derive(StructOpt)]
 struct Args {
@@ -34,7 +34,7 @@ async fn real_main(args: Args) -> Result<()> {
 }
 
 #[paw::main]
-#[async_std::main]
+#[tokio::main]
 async fn main(args: Args) -> Result<()> {
     match real_main(args).await {
         Ok(()) => {}

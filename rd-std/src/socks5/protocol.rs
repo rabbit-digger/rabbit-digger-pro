@@ -1,9 +1,6 @@
-use futures::{
-    io::{AsyncRead, AsyncReadExt},
-    AsyncWrite, AsyncWriteExt,
-};
 use std::{convert::TryInto, io};
 use thiserror::Error;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::common::Address;
 

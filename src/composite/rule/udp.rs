@@ -1,11 +1,6 @@
 use std::{net::SocketAddr, time::Duration};
 
 use super::rule_net::Rule;
-use async_std::{
-    channel::{bounded, Receiver, Sender},
-    sync::Mutex,
-    task::spawn,
-};
 use futures::{
     channel::oneshot,
     future::{select, Either},
@@ -14,6 +9,13 @@ use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait, constant::UDP_BUFFER_SIZE, Address, Context, IUdpSocket, Result, UdpSocket,
     NOT_IMPLEMENTED,
+};
+use tokio::{
+    sync::{
+        mpsc::{channel, Receiver, Sender},
+        Mutex,
+    },
+    task::spawn,
 };
 
 type UdpPacket = (Vec<u8>, SocketAddr);
@@ -25,7 +27,7 @@ pub struct UdpRuleSocket {
     nat: NatTable,
     cache: Mutex<LruCache<Address, String>>,
     tx: Sender<UdpPacket>,
-    rx: Receiver<UdpPacket>,
+    rx: Mutex<Receiver<UdpPacket>>,
     bind_addr: Address,
 }
 
@@ -60,7 +62,7 @@ impl Drop for DroppableUdpSocket {
 
 impl UdpRuleSocket {
     pub fn new(rule: Rule, context: Context, bind_addr: Address) -> UdpRuleSocket {
-        let (tx, rx) = bounded::<UdpPacket>(100);
+        let (tx, rx) = channel::<UdpPacket>(100);
         let nat = Mutex::new(LruCache::with_expiry_duration_and_capacity(
             Duration::from_secs(60),
             100,
@@ -75,7 +77,7 @@ impl UdpRuleSocket {
                 100,
             )),
             tx,
-            rx,
+            rx: Mutex::new(rx),
             bind_addr,
         }
     }
@@ -96,9 +98,11 @@ impl IUdpSocket for UdpRuleSocket {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         let (data, addr) = self
             .rx
+            .lock()
+            .await
             .recv()
             .await
-            .map_err(|_| rd_interface::Error::Other("Failed to receive UDP".into()))?;
+            .ok_or(rd_interface::Error::Other("Failed to receive UDP".into()))?;
 
         let to_copy = data.len().min(buf.len());
         buf[..to_copy].copy_from_slice(&data[..to_copy]);

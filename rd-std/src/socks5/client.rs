@@ -3,17 +3,12 @@ use super::protocol::{
 };
 
 use super::common::{pack_udp, parse_udp, Address};
-use futures::{io::BufWriter, prelude::*};
 use rd_interface::{
-    async_trait, error::map_other, AsyncRead, AsyncWrite, INet, ITcpStream, IUdpSocket,
+    async_trait, error::map_other, impl_async_read_write, INet, ITcpStream, IUdpSocket,
     IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
-use std::{
-    io,
-    net::SocketAddr,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::net::SocketAddr;
+use tokio::io::{split, AsyncWriteExt, BufWriter};
 
 pub struct Socks5Client {
     address: String,
@@ -23,32 +18,7 @@ pub struct Socks5Client {
 
 pub struct Socks5TcpStream(TcpStream);
 
-impl AsyncRead for Socks5TcpStream {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.0).poll_read(cx, buf)
-    }
-}
-impl AsyncWrite for Socks5TcpStream {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.0).poll_write(cx, buf)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.0).poll_flush(cx)
-    }
-
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.0).poll_close(cx)
-    }
-}
+impl_async_read_write!(Socks5TcpStream, 0);
 
 pub struct Socks5UdpSocket(UdpSocket, TcpStream, SocketAddr);
 
@@ -150,7 +120,7 @@ impl Socks5Client {
         socket: &mut TcpStream,
         command_req: CommandRequest,
     ) -> Result<CommandResponse> {
-        let (mut rx, tx) = socket.split();
+        let (mut rx, tx) = split(socket);
         let mut tx = BufWriter::with_capacity(512, tx);
 
         let version = Version::V5;

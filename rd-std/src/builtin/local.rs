@@ -1,18 +1,16 @@
 use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
-    pin::Pin,
-    task::{Context, Poll},
 };
 
-use async_std::net;
 use rd_interface::{
-    async_trait, registry::NetFactory, Address, INet, IntoDyn, Result, TcpListener, TcpStream,
-    UdpSocket,
+    async_trait, impl_async_read_write, registry::NetFactory, Address, INet, IntoDyn, Result,
+    TcpListener, TcpStream, UdpSocket,
 };
+use tokio::net;
 
 pub struct LocalNet;
-pub struct CompatTcp(net::TcpStream);
+pub struct CompatTcp(pub(crate) net::TcpStream);
 pub struct Listener(net::TcpListener);
 pub struct Udp(net::UdpSocket);
 
@@ -21,42 +19,16 @@ impl LocalNet {
         LocalNet
     }
 }
-async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
-    use async_std::net::ToSocketAddrs;
+async fn lookup_host(domain: String, _port: u16) -> io::Result<SocketAddr> {
+    use tokio::net::lookup_host;
 
-    let domain = (domain.as_ref(), port);
-    ToSocketAddrs::to_socket_addrs(&domain)
+    lookup_host(&domain)
         .await?
         .next()
         .ok_or(ErrorKind::AddrNotAvailable.into())
 }
 
-impl rd_interface::AsyncRead for CompatTcp {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.0).poll_read(cx, buf)
-    }
-}
-impl rd_interface::AsyncWrite for CompatTcp {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.0).poll_write(cx, buf)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.0).poll_flush(cx)
-    }
-
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.0).poll_close(cx)
-    }
-}
+impl_async_read_write!(CompatTcp, 0);
 
 #[async_trait]
 impl rd_interface::ITcpStream for CompatTcp {

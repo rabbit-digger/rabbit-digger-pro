@@ -6,7 +6,6 @@ use crate::registry::Registry;
 use crate::util::topological_sort;
 use crate::{builtin::load_builtin, composite};
 use anyhow::{anyhow, Context, Result};
-use async_std::future::timeout;
 use config::AllNet;
 use futures::{
     future::{try_select, Either},
@@ -16,6 +15,7 @@ use futures::{
     StreamExt,
 };
 use rd_interface::{Arc, ConnectionPool, Net, NotImplementedNet, Server, Value};
+use tokio::time::timeout;
 
 pub type PluginLoader = Box<dyn Fn(&config::Config, &mut Registry) -> Result<()> + 'static>;
 pub struct RabbitDigger {

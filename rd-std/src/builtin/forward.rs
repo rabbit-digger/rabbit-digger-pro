@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait, registry::ServerFactory, util::connect_tcp, Arc, ConnectionPool, Context, IServer,
-    IntoAddress, Net, Result, TcpListener, TcpStream,
+    async_trait, registry::ServerFactory, util::connect_tcp, Arc, ConnectionPool, Context,
+    IServer, IntoAddress, Net, Result, TcpListener, TcpStream,
 };
 use serde_derive::Deserialize;
 

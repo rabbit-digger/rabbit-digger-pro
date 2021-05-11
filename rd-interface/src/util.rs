@@ -5,11 +5,7 @@ use crate::{
     },
     Address, Context, Result, NOT_IMPLEMENTED,
 };
-use futures_util::{
-    future::{try_select, BoxFuture, Either},
-    io::copy,
-    pin_mut, AsyncReadExt, AsyncWriteExt,
-};
+use futures_util::{future::BoxFuture, pin_mut};
 use std::{
     collections::VecDeque,
     io,
@@ -17,34 +13,17 @@ use std::{
     pin::Pin,
     task::{self, Poll},
 };
+pub use tokio::io::copy_bidirectional;
+use tokio::io::{AsyncReadExt, ReadBuf};
 
 /// Connect two `TcpStream`
 pub async fn connect_tcp(
     t1: impl AsyncRead + AsyncWrite,
     t2: impl AsyncRead + AsyncWrite,
 ) -> io::Result<()> {
-    let (mut read_1, mut write_1) = t1.split();
-    let (mut read_2, mut write_2) = t2.split();
-
-    let fut1 = async {
-        let r = copy(&mut read_1, &mut write_2).await;
-        write_2.close().await?;
-        r
-    };
-    let fut2 = async {
-        let r = copy(&mut read_2, &mut write_1).await;
-        write_1.close().await?;
-        r
-    };
-
-    pin_mut!(fut1);
-    pin_mut!(fut2);
-
-    match try_select(fut1, fut2).await {
-        Ok(_) => {}
-        Err(Either::Left((e, _))) | Err(Either::Right((e, _))) => return Err(e),
-    };
-
+    pin_mut!(t1);
+    pin_mut!(t2);
+    copy_bidirectional(&mut t1, &mut t2).await?;
     Ok(())
 }
 
@@ -57,17 +36,19 @@ impl AsyncRead for PeekableTcpStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<()>> {
         let (first, ..) = &self.buf.as_slices();
         if first.len() > 0 {
-            let read = first.len().min(buf.len());
-            buf[0..read].copy_from_slice(&first[0..read]);
+            let read = first.len().min(buf.remaining());
+            let unfilled = buf.initialize_unfilled_to(read);
+            unfilled[0..read].copy_from_slice(&first[0..read]);
+            buf.advance(read);
 
             // remove 0..read
             self.buf.drain(0..read);
 
-            Poll::Ready(Ok(read))
+            Poll::Ready(Ok(()))
         } else {
             Pin::new(&mut self.tcp).poll_read(cx, buf)
         }
@@ -86,8 +67,8 @@ impl AsyncWrite for PeekableTcpStream {
         Pin::new(&mut self.tcp).poll_flush(cx)
     }
 
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.tcp).poll_close(cx)
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.tcp).poll_shutdown(cx)
     }
 }
 

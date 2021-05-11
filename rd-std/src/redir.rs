@@ -1,4 +1,4 @@
-mod util;
+mod origin_addr;
 
 #[cfg(target_os = "linux")]
 use linux::RedirServer;
@@ -8,13 +8,14 @@ use rd_interface::{Registry, Result};
 mod linux {
     use std::net::SocketAddr;
 
-    use super::util::OriginAddrExt;
-    use async_net::{TcpListener, TcpStream};
+    use super::origin_addr::OriginAddrExt;
+    use crate::builtin::local::CompatTcp;
     use rd_interface::{
         async_trait, registry::ServerFactory, util::connect_tcp, ConnectionPool, Context, IServer,
-        IntoAddress, Net, Result,
+        IntoAddress, IntoDyn, Net, Result,
     };
     use serde_derive::Deserialize;
+    use tokio::net::{TcpListener, TcpStream};
 
     #[derive(Debug, Deserialize)]
     pub struct RedirServerConfig {
@@ -61,6 +62,7 @@ mod linux {
             let target_tcp = net
                 .tcp_connect(&mut Context::from_socketaddr(addr), target.into_address()?)
                 .await?;
+            let socket = CompatTcp(socket).into_dyn();
 
             connect_tcp(socket, target_tcp).await?;
 

@@ -1,18 +1,18 @@
-use async_std::channel;
-use rd_interface::{async_trait, AsyncRead, AsyncWrite};
+use rd_interface::{async_trait, AsyncRead, AsyncWrite, ReadBuf};
 use std::{
     io,
     net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
 };
+use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 use super::event::{Event, EventType};
 
 pub struct TcpStream {
     inner: rd_interface::TcpStream,
-    sender: channel::Sender<Event>,
+    sender: UnboundedSender<Event>,
     uuid: Uuid,
 }
 
@@ -24,15 +24,11 @@ impl Drop for TcpStream {
 
 impl TcpStream {
     pub fn send(&self, event_type: EventType) {
-        if self
-            .sender
-            .try_send(Event::new(self.uuid, event_type))
-            .is_err()
-        {
+        if self.sender.send(Event::new(self.uuid, event_type)).is_err() {
             log::warn!("Failed to send event");
         }
     }
-    pub fn new(inner: rd_interface::TcpStream, sender: channel::Sender<Event>) -> TcpStream {
+    pub fn new(inner: rd_interface::TcpStream, sender: UnboundedSender<Event>) -> TcpStream {
         let uuid = Uuid::new_v4();
         TcpStream {
             inner,
@@ -46,12 +42,14 @@ impl AsyncRead for TcpStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<()>> {
+        let before = buf.filled().len();
         match Pin::new(&mut self.inner).poll_read(cx, buf) {
-            Poll::Ready(Ok(s)) => {
+            Poll::Ready(Ok(())) => {
+                let s = buf.filled().len() - before;
                 self.send(EventType::Inbound(s));
-                Ok(s).into()
+                Ok(()).into()
             }
             r => r,
         }
@@ -76,8 +74,8 @@ impl AsyncWrite for TcpStream {
         Pin::new(&mut self.inner).poll_flush(cx)
     }
 
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.inner).poll_close(cx)
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
 

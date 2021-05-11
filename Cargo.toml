@@ -15,7 +15,7 @@ futures = "0.3.5"
 serde = "1.0.119"
 serde_derive = "1.0.119"
 serde_with = "1.8.1"
-async-std = { version = "1.9", features = ["attributes", "unstable"] }
+tokio = { version = "1.5.0", features = ["full"] }
 structopt = { version = "0.3.21", features = ["paw"] }
 paw = "1.0.0"
 log = { version = "0.4.13", features = ["release_max_level_debug"] }

@@ -1,9 +1,9 @@
-use futures::prelude::*;
 use rd_interface::{AsyncRead, AsyncWrite};
 use std::{
     io::{Error, ErrorKind, Result},
     net::{Ipv4Addr, SocketAddr},
 };
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Debug)]
 pub enum Address {
@@ -141,7 +141,7 @@ impl Address {
 }
 
 pub async fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {
-    let mut cursor = futures::io::Cursor::new(buf);
+    let mut cursor = std::io::Cursor::new(buf);
     let mut header = [0u8; 3];
     cursor.read_exact(&mut header).await?;
     let addr = match header[0..3] {
@@ -166,7 +166,7 @@ pub async fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {
 
 pub async fn pack_udp(addr: Address, buf: &[u8]) -> Result<Vec<u8>> {
     let addr: Address = addr.into();
-    let mut cursor = futures::io::Cursor::new(Vec::new());
+    let mut cursor = std::io::Cursor::new(Vec::new());
     cursor.write_all(&[0x00, 0x00, 0x00]).await?;
     addr.write(&mut cursor).await?;
     cursor.write_all(buf).await?;

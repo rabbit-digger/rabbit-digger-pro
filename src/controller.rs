@@ -5,16 +5,17 @@ use crate::config;
 
 use self::event::{Event, EventType};
 use anyhow::Result;
-use async_std::{
-    channel,
-    sync::{RwLock, RwLockReadGuard},
-    task::{sleep, spawn},
-};
 use futures::FutureExt;
 use rd_interface::{
     async_trait, Address, Context, INet, IntoDyn, Net, TcpListener, TcpStream, UdpSocket,
 };
 use std::{collections::VecDeque, sync::Arc, time::Duration};
+use tokio::{
+    sync::mpsc,
+    sync::{RwLock, RwLockReadGuard},
+    task::spawn,
+    time::sleep,
+};
 
 pub struct Inner {
     config: Option<config::Config>,
@@ -29,12 +30,12 @@ pub struct TaskInfo {
 #[derive(Clone)]
 pub struct Controller {
     inner: Arc<RwLock<Inner>>,
-    sender: channel::Sender<Event>,
+    sender: mpsc::UnboundedSender<Event>,
 }
 
 pub struct ControllerNet {
     net: Net,
-    sender: channel::Sender<Event>,
+    sender: mpsc::UnboundedSender<Event>,
 }
 
 #[async_trait]
@@ -65,20 +66,20 @@ impl INet for ControllerNet {
     }
 }
 
-async fn process(rx: channel::Receiver<Event>, inner: Arc<RwLock<Inner>>) {
+async fn process(mut rx: mpsc::UnboundedReceiver<Event>, inner: Arc<RwLock<Inner>>) {
     loop {
-        let e = match rx.try_recv() {
-            Ok(e) => e,
-            Err(channel::TryRecvError::Empty) => {
+        let e = match rx.recv().now_or_never() {
+            Some(Some(e)) => e,
+            Some(None) => break,
+            None => {
                 sleep(Duration::from_millis(100)).await;
                 continue;
             }
-            Err(channel::TryRecvError::Closed) => break,
         };
 
         let mut inner = inner.write().await;
         inner.events.push_back(e);
-        while let Some(Ok(e)) = rx.recv().now_or_never() {
+        while let Some(Some(e)) = rx.recv().now_or_never() {
             inner.events.push_back(e);
         }
     }
@@ -90,7 +91,7 @@ impl Controller {
             config: None,
             events: VecDeque::new(),
         }));
-        let (sender, rx) = channel::unbounded();
+        let (sender, rx) = mpsc::unbounded_channel();
         spawn(process(rx, inner.clone()));
         Controller { inner, sender }
     }
