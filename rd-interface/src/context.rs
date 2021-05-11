@@ -1,4 +1,4 @@
-use crate::config::Value;
+use crate::Value;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, fmt::Debug, net::SocketAddr};
 use thiserror::Error;

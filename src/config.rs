@@ -3,7 +3,7 @@ pub mod default;
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::Result;
-use rd_interface::config::Value;
+use rd_interface::Value;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, OneOrMany};
 

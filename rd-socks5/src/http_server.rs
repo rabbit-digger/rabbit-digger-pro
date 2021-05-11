@@ -1,17 +1,5 @@
-use super::common::{pack_udp, parse_udp, Address};
-use crate::protocol::{
-    self, AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
-};
-use futures::{io::BufWriter, prelude::*};
-use protocol::Command;
-use rd_interface::{
-    async_trait, pool::IUdpChannel, util::connect_tcp, ConnectionPool, Context, IntoAddress,
-    IntoDyn, Net, Result, TcpStream, UdpSocket,
-};
-use std::{
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
-    sync::{Arc, RwLock},
-};
+use rd_interface::{ConnectionPool, Net, TcpStream};
+use std::net::SocketAddr;
 
 #[derive(Clone)]
 pub struct HttpServer {

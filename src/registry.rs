@@ -1,21 +1,17 @@
 //! A registry with plugin name
 
 use anyhow::{anyhow, Result};
-use rd_interface::{
-    config::Value,
-    registry::{NetFromConfig, ServerFromConfig},
-    Net, Server,
-};
+use rd_interface::{registry::FromConfig, Net, Server, Value};
 use std::{collections::HashMap, fmt};
 
 pub struct NetItem {
     pub plugin_name: String,
-    pub factory: NetFromConfig<Net>,
+    pub factory: FromConfig<Net>,
 }
 
 pub struct ServerItem {
     pub plugin_name: String,
-    pub factory: ServerFromConfig<Server>,
+    pub factory: FromConfig<Server>,
 }
 
 impl NetItem {
@@ -26,7 +22,7 @@ impl NetItem {
 
 impl ServerItem {
     pub fn build(&self, listen_net: Net, net: Net, config: Value) -> rd_interface::Result<Server> {
-        (self.factory)(listen_net, net, config)
+        (self.factory)(vec![listen_net, net], config)
     }
 }
 

@@ -12,7 +12,8 @@ pub fn load_builtin(registry: &mut Registry) -> Result<()> {
     r.add_net::<alias::AliasNet>();
     r.add_net::<combine::CombineNet>();
     r.add_net::<local::LocalNet>();
-    forward::init_plugin(&mut r)?;
+
+    r.add_server::<forward::ForwardNet>();
 
     registry.add_registry("builtin".to_string(), r);
     Ok(())

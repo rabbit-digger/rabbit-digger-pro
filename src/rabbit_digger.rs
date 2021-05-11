@@ -15,7 +15,7 @@ use futures::{
     stream::{self, FuturesUnordered, Stream},
     StreamExt,
 };
-use rd_interface::{config::Value, Arc, ConnectionPool, Net, NotImplementedNet, Server};
+use rd_interface::{Arc, ConnectionPool, Net, NotImplementedNet, Server, Value};
 
 pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'static>;
 pub struct RabbitDigger {

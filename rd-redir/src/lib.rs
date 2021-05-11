@@ -1,7 +1,7 @@
 mod util;
 
 #[cfg(target_os = "linux")]
-use linux::{RedirServer, RedirServerConfig};
+use linux::RedirServer;
 use rd_interface::{Registry, Result};
 
 #[cfg(target_os = "linux")]
@@ -11,7 +11,8 @@ mod linux {
     use crate::util::OriginAddrExt;
     use async_net::{TcpListener, TcpStream};
     use rd_interface::{
-        async_trait, util::connect_tcp, ConnectionPool, Context, IServer, IntoAddress, Net, Result,
+        async_trait, registry::ServerFactory, util::connect_tcp, ConnectionPool, Context, IServer,
+        IntoAddress, Net, Result,
     };
     use serde_derive::Deserialize;
 
@@ -66,13 +67,20 @@ mod linux {
             Ok(())
         }
     }
+
+    impl ServerFactory for RedirServer {
+        const NAME: &'static str = "redir";
+
+        type Config = RedirServerConfig;
+
+        fn new(_listen_net: Net, net: Net, config: Self::Config) -> Result<Self> {
+            Ok(RedirServer::new(config, net))
+        }
+    }
 }
 
 pub fn init(_registry: &mut Registry) -> Result<()> {
     #[cfg(target_os = "linux")]
-    _registry.add_server("redir", |_listen_net, net, cfg| {
-        let cfg: RedirServerConfig = rd_interface::config::from_value(cfg)?;
-        Ok(RedirServer::new(cfg, net))
-    });
+    _registry.add_server::<RedirServer>();
     Ok(())
 }

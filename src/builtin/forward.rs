@@ -1,13 +1,13 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait, config::from_value, util::connect_tcp, Arc, ConnectionPool, Context, IServer,
-    IntoAddress, Net, Registry, Result, TcpListener, TcpStream,
+    async_trait, registry::ServerFactory, util::connect_tcp, Arc, ConnectionPool, Context, IServer,
+    IntoAddress, Net, Result, TcpListener, TcpStream,
 };
 use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct ForwardConfig {
+pub struct ForwardConfig {
     bind: String,
     target: String,
 }
@@ -67,10 +67,12 @@ impl ForwardNet {
     }
 }
 
-pub fn init_plugin(registry: &mut Registry) -> Result<()> {
-    registry.add_server("forward", |listen_net, net, cfg| {
-        let cfg: ForwardConfig = from_value(cfg)?;
-        Ok(ForwardNet::new(listen_net, net, cfg))
-    });
-    Ok(())
+impl ServerFactory for ForwardNet {
+    const NAME: &'static str = "forward";
+
+    type Config = ForwardConfig;
+
+    fn new(listen_net: Net, net: Net, config: Self::Config) -> Result<Self> {
+        Ok(ForwardNet::new(listen_net, net, config))
+    }
 }

@@ -12,8 +12,5 @@ pub use context::Context;
 pub use error::{Error, Result, NOT_IMPLEMENTED};
 pub use interface::*;
 pub use registry::Registry;
+pub use serde_json::Value;
 pub use util::{CombineNet, NotImplementedNet};
-
-pub mod config {
-    pub use serde_json::{self, from_value, Error, Value};
-}
