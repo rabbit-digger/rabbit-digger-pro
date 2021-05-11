@@ -71,8 +71,8 @@ impl Registry {
     pub fn init_with_registry(
         &mut self,
         name: impl Into<String>,
-        init: impl Fn(&mut rd_interface::Registry) -> Result<()>,
-    ) -> Result<()> {
+        init: impl Fn(&mut rd_interface::Registry) -> rd_interface::Result<()>,
+    ) -> rd_interface::Result<()> {
         let mut r = rd_interface::Registry::new();
         init(&mut r)?;
         self.add_registry(name.into(), r);

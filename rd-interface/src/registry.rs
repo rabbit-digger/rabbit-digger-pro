@@ -6,6 +6,9 @@ use serde_json::Value;
 
 pub type FromConfig<T> = Box<dyn Fn(Vec<Net>, Value) -> Result<T>>;
 
+#[derive(Debug, Default, serde_derive::Deserialize)]
+pub struct EmptyConfig(Value);
+
 pub struct Registry {
     pub net: HashMap<String, FromConfig<Net>>,
     pub server: HashMap<String, FromConfig<Server>>,

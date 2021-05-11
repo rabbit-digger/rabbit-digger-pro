@@ -7,7 +7,6 @@ description = "Just a stub"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-futures-io = "0.3.12"
 futures-util = { version = "0.3.12", default-features = false, features = ["channel", "io"] }
 futures-executor = { version = "0.3.14", features = ["thread-pool"] }
 async-trait = "0.1.42"

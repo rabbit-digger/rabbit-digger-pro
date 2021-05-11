@@ -1,7 +1,8 @@
 use futures::future::BoxFuture;
 use rd_interface::{
-    registry::NetFactory, util::get_one_net, Address, Context, INet, Result, TcpListener,
-    TcpStream, UdpSocket,
+    registry::{EmptyConfig, NetFactory},
+    util::get_one_net,
+    Address, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct AliasNet(rd_interface::Net);
@@ -52,7 +53,7 @@ impl INet for AliasNet {
 
 impl NetFactory for AliasNet {
     const NAME: &'static str = "alias";
-    type Config = ();
+    type Config = EmptyConfig;
     type Net = Self;
 
     fn new(nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {

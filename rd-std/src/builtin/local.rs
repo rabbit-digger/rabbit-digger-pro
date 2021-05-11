@@ -4,8 +4,9 @@ use std::{
 };
 
 use rd_interface::{
-    async_trait, impl_async_read_write, registry::NetFactory, Address, INet, IntoDyn, Result,
-    TcpListener, TcpStream, UdpSocket,
+    async_trait, impl_async_read_write,
+    registry::{EmptyConfig, NetFactory},
+    Address, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
 use tokio::net;
 
@@ -107,7 +108,7 @@ impl INet for LocalNet {
 
 impl NetFactory for LocalNet {
     const NAME: &'static str = "local";
-    type Config = ();
+    type Config = EmptyConfig;
     type Net = Self;
 
     fn new(_nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {

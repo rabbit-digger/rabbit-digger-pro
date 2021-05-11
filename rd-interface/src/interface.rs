@@ -3,7 +3,6 @@ use std::net::SocketAddr;
 pub use crate::{pool::ConnectionPool, Context};
 pub use crate::{Address, Error, Result};
 pub use async_trait::async_trait;
-pub use futures_util::future::RemoteHandle;
 pub use std::sync::Arc;
 pub use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 

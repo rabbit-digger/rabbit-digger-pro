@@ -5,9 +5,9 @@ use crate::{
     },
     Address, Context, Result, NOT_IMPLEMENTED,
 };
-use futures_util::{future::BoxFuture, pin_mut};
 use std::{
     collections::VecDeque,
+    future::Future,
     io,
     net::SocketAddr,
     pin::Pin,
@@ -15,14 +15,15 @@ use std::{
 };
 pub use tokio::io::copy_bidirectional;
 use tokio::io::{AsyncReadExt, ReadBuf};
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Connect two `TcpStream`
 pub async fn connect_tcp(
     t1: impl AsyncRead + AsyncWrite,
     t2: impl AsyncRead + AsyncWrite,
 ) -> io::Result<()> {
-    pin_mut!(t1);
-    pin_mut!(t2);
+    tokio::pin!(t1);
+    tokio::pin!(t2);
     copy_bidirectional(&mut t1, &mut t2).await?;
     Ok(())
 }

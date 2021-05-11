@@ -1,28 +1,21 @@
-use std::{future::Future, io, net::SocketAddr, sync::Arc};
+use std::{future::Future, net::SocketAddr, sync::Arc};
 
-use futures_executor::ThreadPool;
-use futures_util::{
-    future::try_join,
-    task::{SpawnError, SpawnExt},
-};
+use futures_util::future::try_join;
 
 use crate::{async_trait, Address, Result, UdpSocket};
 
 #[derive(Clone)]
-pub struct ConnectionPool {
-    pool: ThreadPool,
-}
+pub struct ConnectionPool {}
 
 impl ConnectionPool {
-    pub fn new() -> io::Result<ConnectionPool> {
-        let pool = ThreadPool::new()?;
-        Ok(ConnectionPool { pool })
+    pub fn new() -> ConnectionPool {
+        ConnectionPool {}
     }
-    pub fn spawn<Fut>(&self, future: Fut) -> Result<(), SpawnError>
+    pub fn spawn<Fut>(&self, future: Fut) -> tokio::task::JoinHandle<()>
     where
         Fut: Future<Output = ()> + Send + 'static,
     {
-        self.pool.spawn(future)
+        tokio::spawn(future)
     }
     pub async fn connect_udp(&self, udp_channel: UdpChannel, udp: UdpSocket) -> crate::Result<()> {
         let in_side = async {

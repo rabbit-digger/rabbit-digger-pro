@@ -1,6 +1,7 @@
 use futures::future::BoxFuture;
 use rd_interface::{
-    registry::NetFactory, Address, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
+    registry::{EmptyConfig, NetFactory},
+    Address, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct CombineNet(rd_interface::Net, rd_interface::Net, rd_interface::Net);
@@ -59,7 +60,7 @@ impl INet for CombineNet {
 
 impl NetFactory for CombineNet {
     const NAME: &'static str = "combine";
-    type Config = ();
+    type Config = EmptyConfig;
     type Net = Self;
 
     fn new(nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {

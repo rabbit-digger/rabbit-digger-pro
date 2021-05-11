@@ -19,7 +19,7 @@ use tokio::time::timeout;
 
 pub type PluginLoader = Box<dyn Fn(&config::Config, &mut Registry) -> Result<()> + 'static>;
 pub struct RabbitDigger {
-    plugin_loader: PluginLoader,
+    pub plugin_loader: PluginLoader,
 }
 
 impl RabbitDigger {
@@ -106,7 +106,7 @@ impl RabbitDigger {
 
         log::info!("Server:\n{}", ServerList(&servers));
 
-        let pool = ConnectionPool::new()?;
+        let pool = ConnectionPool::new();
         let mut server_tasks: FuturesUnordered<_> = servers
             .into_iter()
             .map(|i| {
