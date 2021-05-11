@@ -20,10 +20,11 @@ impl LocalNet {
         LocalNet
     }
 }
-async fn lookup_host(domain: String, _port: u16) -> io::Result<SocketAddr> {
+async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
     use tokio::net::lookup_host;
 
-    lookup_host(&domain)
+    let domain = (domain.as_ref(), port);
+    lookup_host(domain)
         .await?
         .next()
         .ok_or(ErrorKind::AddrNotAvailable.into())
