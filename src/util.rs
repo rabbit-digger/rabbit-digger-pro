@@ -4,23 +4,16 @@ use std::{
     time::Duration,
 };
 
-use async_std::stream;
-use futures::{Stream, StreamExt};
+use futures::{Future, Stream, StreamExt};
 use pin_project_lite::pin_project;
-
-type Timer = stream::Timeout<stream::Pending<()>>;
-
-fn timer(duration: Duration) -> Timer {
-    use async_std::stream::StreamExt;
-    stream::pending().timeout(duration)
-}
+use tokio::time::{sleep, Sleep};
 
 pin_project! {
     #[derive(Debug)]
     pub struct DebounceStream<S, Item> {
         #[pin]
         inner: S,
-        timer: Option<Timer>,
+        timer: Option<Pin<Box<Sleep>>>,
         item: Option<Item>,
         delay: Duration,
     }
@@ -51,13 +44,13 @@ where
         let mut this = self.project();
         match this.inner.poll_next_unpin(cx) {
             Poll::Ready(r) => {
-                *this.timer = Some(timer(*this.delay));
+                *this.timer = Some(Box::pin(sleep(*this.delay)));
                 *this.item = r;
             }
             Poll::Pending => {}
         };
-        let poll_timer = this.timer.as_mut().map(|t| t.poll_next_unpin(cx));
-        if let Some(Poll::Ready(Some(_))) = poll_timer {
+        let poll_timer = this.timer.as_mut().map(|t| Future::poll(Pin::new(t), cx));
+        if let Some(Poll::Ready(_)) = poll_timer {
             *this.timer = None;
             Poll::Ready(this.item.take())
         } else {

@@ -5,7 +5,6 @@ mod util;
 use std::{path::PathBuf, time::Duration};
 
 use anyhow::Result;
-use async_std::fs::read_to_string;
 use env_logger::Env;
 use futures::{
     future::{ready, TryFutureExt},
@@ -15,6 +14,7 @@ use futures::{
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rabbit_digger::{controller, RabbitDigger};
 use structopt::StructOpt;
+use tokio::fs::read_to_string;
 
 use crate::util::DebounceStreamExt;
 
@@ -41,7 +41,7 @@ struct Args {
 
 async fn write_config(path: PathBuf, cfg: &rabbit_digger::Config) -> Result<()> {
     let content = serde_yaml::to_string(cfg)?;
-    async_std::fs::write(path, content.as_bytes()).await?;
+    tokio::fs::write(path, content.as_bytes()).await?;
     Ok(())
 }
 
@@ -83,7 +83,7 @@ async fn real_main(args: Args) -> Result<()> {
 }
 
 #[paw::main]
-#[async_std::main]
+#[tokio::main]
 async fn main(args: Args) -> Result<()> {
     match real_main(args).await {
         Ok(()) => {}

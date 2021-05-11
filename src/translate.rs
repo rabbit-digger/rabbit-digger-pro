@@ -1,7 +1,7 @@
 mod clash;
 
 use anyhow::{anyhow, Result};
-use async_std::fs::read_to_string;
+use tokio::fs::read_to_string;
 
 use rabbit_digger::config::{Config, Import};
 
