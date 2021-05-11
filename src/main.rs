@@ -16,15 +16,6 @@ struct Args {
         default_value = "config.yaml"
     )]
     config: PathBuf,
-
-    /// GraphQL bind
-    #[cfg(feature = "gql")]
-    #[structopt(short, long, env = "RD_BIND")]
-    bind: Option<String>,
-
-    /// Write generated config to path
-    #[structopt(short, long, parse(from_os_str))]
-    write_config: Option<PathBuf>,
 }
 
 async fn real_main(args: Args) -> Result<()> {
@@ -32,13 +23,7 @@ async fn real_main(args: Args) -> Result<()> {
 
     let controller = controller::Controller::new();
 
-    if let Some(bind) = args.bind {
-        #[cfg(feature = "gql")]
-        rabbit_digger::gql::serve(bind, &controller).await?;
-    }
-
-    let mut rabbit_digger = RabbitDigger::new(args.config)?;
-    rabbit_digger.write_config = args.write_config;
+    let rabbit_digger = RabbitDigger::new(args.config)?;
     rabbit_digger.run(&controller).await?;
 
     Ok(())

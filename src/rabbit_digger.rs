@@ -7,10 +7,7 @@ use crate::plugins::load_plugins;
 use crate::registry::Registry;
 use crate::util::{topological_sort, DebounceStreamExt};
 use anyhow::{anyhow, Context, Result};
-use async_std::{
-    fs::{read_to_string, File},
-    future::timeout,
-};
+use async_std::{fs::read_to_string, future::timeout};
 use config::AllNet;
 use futures::{
     future::{ready, try_select, Either},
@@ -26,7 +23,6 @@ pub type PluginLoader = Box<dyn Fn(&config::Config) -> Result<Registry> + 'stati
 pub struct RabbitDigger {
     config_path: PathBuf,
     plugin_loader: PluginLoader,
-    pub write_config: Option<PathBuf>,
 }
 
 impl RabbitDigger {
@@ -34,7 +30,6 @@ impl RabbitDigger {
         Ok(RabbitDigger {
             config_path,
             plugin_loader: Box::new(|cfg| load_plugins(cfg.plugin_path.clone())),
-            write_config: None,
         })
     }
     pub fn with_plugin_loader(
@@ -44,7 +39,6 @@ impl RabbitDigger {
         Ok(RabbitDigger {
             config_path,
             plugin_loader: Box::new(plugin_loader),
-            write_config: None,
         })
     }
     pub async fn run(&self, controller: &controller::Controller) -> Result<()> {
@@ -85,12 +79,6 @@ impl RabbitDigger {
 
         loop {
             log::info!("rabbit digger is starting...");
-            if let Some(path) = &self.write_config {
-                File::create(path)
-                    .await?
-                    .write_all(&serde_yaml::to_vec(&config)?)
-                    .await?;
-            }
 
             controller.update_config(config.clone()).await;
             let run_fut = self.run_once(controller, config);
