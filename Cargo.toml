@@ -21,9 +21,10 @@ serde_yaml = "0.8.15"
 serde_json = "1.0"
 serde = "1.0.119"
 serde_derive = "1.0.119"
+ss = { path = "./ss", optional = true }
 
 [features]
-default = [ "translate" ]
+default = [ "translate", "ss" ]
 translate = []
 
 [workspace]
