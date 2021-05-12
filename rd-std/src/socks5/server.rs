@@ -1,12 +1,12 @@
-use super::common::{pack_udp, parse_udp, Address};
-use super::protocol::{
-    self, AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
-};
-use protocol::Command;
+use super::common::{pack_udp, parse_udp, sa2ra};
 use rd_interface::{
     async_trait,
     util::{connect_tcp, connect_udp},
     Context, IServer, IUdpChannel, IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket,
+};
+use socks5_protocol::{
+    Address, AuthMethod, AuthRequest, AuthResponse, Command, CommandReply, CommandRequest,
+    CommandResponse, Version,
 };
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
@@ -47,7 +47,7 @@ impl Socks5Server {
 
         match cmd_req.command {
             Command::Connect => {
-                let dst = cmd_req.address.into();
+                let dst = sa2ra(cmd_req.address);
                 let out = match net
                     .tcp_connect(&mut Context::from_socketaddr(addr), dst)
                     .await
@@ -60,7 +60,7 @@ impl Socks5Server {
                     }
                 };
 
-                let addr: Address = out.local_addr().await.unwrap_or(default_addr).into();
+                let addr = out.local_addr().await.unwrap_or(default_addr).into();
                 CommandResponse::success(addr).write(&mut tx).await?;
                 tx.flush().await?;
 
@@ -77,11 +77,9 @@ impl Socks5Server {
                         SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
                     ),
                     _ => {
-                        CommandResponse::reply_error(
-                            protocol::CommandReply::AddressTypeNotSupported,
-                        )
-                        .write(&mut tx)
-                        .await?;
+                        CommandResponse::reply_error(CommandReply::AddressTypeNotSupported)
+                            .write(&mut tx)
+                            .await?;
 
                         tx.flush().await?;
                         return Ok(());
@@ -158,7 +156,7 @@ impl IUdpChannel for Socks5UdpSocket {
         let to_copy = payload.len().min(buf.len());
         buf[..to_copy].copy_from_slice(&payload[..to_copy]);
 
-        Ok((to_copy, addr.into()))
+        Ok((to_copy, sa2ra(addr)))
     }
 
     async fn send_recv_from(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {

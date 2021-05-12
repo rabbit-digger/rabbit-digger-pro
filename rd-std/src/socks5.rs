@@ -1,6 +1,5 @@
 mod client;
 mod common;
-pub mod protocol;
 mod server;
 
 pub use client::Socks5Client;

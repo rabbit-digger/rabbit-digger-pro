@@ -1,11 +1,13 @@
-use super::protocol::{
+use socks5_protocol::{
     AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
 };
 
-use super::common::{pack_udp, parse_udp, Address};
+use crate::socks5::common::map_err;
+
+use super::common::{pack_udp, parse_udp, ra2sa};
 use rd_interface::{
-    async_trait, error::map_other, impl_async_read_write, INet, ITcpStream, IUdpSocket,
-    IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, INet, ITcpStream, IUdpSocket, IntoAddress, IntoDyn, Net,
+    Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use std::net::SocketAddr;
 use tokio::io::{split, AsyncWriteExt, BufWriter};
@@ -40,13 +42,11 @@ impl IUdpSocket for Socks5UdpSocket {
         let to_copy = payload.len().min(buf.len());
         buf[..to_copy].copy_from_slice(&payload[..to_copy]);
 
-        Ok((to_copy, addr.to_socket_addr()?))
+        Ok((to_copy, addr.to_socket_addr().map_err(map_err)?))
     }
 
     async fn send_to(&self, buf: &[u8], addr: rd_interface::Address) -> Result<usize> {
-        let addr: Address = addr.into();
-
-        let bytes = pack_udp(addr, buf).await?;
+        let bytes = pack_udp(ra2sa(addr), buf).await?;
 
         self.0.send_to(&bytes, self.2.into()).await
     }
@@ -76,11 +76,11 @@ impl INet for Socks5Client {
     ) -> Result<UdpSocket> {
         let mut socket = self.net.tcp_connect(ctx, self.server()?).await?;
 
-        let req = CommandRequest::udp_associate(addr.clone().into_address()?.into());
+        let req = CommandRequest::udp_associate(ra2sa(addr.clone().into_address()?));
         let resp = self.send_command(&mut socket, req).await?;
         let client = self.net.udp_bind(ctx, addr.clone()).await?;
 
-        let addr = resp.address.to_socket_addr()?;
+        let addr = resp.address.to_socket_addr().map_err(map_err)?;
 
         Ok(Socks5UdpSocket(client, socket, addr).into_dyn())
     }
@@ -91,7 +91,7 @@ impl INet for Socks5Client {
     ) -> Result<TcpStream> {
         let mut socket = self.net.tcp_connect(ctx, self.server()?).await?;
 
-        let req = CommandRequest::connect(addr.into_address()?.into());
+        let req = CommandRequest::connect(ra2sa(addr.into_address()?));
         let _resp = self.send_command(&mut socket, req).await?;
 
         Ok(Socks5TcpStream(socket).into_dyn())
@@ -125,20 +125,20 @@ impl Socks5Client {
 
         let version = Version::V5;
         let auth_req = AuthRequest::new(vec![AuthMethod::Noauth]);
-        version.write(&mut tx).await.map_err(map_other)?;
-        auth_req.write(&mut tx).await.map_err(map_other)?;
+        version.write(&mut tx).await.map_err(map_err)?;
+        auth_req.write(&mut tx).await.map_err(map_err)?;
         tx.flush().await?;
 
-        Version::read(&mut rx).await.map_err(map_other)?;
-        let resp = AuthResponse::read(&mut rx).await.map_err(map_other)?;
+        Version::read(&mut rx).await.map_err(map_err)?;
+        let resp = AuthResponse::read(&mut rx).await.map_err(map_err)?;
         if resp.method() != AuthMethod::Noauth {
             return Err(rd_interface::Error::Other("Auth failed".to_string().into()));
         }
 
-        command_req.write(&mut tx).await.map_err(map_other)?;
+        command_req.write(&mut tx).await.map_err(map_err)?;
         tx.flush().await?;
 
-        let command_resp = CommandResponse::read(rx).await.map_err(map_other)?;
+        let command_resp = CommandResponse::read(rx).await.map_err(map_err)?;
 
         Ok(command_resp)
     }

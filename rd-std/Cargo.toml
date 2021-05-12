@@ -17,6 +17,9 @@ thiserror = "1.0"
 anyhow = "1.0"
 tokio = { version = "1.5.0", features = ["net", "rt"] }
 
+# socks5
+socks5-protocol = "0.3.0"
+
 # http
 http = { version = "0.2.4", optional = true }
 
