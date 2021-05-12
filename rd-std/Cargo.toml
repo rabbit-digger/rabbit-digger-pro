@@ -3,6 +3,8 @@ name = "rd-std"
 version = "0.1.0"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
 edition = "2018"
+description = "std for rabbit-digger"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 # common
