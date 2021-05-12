@@ -12,6 +12,5 @@ pub mod context;
 pub mod error;
 mod interface;
 mod macros;
-pub mod pool;
 pub mod registry;
 pub mod util;

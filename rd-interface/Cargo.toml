@@ -14,4 +14,4 @@ thiserror = "1.0"
 serde_json = { version = "1.0", features = [ "std", "preserve_order" ] }
 serde = "1.0"
 serde_derive = "1.0"
-tokio = "1.5"
+tokio = { version = "1.5", features = ["io-util"] }
