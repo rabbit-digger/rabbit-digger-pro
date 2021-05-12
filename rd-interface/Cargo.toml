@@ -1,6 +1,6 @@
 [package]
 name = "rd-interface"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
 edition = "2018"
 description = "Just a stub"

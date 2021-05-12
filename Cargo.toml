@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = "1.0.38"
-rd-interface = { path = "./rd-interface", version = "0.3" }
+rd-interface = { path = "./rd-interface", version = "0.4" }
 futures = "0.3.5"
 serde = "1.0.119"
 serde_derive = "1.0.119"
