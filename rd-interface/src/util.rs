@@ -1,10 +1,11 @@
 use crate::{
     interface::{
         async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, Net, TcpListener, TcpStream,
-        UdpSocket,
+        UdpChannel, UdpSocket,
     },
     Address, Context, Result, NOT_IMPLEMENTED,
 };
+use futures_util::future::try_join;
 use std::{
     collections::VecDeque,
     future::Future,
@@ -182,4 +183,25 @@ pub fn get_one_net(mut nets: Vec<Net>) -> Result<Net> {
     }
 
     Ok(nets.remove(0))
+}
+
+pub async fn connect_udp(udp_channel: UdpChannel, udp: UdpSocket) -> crate::Result<()> {
+    let in_side = async {
+        let mut buf = [0u8; crate::constant::UDP_BUFFER_SIZE];
+        while let Ok((size, addr)) = udp_channel.recv_send_to(&mut buf).await {
+            let buf = &buf[..size];
+            udp.send_to(buf, addr).await?;
+        }
+        crate::Result::<()>::Ok(())
+    };
+    let out_side = async {
+        let mut buf = [0u8; crate::constant::UDP_BUFFER_SIZE];
+        while let Ok((size, addr)) = udp.recv_from(&mut buf).await {
+            let buf = &buf[..size];
+            udp_channel.send_recv_from(buf, addr).await?;
+        }
+        crate::Result::<()>::Ok(())
+    };
+    try_join(in_side, out_side).await?;
+    Ok(())
 }

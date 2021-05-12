@@ -97,3 +97,20 @@ impl<T: IServer> IntoDyn<Server> for T {
         Box::new(self)
     }
 }
+
+/// The other side of an UdpSocket
+#[async_trait]
+pub trait IUdpChannel: Send + Sync {
+    async fn recv_send_to(&self, data: &mut [u8]) -> Result<(usize, Address)>;
+    async fn send_recv_from(&self, data: &[u8], addr: SocketAddr) -> Result<usize>;
+}
+pub type UdpChannel = Arc<dyn IUdpChannel>;
+
+impl<T: IUdpChannel> crate::IntoDyn<UdpChannel> for T {
+    fn into_dyn(self) -> UdpChannel
+    where
+        Self: Sized + 'static,
+    {
+        Arc::new(self)
+    }
+}

@@ -4,8 +4,9 @@ use super::protocol::{
 };
 use protocol::Command;
 use rd_interface::{
-    async_trait, pool::IUdpChannel, util::connect_tcp, ConnectionPool, Context, IServer,
-    IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket,
+    async_trait,
+    util::{connect_tcp, connect_udp},
+    Context, IServer, IUdpChannel, IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
@@ -24,12 +25,7 @@ pub struct Socks5Server {
 }
 
 impl Socks5Server {
-    pub async fn serve_connection(
-        self,
-        socket: TcpStream,
-        addr: SocketAddr,
-        pool: ConnectionPool,
-    ) -> anyhow::Result<()> {
+    pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
         let Config { net, listen_net } = &*self.cfg;
         let local_ip = socket.local_addr().await?.ip();
@@ -127,7 +123,7 @@ impl Socks5Server {
                 let socket = rx.unsplit(tx.into_inner());
 
                 let udp_channel = Socks5UdpSocket(udp, socket, RwLock::new(None));
-                pool.connect_udp(udp_channel.into_dyn(), out).await?;
+                connect_udp(udp_channel.into_dyn(), out).await?;
             }
             _ => {
                 return Ok(());
@@ -187,7 +183,7 @@ pub struct Socks5 {
 
 #[async_trait]
 impl IServer for Socks5 {
-    async fn start(&self, pool: ConnectionPool) -> Result<()> {
+    async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
             .tcp_bind(&mut Context::new(), self.bind.into_address()?)
@@ -196,9 +192,8 @@ impl IServer for Socks5 {
         loop {
             let (socket, addr) = listener.accept().await?;
             let server = self.server.clone();
-            let pool2 = pool.clone();
-            let _ = pool.spawn(async move {
-                if let Err(e) = server.serve_connection(socket, addr, pool2).await {
+            let _ = tokio::spawn(async move {
+                if let Err(e) = server.serve_connection(socket, addr).await {
                     log::error!("Error when serve_connection: {:?}", e)
                 }
             });

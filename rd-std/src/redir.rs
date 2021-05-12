@@ -11,8 +11,8 @@ mod linux {
     use super::origin_addr::OriginAddrExt;
     use crate::builtin::local::CompatTcp;
     use rd_interface::{
-        async_trait, registry::ServerFactory, util::connect_tcp, ConnectionPool, Context, IServer,
-        IntoAddress, IntoDyn, Net, Result,
+        async_trait, registry::ServerFactory, util::connect_tcp, Context, IServer, IntoAddress,
+        IntoDyn, Net, Result,
     };
     use serde_derive::Deserialize;
     use tokio::net::{TcpListener, TcpStream};
@@ -29,9 +29,9 @@ mod linux {
 
     #[async_trait]
     impl IServer for RedirServer {
-        async fn start(&self, pool: ConnectionPool) -> Result<()> {
+        async fn start(&self) -> Result<()> {
             let listener = TcpListener::bind(&self.cfg.bind).await?;
-            self.serve_listener(pool, listener).await
+            self.serve_listener(listener).await
         }
     }
 
@@ -40,15 +40,11 @@ mod linux {
             RedirServer { cfg, net }
         }
 
-        pub async fn serve_listener(
-            &self,
-            pool: ConnectionPool,
-            listener: TcpListener,
-        ) -> Result<()> {
+        pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
             loop {
                 let (socket, addr) = listener.accept().await?;
                 let net = self.net.clone();
-                let _ = pool.spawn(async move {
+                let _ = tokio::spawn(async move {
                     if let Err(e) = Self::serve_connection(net, socket, addr).await {
                         log::error!("Error when serve_connection: {:?}", e);
                     }

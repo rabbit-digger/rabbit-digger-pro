@@ -14,7 +14,7 @@ use futures::{
     stream::{self, FuturesUnordered, Stream},
     StreamExt,
 };
-use rd_interface::{ConnectionPool, Net, Server, Value};
+use rd_interface::{Net, Server, Value};
 use tokio::time::timeout;
 
 pub type PluginLoader = Box<dyn Fn(&config::Config, &mut Registry) -> Result<()> + 'static>;
@@ -106,14 +106,11 @@ impl RabbitDigger {
 
         log::info!("Server:\n{}", ServerList(&servers));
 
-        let pool = ConnectionPool::new();
         let mut server_tasks: FuturesUnordered<_> = servers
             .into_iter()
             .map(|i| {
                 let name = i.name;
-                start_server(i.server, pool.clone())
-                    .map(|r| (name, r))
-                    .boxed()
+                start_server(i.server).map(|r| (name, r)).boxed()
             })
             .collect();
 
@@ -127,8 +124,8 @@ impl RabbitDigger {
     }
 }
 
-async fn start_server(server: Server, pool: ConnectionPool) -> Result<()> {
-    server.start(pool).await?;
+async fn start_server(server: Server) -> Result<()> {
+    server.start().await?;
     Ok(())
 }
 
