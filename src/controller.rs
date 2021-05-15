@@ -66,9 +66,9 @@ impl INet for ControllerNet {
     }
 }
 
-async fn process(mut rx: mpsc::UnboundedReceiver<Event>, inner: Arc<RwLock<Inner>>) {
+async fn process(mut rx: mpsc::UnboundedReceiver<Event>, _inner: Arc<RwLock<Inner>>) {
     loop {
-        let e = match rx.recv().now_or_never() {
+        let _e = match rx.recv().now_or_never() {
             Some(Some(e)) => e,
             Some(None) => break,
             None => {
@@ -77,11 +77,13 @@ async fn process(mut rx: mpsc::UnboundedReceiver<Event>, inner: Arc<RwLock<Inner
             }
         };
 
-        let mut inner = inner.write().await;
-        inner.events.push_back(e);
-        while let Some(Some(e)) = rx.recv().now_or_never() {
-            inner.events.push_back(e);
-        }
+        // log::trace!("{:?}", e);
+
+        // let mut inner = inner.write().await;
+        // inner.events.push_back(e);
+        // while let Some(Some(e)) = rx.recv().now_or_never() {
+        //     inner.events.push_back(e);
+        // }
     }
 }
 

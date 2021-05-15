@@ -1,28 +1,31 @@
 //! A registry with plugin name
 
 use anyhow::{anyhow, Result};
-use rd_interface::{registry::FromConfig, Net, Server, Value};
+use rd_interface::{
+    registry::{NetMap, NetResolver, ServerResolver},
+    Net, Server, Value,
+};
 use std::{collections::HashMap, fmt};
 
 pub struct NetItem {
     pub plugin_name: String,
-    pub factory: FromConfig<Net>,
+    pub resolver: NetResolver,
 }
 
 pub struct ServerItem {
     pub plugin_name: String,
-    pub factory: FromConfig<Server>,
+    pub resolver: ServerResolver,
 }
 
 impl NetItem {
-    pub fn build(&self, nets: Vec<Net>, config: Value) -> rd_interface::Result<Net> {
-        (self.factory)(nets, config)
+    pub fn build(&self, nets: &NetMap, config: Value) -> rd_interface::Result<Net> {
+        self.resolver.build(nets, config)
     }
 }
 
 impl ServerItem {
-    pub fn build(&self, listen_net: Net, net: Net, config: Value) -> rd_interface::Result<Server> {
-        (self.factory)(vec![listen_net, net], config)
+    pub fn build(&self, listen: Net, net: Net, config: Value) -> rd_interface::Result<Server> {
+        self.resolver.build(listen, net, config)
     }
 }
 
@@ -84,7 +87,7 @@ impl Registry {
                 k,
                 NetItem {
                     plugin_name: plugin_name.clone(),
-                    factory: v,
+                    resolver: v,
                 },
             );
         }
@@ -93,7 +96,7 @@ impl Registry {
                 k,
                 ServerItem {
                     plugin_name: plugin_name.clone(),
-                    factory: v,
+                    resolver: v,
                 },
             );
         }

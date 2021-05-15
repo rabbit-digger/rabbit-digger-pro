@@ -11,6 +11,7 @@ pub struct ForwardConfig {
     bind: String,
     target: String,
 }
+
 pub struct ForwardNet {
     listen_net: Net,
     net: Net,
@@ -72,7 +73,7 @@ impl ServerFactory for ForwardNet {
     type Config = ForwardConfig;
     type Server = Self;
 
-    fn new(listen_net: Net, net: Net, config: Self::Config) -> Result<Self> {
-        Ok(ForwardNet::new(listen_net, net, config))
+    fn new(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
+        Ok(ForwardNet::new(listen, net, cfg))
     }
 }

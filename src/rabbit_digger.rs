@@ -131,8 +131,6 @@ async fn start_server(server: Server) -> Result<()> {
 
 struct ServerInfo {
     name: String,
-    listen: String,
-    net: String,
     server: Server,
     config: Value,
 }
@@ -141,11 +139,7 @@ struct ServerList<'a>(&'a Vec<ServerInfo>);
 
 impl fmt::Display for ServerInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}: {} -> {} {}",
-            self.name, self.listen, self.net, self.config
-        )
+        write!(f, "{}: {}", self.name, self.config)
     }
 }
 
@@ -189,7 +183,6 @@ fn init_net(
         "noop".to_string(),
         AllNet::Net(config::Net {
             net_type: "noop".to_string(),
-            chain: Vec::new(),
             opt: Value::Null,
         }),
     );
@@ -197,7 +190,6 @@ fn init_net(
         "local".to_string(),
         AllNet::Net(config::Net {
             net_type: "local".to_string(),
-            chain: Vec::new(),
             opt: Value::Null,
         }),
     );
@@ -206,7 +198,7 @@ fn init_net(
         AllNet::Root(server.values().map(|i| i.net.clone()).collect()),
     );
 
-    let all_net = topological_sort(all_net, AllNet::get_dependency)
+    let all_net = topological_sort(all_net, |n| n.get_dependency(registry))?
         .ok_or(anyhow!("There is cyclic dependencies in net",))?;
 
     for (name, i) in all_net {
@@ -214,19 +206,8 @@ fn init_net(
             AllNet::Net(i) => {
                 let load_net = || -> Result<()> {
                     let net_item = registry.get_net(&i.net_type)?;
-                    let chains = i
-                        .chain
-                        .into_iter()
-                        .map(|s| {
-                            net.get(&s).map(|s| s.clone()).ok_or(anyhow!(
-                                "Chain {} is not loaded. Required by {}",
-                                &s,
-                                name
-                            ))
-                        })
-                        .collect::<Result<Vec<_>>>()?;
 
-                    let proxy = net_item.build(chains, i.opt).context(format!(
+                    let proxy = net_item.build(&net, i.opt).context(format!(
                         "Failed to build net {:?}. Please check your config.",
                         name
                     ))?;
@@ -282,8 +263,6 @@ fn init_server(
                 name: name.to_string(),
                 server,
                 config: i.opt,
-                listen: i.listen,
-                net: i.net,
             });
             Ok(())
         };

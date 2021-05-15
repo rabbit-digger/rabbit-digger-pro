@@ -1,9 +1,9 @@
 use futures::future::BoxFuture;
 use rd_interface::{
-    registry::{EmptyConfig, NetFactory},
-    util::get_one_net,
-    Address, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
+    registry::{NetFactory, NetRef},
+    Address, Config, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
 };
+use serde_derive::Deserialize;
 
 pub struct AliasNet(rd_interface::Net);
 
@@ -51,12 +51,17 @@ impl INet for AliasNet {
     }
 }
 
+#[derive(Debug, Deserialize, Config)]
+pub struct Config {
+    net: NetRef,
+}
+
 impl NetFactory for AliasNet {
     const NAME: &'static str = "alias";
-    type Config = EmptyConfig;
+    type Config = Config;
     type Net = Self;
 
-    fn new(nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {
-        Ok(AliasNet::new(get_one_net(nets)?))
+    fn new(config: Self::Config) -> Result<Self> {
+        Ok(AliasNet::new(config.net.net()))
     }
 }

@@ -38,6 +38,7 @@ local_log = []
 members = [
     "rd-interface",
     "rd-std",
+    "rd-derive",
 ]
 
 [profile.release]

@@ -10,7 +10,7 @@ impl NetFactory for NoopNet {
     type Config = EmptyConfig;
     type Net = NotImplementedNet;
 
-    fn new(_nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self::Net> {
+    fn new(_config: Self::Config) -> Result<Self::Net> {
         Ok(NotImplementedNet)
     }
 }

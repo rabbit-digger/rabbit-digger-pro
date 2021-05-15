@@ -6,31 +6,33 @@ pub use client::Socks5Client;
 pub use server::Socks5Server;
 
 use rd_interface::{
-    registry::{NetFactory, ServerFactory},
-    util::get_one_net,
-    Net, Registry, Result,
+    registry::{NetFactory, NetRef, ServerFactory},
+    Config, Net, Registry, Result,
 };
 use serde_derive::Deserialize;
 
-#[derive(Debug, Deserialize)]
-pub struct Config {
+#[derive(Debug, Deserialize, Config)]
+pub struct ClientConfig {
     address: String,
     port: u16,
+
+    #[serde(default)]
+    net: NetRef,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Config)]
 pub struct ServerConfig {
     bind: String,
 }
 
 impl NetFactory for Socks5Client {
     const NAME: &'static str = "socks5";
-    type Config = Config;
+    type Config = ClientConfig;
     type Net = Self;
 
-    fn new(net: Vec<rd_interface::Net>, config: Self::Config) -> Result<Self> {
+    fn new(config: Self::Config) -> Result<Self> {
         Ok(Socks5Client::new(
-            get_one_net(net)?,
+            config.net.net(),
             config.address,
             config.port,
         ))
@@ -42,8 +44,8 @@ impl ServerFactory for server::Socks5 {
     type Config = ServerConfig;
     type Server = Self;
 
-    fn new(listen_net: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
-        Ok(server::Socks5::new(listen_net, net, bind))
+    fn new(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
+        Ok(server::Socks5::new(listen, net, bind))
     }
 }
 

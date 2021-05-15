@@ -177,14 +177,6 @@ impl INet for CombineNet {
     }
 }
 
-pub fn get_one_net(mut nets: Vec<Net>) -> Result<Net> {
-    if nets.len() != 1 {
-        return Err(crate::Error::Other("Must have one net".to_string().into()));
-    }
-
-    Ok(nets.remove(0))
-}
-
 pub async fn connect_udp(udp_channel: UdpChannel, udp: UdpSocket) -> crate::Result<()> {
     let in_side = async {
         let mut buf = [0u8; crate::constant::UDP_BUFFER_SIZE];

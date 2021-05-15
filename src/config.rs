@@ -5,7 +5,8 @@ use std::{collections::HashMap, path::PathBuf};
 use anyhow::Result;
 use rd_interface::Value;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, OneOrMany};
+
+use crate::Registry;
 
 pub type ConfigNet = HashMap<String, Net>;
 pub type ConfigServer = HashMap<String, Server>;
@@ -19,19 +20,24 @@ pub enum AllNet {
 }
 
 impl AllNet {
-    pub fn get_dependency(&self) -> Vec<&String> {
-        match self {
-            AllNet::Net(Net { chain, .. }) => chain.iter().collect(),
+    pub fn get_dependency(&self, registry: &Registry) -> Result<Vec<String>> {
+        Ok(match self {
+            AllNet::Net(Net { net_type, opt }) => registry
+                .get_net(net_type)?
+                .resolver
+                .get_dependency(opt.clone())?,
             AllNet::Composite(CompositeName {
                 composite,
                 net_list,
                 ..
             }) => match &composite.0 {
-                Composite::Rule(CompositeRule { rule }) => rule.iter().map(|i| &i.target).collect(),
-                Composite::Select => net_list.iter().collect(),
+                Composite::Rule(CompositeRule { rule }) => {
+                    rule.iter().map(|i| i.target.clone()).collect()
+                }
+                Composite::Select => net_list.clone(),
             },
-            AllNet::Root(v) => v.iter().collect(),
-        }
+            AllNet::Root(v) => v.clone(),
+        })
     }
 }
 
@@ -109,41 +115,9 @@ impl<'de> serde::Deserialize<'de> for CompositeDefaultType {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub enum Chain {
-    One(String),
-    Many(Vec<String>),
-}
-
-impl Chain {
-    pub fn into_vec(self) -> Vec<String> {
-        match self {
-            Chain::One(s) => vec![s],
-            Chain::Many(v) => v,
-        }
-    }
-    pub fn to_vec(&self) -> Vec<String> {
-        match self {
-            Chain::One(s) => vec![s.clone()],
-            Chain::Many(v) => v.clone(),
-        }
-    }
-    pub fn as_ref(&self) -> Vec<&str> {
-        match self {
-            Chain::One(s) => vec![&s],
-            Chain::Many(v) => v.iter().map(AsRef::as_ref).collect(),
-        }
-    }
-}
-
-#[serde_as]
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Net {
     #[serde(rename = "type")]
     pub net_type: String,
-    #[serde_as(deserialize_as = "OneOrMany<_>")]
-    #[serde(default = "default::local_chain")]
-    pub chain: Vec<String>,
     #[serde(flatten)]
     pub opt: Value,
 }

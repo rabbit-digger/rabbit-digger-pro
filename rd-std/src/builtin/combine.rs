@@ -1,23 +1,14 @@
 use futures::future::BoxFuture;
 use rd_interface::{
-    registry::{EmptyConfig, NetFactory},
-    Address, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
+    registry::{NetFactory, NetRef},
+    Address, Config, Context, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
+use serde_derive::Deserialize;
 
-pub struct CombineNet(rd_interface::Net, rd_interface::Net, rd_interface::Net);
-
-impl CombineNet {
-    fn new(mut nets: Vec<rd_interface::Net>) -> rd_interface::Result<CombineNet> {
-        if nets.len() != 3 {
-            return Err(rd_interface::Error::Other(
-                "Must have one net".to_string().into(),
-            ));
-        }
-        let net0 = nets.remove(0);
-        let net1 = nets.remove(0);
-        let net2 = nets.remove(0);
-        Ok(CombineNet(net0, net1, net2))
-    }
+pub struct CombineNet {
+    tcp_connect: Net,
+    tcp_bind: Net,
+    udp_bind: Net,
 }
 
 impl INet for CombineNet {
@@ -30,7 +21,7 @@ impl INet for CombineNet {
     where
         Self: 'a,
     {
-        self.0.tcp_connect(ctx, addr)
+        self.tcp_connect.tcp_connect(ctx, addr)
     }
 
     #[inline(always)]
@@ -42,7 +33,7 @@ impl INet for CombineNet {
     where
         Self: 'a,
     {
-        self.1.tcp_bind(ctx, addr)
+        self.tcp_bind.tcp_bind(ctx, addr)
     }
 
     #[inline(always)]
@@ -54,16 +45,33 @@ impl INet for CombineNet {
     where
         Self: 'a,
     {
-        self.2.udp_bind(ctx, addr)
+        self.udp_bind.udp_bind(ctx, addr)
     }
+}
+
+#[derive(Debug, Deserialize, Config)]
+pub struct Config {
+    tcp_connect: NetRef,
+    tcp_bind: NetRef,
+    udp_bind: NetRef,
 }
 
 impl NetFactory for CombineNet {
     const NAME: &'static str = "combine";
-    type Config = EmptyConfig;
+    type Config = Config;
     type Net = Self;
 
-    fn new(nets: Vec<rd_interface::Net>, _config: Self::Config) -> Result<Self> {
-        CombineNet::new(nets)
+    fn new(
+        Config {
+            tcp_connect,
+            tcp_bind,
+            udp_bind,
+        }: Self::Config,
+    ) -> Result<Self> {
+        Ok(CombineNet {
+            tcp_connect: tcp_connect.net(),
+            tcp_bind: tcp_bind.net(),
+            udp_bind: udp_bind.net(),
+        })
     }
 }
