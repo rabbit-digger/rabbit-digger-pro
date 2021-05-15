@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use anyhow::{anyhow, Result};
 use rabbit_digger::{
     config::{
-        default, Composite, CompositeName, CompositeRule, CompositeRuleItem, Config, Matcher, Net,
-        Server,
+        Composite, CompositeName, CompositeRule, CompositeRuleItem, Config, Matcher, Net, Server,
     },
     util::topological_sort,
 };
@@ -60,8 +59,9 @@ pub fn from_config(value: Value) -> Result<Clash> {
 fn ghost_net() -> Net {
     Net {
         net_type: "alias".to_string(),
-        chain: default::noop_chain(),
-        opt: Value::Null,
+        opt: json!({
+            "net": "noop"
+        }),
     }
 }
 
@@ -80,7 +80,6 @@ impl Clash {
                 let params: Param = serde_json::from_value(p.opt)?;
                 Net {
                     net_type: "shadowsocks".to_string(),
-                    chain: default::local_chain(),
                     opt: json!({
                         "server": params.server,
                         "port": params.port,
@@ -207,8 +206,8 @@ impl Clash {
                     .into_iter()
                     .map(|i| (i.name.clone(), i))
                     .collect(),
-                |i: &ProxyGroup| i.proxies.iter().collect(),
-            )
+                |i: &ProxyGroup| Ok(i.proxies.clone()) as Result<_>,
+            )?
             .ok_or(anyhow!("There is cyclic dependencies in proxy_groups"))?;
 
             for (old_name, pg) in proxy_groups {

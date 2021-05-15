@@ -1,8 +1,8 @@
 use crate::udp::{decrypt_payload, encrypt_payload};
 use bytes::BytesMut;
 use rd_interface::{
-    async_trait, impl_async_read_write, Address as RDAddress, ITcpStream, IUdpSocket, TcpStream,
-    UdpSocket, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, registry::ResolveNetRef, Address as RDAddress, ITcpStream,
+    IUdpSocket, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use serde::{
     de::{self, Visitor},
@@ -33,6 +33,8 @@ impl Into<SSAddress> for WrapAddress {
 
 #[derive(Debug, Clone)]
 pub struct WrapCipher(CipherKind);
+
+impl ResolveNetRef for WrapCipher {}
 
 impl Into<CipherKind> for WrapCipher {
     fn into(self) -> CipherKind {
