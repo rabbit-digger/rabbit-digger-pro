@@ -1,3 +1,5 @@
+cargo-features = ["strip"]
+
 [package]
 name = "rabbit-digger-pro"
 version = "0.1.0"
@@ -13,7 +15,7 @@ structopt = { version = "0.3.21", features = ["paw"] }
 paw = "1.0.0"
 log = { version = "0.4.13", features = ["release_max_level_debug"] }
 env_logger = "0.8.2"
-rabbit-digger = { version = "0.1", path = "../rabbit-digger" }
+rabbit-digger = { version = "0.1", path = "./rabbit-digger" }
 notify-stream = "0.1.1"
 futures = "0.3"
 pin-project-lite = "0.2.6"
@@ -31,8 +33,10 @@ translate = []
 members = [
     "ss",
 ]
+exclude = ["rabbit-digger"]
 
 [profile.release]
 lto = true
 codegen-units = 1
 panic = 'abort'
+strip = "symbols"
