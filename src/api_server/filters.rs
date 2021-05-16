@@ -1,22 +1,28 @@
 use std::{convert::Infallible, future};
 
-use super::{
-    handlers,
-    reject::ApiError,
-    reject::{handle_rejection, ErrorMessage},
-    Server,
-};
+use super::{handlers, reject::handle_rejection, reject::ApiError, Server};
 use rabbit_digger::controller::Controller;
 use warp::{Filter, Rejection};
 
-pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
+pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     let at = access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
 
     prefix
         .and(at)
-        .and(get_config(server.controller).or(not_found()))
-        .recover(handle_rejection)
+        .and(get_config(server.controller).recover(handle_rejection))
+}
+
+pub fn routes(
+    server: Server,
+) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+    let web_ui = server.web_ui.clone();
+    let forward = warp::get()
+        .and(warp::path::full())
+        .and(warp::any().map(move || web_ui.clone()))
+        .and_then(handlers::web_ui);
+
+    api(server).or(forward)
 }
 
 // GET /config
@@ -27,15 +33,6 @@ pub fn get_config(
         .and(warp::get())
         .and(with_ctl(ctl))
         .and_then(handlers::get_config)
-}
-
-fn not_found() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path::end().map(|| {
-        warp::reply::json(&ErrorMessage {
-            code: 404,
-            message: "Not found".into(),
-        })
-    })
 }
 
 fn with_ctl(ctl: Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {

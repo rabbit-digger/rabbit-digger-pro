@@ -1,5 +1,3 @@
-use std::convert::Infallible;
-
 use serde_derive::Serialize;
 use warp::{hyper::StatusCode, Rejection, Reply};
 
@@ -11,12 +9,12 @@ impl warp::reject::Reject for ApiError {}
 
 /// An API error serializable to JSON.
 #[derive(Serialize)]
-pub struct ErrorMessage {
-    pub code: u16,
-    pub message: String,
+struct ErrorMessage {
+    code: u16,
+    message: String,
 }
 
-pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
+pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, warp::Rejection> {
     let code;
     let message;
 

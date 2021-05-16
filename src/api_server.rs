@@ -10,11 +10,12 @@ mod reject;
 pub struct Server {
     pub access_token: Option<String>,
     pub controller: Controller,
+    pub web_ui: Option<String>,
 }
 
 impl Server {
     pub async fn run(self, bind: String) -> Result<()> {
-        let routes = filters::api(self);
+        let routes = filters::routes(self);
         let listener = TcpListener::bind(bind).await?;
         let listener = TcpListenerStream::new(listener);
 

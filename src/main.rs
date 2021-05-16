@@ -27,8 +27,12 @@ struct ApiServer {
     bind: Option<String>,
 
     /// Access token
-    #[structopt(short, long, env = "RD_ACCESS_TOKEN")]
+    #[structopt(long, env = "RD_ACCESS_TOKEN")]
     access_token: Option<String>,
+
+    /// Web UI. Maybe file path or http://hostname:port.
+    #[structopt(long, env = "RD_WEB_UI")]
+    web_ui: Option<String>,
 }
 
 #[derive(StructOpt)]
@@ -47,7 +51,7 @@ struct Args {
     api_server: ApiServer,
 
     /// Write generated config to path
-    #[structopt(short, long, parse(from_os_str))]
+    #[structopt(long, parse(from_os_str))]
     write_config: Option<PathBuf>,
 }
 
@@ -77,6 +81,7 @@ async fn real_main(args: Args) -> Result<()> {
         api_server::Server {
             controller: controller.clone(),
             access_token: args.api_server.access_token,
+            web_ui: args.api_server.web_ui,
         }
         .run(_bind)
         .await
