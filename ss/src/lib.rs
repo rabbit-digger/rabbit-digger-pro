@@ -5,7 +5,7 @@ use rd_interface::{
     async_trait,
     registry::{NetFactory, NetRef},
     Address, Arc, Config, INet, IntoAddress, IntoDyn, Registry, Result, TcpListener, TcpStream,
-    UdpSocket, NOT_IMPLEMENTED,
+    UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
 };
 use serde_derive::Deserialize;
 use shadowsocks::{
@@ -20,6 +20,8 @@ pub struct SSNetConfig {
     server: String,
     port: u16,
     password: String,
+    udp: bool,
+
     #[serde(deserialize_with = "crate::wrapper::deserialize_cipher")]
     cipher: WrapCipher,
 
@@ -71,6 +73,9 @@ impl INet for SSNet {
     }
 
     async fn udp_bind(&self, ctx: &mut rd_interface::Context, _addr: Address) -> Result<UdpSocket> {
+        if !self.config.udp {
+            return Err(NOT_ENABLED);
+        }
         let cfg = self.config.clone();
         let socket = self
             .config
