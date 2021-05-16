@@ -6,8 +6,6 @@ use tokio_stream::wrappers::TcpListenerStream;
 mod filters;
 mod handlers;
 mod reject;
-#[cfg(feature = "web_ui")]
-mod web_ui;
 
 pub struct Server {
     pub access_token: Option<String>,

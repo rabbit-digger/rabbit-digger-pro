@@ -1,4 +1,4 @@
-use std::{convert::Infallible, future};
+use std::{convert::Infallible, future, path::PathBuf};
 
 use super::{handlers, reject::handle_rejection, reject::ApiError, Server};
 use rabbit_digger::controller::Controller;
@@ -16,18 +16,17 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
 pub fn routes(
     server: Server,
 ) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
-    #[cfg(feature = "web_ui")]
     let web_ui = server.web_ui.clone();
-    #[cfg(feature = "web_ui")]
-    let forward = warp::get()
-        .and(warp::path::full())
-        .and(warp::any().map(move || web_ui.clone()))
-        .and_then(super::web_ui::web_ui);
+    let forward = match web_ui {
+        Some(web_ui) => warp::get()
+            .and(warp::fs::dir(web_ui.clone()))
+            .or(warp::fs::file(PathBuf::from(web_ui).join("index.html")))
+            .boxed(),
+        None => warp::any()
+            .and_then(|| future::ready(Err(warp::reject::not_found())))
+            .boxed(),
+    };
 
-    #[cfg(not(feature = "web_ui"))]
-    return api(server);
-
-    #[cfg(feature = "web_ui")]
     return api(server).or(forward);
 }
 

@@ -25,18 +25,13 @@ serde_json = "1.0"
 serde = "1.0.119"
 serde_derive = "1.0.119"
 warp = { version = "0.3.1", default-features = false, optional = true }
-urlencoding = { version = "1.0", optional = true }
-reqwest = { version = "0.11.3", default-features = false, features = [ "stream" ], optional = true }
-tokio-util = { version = "0.6.7", optional = true }
 
 ss = { path = "./ss", optional = true }
 
 [features]
-default = [ "web_ui", "translate", "ss" ]
+default = [ "api_server", "translate", "ss" ]
 translate = []
 api_server = [ "warp" ]
-web_ui = [ "api_server", "tokio-util", "urlencoding" ]
-http_web_ui = [ "web_ui", "reqwest" ]
 
 [workspace]
 members = [
