@@ -32,9 +32,11 @@ tokio-util = { version = "0.6.7", optional = true }
 ss = { path = "./ss", optional = true }
 
 [features]
-default = [ "api_server", "translate", "ss" ]
+default = [ "web_ui", "translate", "ss" ]
 translate = []
-api_server = [ "warp", "urlencoding", "reqwest", "tokio-util" ]
+api_server = [ "warp" ]
+web_ui = [ "api_server", "tokio-util", "urlencoding" ]
+http_web_ui = [ "web_ui", "reqwest" ]
 
 [workspace]
 members = [

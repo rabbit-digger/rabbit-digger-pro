@@ -28,11 +28,11 @@ struct ApiServer {
 
     /// Access token
     #[structopt(long, env = "RD_ACCESS_TOKEN")]
-    access_token: Option<String>,
+    _access_token: Option<String>,
 
     /// Web UI. Maybe file path or http://hostname:port.
     #[structopt(long, env = "RD_WEB_UI")]
-    web_ui: Option<String>,
+    _web_ui: Option<String>,
 }
 
 #[derive(StructOpt)]
@@ -80,8 +80,8 @@ async fn real_main(args: Args) -> Result<()> {
         #[cfg(feature = "api_server")]
         api_server::Server {
             controller: controller.clone(),
-            access_token: args.api_server.access_token,
-            web_ui: args.api_server.web_ui,
+            access_token: args.api_server._access_token,
+            web_ui: args.api_server._web_ui,
         }
         .run(_bind)
         .await
@@ -113,7 +113,10 @@ async fn real_main(args: Args) -> Result<()> {
             Ok(c)
         });
     pin_mut!(config_stream);
-    rabbit_digger.run_stream(&controller, config_stream).await?;
+    rabbit_digger
+        .run_stream(&controller, config_stream)
+        .await
+        .context("Failed to run RabbitDigger")?;
 
     Ok(())
 }

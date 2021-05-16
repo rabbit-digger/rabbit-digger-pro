@@ -16,13 +16,19 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
 pub fn routes(
     server: Server,
 ) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+    #[cfg(feature = "web_ui")]
     let web_ui = server.web_ui.clone();
+    #[cfg(feature = "web_ui")]
     let forward = warp::get()
         .and(warp::path::full())
         .and(warp::any().map(move || web_ui.clone()))
-        .and_then(handlers::web_ui);
+        .and_then(super::web_ui::web_ui);
 
-    api(server).or(forward)
+    #[cfg(not(feature = "web_ui"))]
+    return api(server);
+
+    #[cfg(feature = "web_ui")]
+    return api(server).or(forward);
 }
 
 // GET /config
