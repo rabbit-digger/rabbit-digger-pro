@@ -27,7 +27,11 @@ pub fn routes(
             .boxed(),
     };
 
-    return api(server).or(forward);
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["GET", "POST"]);
+
+    return api(server).or(forward).with(cors);
 }
 
 // GET /config
