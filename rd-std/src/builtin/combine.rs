@@ -1,6 +1,7 @@
 use futures::future::BoxFuture;
 use rd_interface::{
     registry::{NetFactory, NetRef},
+    schemars::{self, JsonSchema},
     Address, Config, Context, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
 use serde_derive::Deserialize;
@@ -49,7 +50,7 @@ impl INet for CombineNet {
     }
 }
 
-#[derive(Debug, Deserialize, Config)]
+#[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct Config {
     tcp_connect: NetRef,
     tcp_bind: NetRef,

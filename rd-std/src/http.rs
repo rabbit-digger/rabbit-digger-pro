@@ -1,10 +1,14 @@
-use rd_interface::{registry::ServerFactory, Config, Net, Registry, Result};
+use rd_interface::{
+    registry::ServerFactory,
+    schemars::{self, JsonSchema},
+    Config, Net, Registry, Result,
+};
 use serde_derive::Deserialize;
 pub use server::HttpServer;
 
 mod server;
 
-#[derive(Debug, Deserialize, Config)]
+#[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ServerConfig {
     bind: String,
 }

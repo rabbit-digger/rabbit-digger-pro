@@ -1,6 +1,7 @@
 use futures::future::BoxFuture;
 use rd_interface::{
     registry::{NetFactory, NetRef},
+    schemars::{self, JsonSchema},
     Address, Config, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
 };
 use serde_derive::Deserialize;
@@ -51,7 +52,7 @@ impl INet for AliasNet {
     }
 }
 
-#[derive(Debug, Deserialize, Config)]
+#[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct Config {
     net: NetRef,
 }

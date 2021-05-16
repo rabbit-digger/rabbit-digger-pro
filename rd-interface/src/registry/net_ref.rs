@@ -1,6 +1,10 @@
 use super::NetMap;
 use crate::{Error, Net, NotImplementedNet, Result};
-use serde::de;
+use schemars::{
+    schema::{InstanceType, SchemaObject},
+    JsonSchema,
+};
+use serde::{de, ser};
 use std::{fmt, ops::Deref, sync::Arc};
 
 #[derive(Clone)]
@@ -50,6 +54,15 @@ impl Deref for NetRef {
     }
 }
 
+impl ser::Serialize for NetRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.name)
+    }
+}
+
 impl<'de> de::Deserialize<'de> for NetRef {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -72,6 +85,21 @@ impl<'de> de::Deserialize<'de> for NetRef {
         }
 
         deserializer.deserialize_string(FieldVisitor)
+    }
+}
+
+impl JsonSchema for NetRef {
+    fn schema_name() -> String {
+        "NetRef".to_string()
+    }
+
+    fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        SchemaObject {
+            instance_type: Some(InstanceType::String.into()),
+            format: None,
+            ..Default::default()
+        }
+        .into()
     }
 }
 

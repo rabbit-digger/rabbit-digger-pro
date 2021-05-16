@@ -16,3 +16,4 @@ serde = "1.0"
 serde_derive = "1.0"
 tokio = { version = "1.5", features = ["io-util"] }
 rd-derive = { version = "0.1", path = "../rd-derive" }
+schemars = "0.8.3"

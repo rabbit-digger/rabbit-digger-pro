@@ -1,8 +1,11 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait, registry::ServerFactory, util::PeekableTcpStream, Config, Context, IServer,
-    IntoAddress, IntoDyn, Net, Registry, Result, TcpStream,
+    async_trait,
+    registry::ServerFactory,
+    schemars::{self, JsonSchema},
+    util::PeekableTcpStream,
+    Config, Context, IServer, IntoAddress, IntoDyn, Net, Registry, Result, TcpStream,
 };
 use serde_derive::Deserialize;
 
@@ -72,7 +75,7 @@ impl HttpSocks5 {
     }
 }
 
-#[derive(Debug, Deserialize, Config)]
+#[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ServerConfig {
     bind: String,
 }

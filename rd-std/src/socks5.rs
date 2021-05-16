@@ -7,11 +7,12 @@ pub use server::Socks5Server;
 
 use rd_interface::{
     registry::{NetFactory, NetRef, ServerFactory},
+    schemars::{self, JsonSchema},
     Config, Net, Registry, Result,
 };
 use serde_derive::Deserialize;
 
-#[derive(Debug, Deserialize, Config)]
+#[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ClientConfig {
     address: String,
     port: u16,
@@ -20,7 +21,7 @@ pub struct ClientConfig {
     net: NetRef,
 }
 
-#[derive(Debug, Deserialize, Config)]
+#[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ServerConfig {
     bind: String,
 }

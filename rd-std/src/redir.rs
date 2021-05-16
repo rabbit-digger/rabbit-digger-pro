@@ -11,13 +11,16 @@ mod linux {
     use super::origin_addr::OriginAddrExt;
     use crate::builtin::local::CompatTcp;
     use rd_interface::{
-        async_trait, registry::ServerFactory, util::connect_tcp, Context, IServer, IntoAddress,
-        IntoDyn, Net, Result,
+        async_trait,
+        registry::ServerFactory,
+        schemars::{self, JsonSchema},
+        util::connect_tcp,
+        Context, IServer, IntoAddress, IntoDyn, Net, Result,
     };
     use serde_derive::Deserialize;
     use tokio::net::{TcpListener, TcpStream};
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, JsonSchema)]
     pub struct RedirServerConfig {
         bind: String,
     }
