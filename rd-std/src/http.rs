@@ -1,5 +1,6 @@
 use rd_interface::{registry::ServerFactory, Config, Net, Registry, Result};
 use serde_derive::Deserialize;
+pub use server::HttpServer;
 
 mod server;
 
