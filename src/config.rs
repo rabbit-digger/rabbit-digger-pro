@@ -45,26 +45,12 @@ impl AllNet {
 pub struct Config {
     #[serde(default)]
     pub id: String,
-    #[serde(default = "default::plugins")]
-    pub plugin_path: PathBuf,
     #[serde(default)]
     pub net: ConfigNet,
     #[serde(default)]
     pub server: ConfigServer,
     #[serde(default)]
     pub composite: ConfigComposite,
-    #[serde(default)]
-    pub import: Vec<Import>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Import {
-    pub name: Option<String>,
-    #[serde(rename = "type")]
-    pub format: String,
-    pub path: PathBuf,
-    #[serde(flatten)]
-    pub opt: Value,
 }
 
 /// Define a net composited from many other net
@@ -128,7 +114,7 @@ pub struct Server {
     pub server_type: String,
     #[serde(default = "default::local_string")]
     pub listen: String,
-    #[serde(default = "default::rule")]
+    #[serde(default = "default::local_string")]
     pub net: String,
     #[serde(flatten)]
     pub opt: Value,
@@ -156,10 +142,8 @@ pub enum Matcher {
 
 impl Config {
     pub fn merge(&mut self, other: Config) {
-        self.plugin_path = other.plugin_path;
         self.net.extend(other.net);
         self.server.extend(other.server);
         self.composite.extend(other.composite);
-        self.import.extend(other.import);
     }
 }
