@@ -116,4 +116,4 @@ macro_rules! impl_empty_resolve {
     )*)
 }
 
-impl_empty_resolve! { String, u16 }
+impl_empty_resolve! { String, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, bool, f32, f64 }

@@ -4,7 +4,7 @@ net:
     type: socks5
     address: 127.0.0.1
     port: 10800
-    chain: local
+    net: local
 server:
   socks5:
     type: socks5
