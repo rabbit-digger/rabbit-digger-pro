@@ -131,6 +131,8 @@ async fn start_server(server: Server) -> Result<()> {
 
 struct ServerInfo {
     name: String,
+    listen: String,
+    net: String,
     server: Server,
     config: Value,
 }
@@ -139,7 +141,11 @@ struct ServerList<'a>(&'a Vec<ServerInfo>);
 
 impl fmt::Display for ServerInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.config)
+        write!(
+            f,
+            "{}: {} -> {} {}",
+            self.name, self.listen, self.net, self.config
+        )
     }
 }
 
@@ -263,6 +269,8 @@ fn init_server(
                 name: name.to_string(),
                 server,
                 config: i.opt,
+                listen: i.listen,
+                net: i.net,
             });
             Ok(())
         };
