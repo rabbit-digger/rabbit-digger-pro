@@ -1,6 +1,6 @@
 pub mod default;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 use anyhow::Result;
 use rd_interface::Value;

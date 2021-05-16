@@ -1,13 +1,9 @@
-use rd_interface::{
-    registry::{NetFactory, ServerFactory},
-    util::get_one_net,
-    Net, Registry, Result,
-};
+use rd_interface::{registry::ServerFactory, Config, Net, Registry, Result};
 use serde_derive::Deserialize;
 
 mod server;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Config)]
 pub struct ServerConfig {
     bind: String,
 }
@@ -15,9 +11,10 @@ pub struct ServerConfig {
 impl ServerFactory for server::Http {
     const NAME: &'static str = "http";
     type Config = ServerConfig;
+    type Server = Self;
 
-    fn new(listen_net: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
-        Ok(server::Http::new(listen_net, net, bind))
+    fn new(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
+        Ok(server::Http::new(listen, net, bind))
     }
 }
 

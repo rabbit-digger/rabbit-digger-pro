@@ -1,6 +1,8 @@
-use rd_interface::{
-    async_trait, ConnectionPool, Context, IServer, IntoAddress, Net, Result, TcpStream,
+use hyper::{
+    client::conn as client_conn, http, server::conn as server_conn, service::service_fn,
+    upgrade::Upgraded, Body, Method, Request, Response,
 };
+use rd_interface::{async_trait, Context, IServer, IntoAddress, Net, Result, TcpStream};
 use std::net::SocketAddr;
 
 #[derive(Clone)]
@@ -9,12 +11,15 @@ pub struct HttpServer {
 }
 
 impl HttpServer {
-    pub async fn serve_connection(
-        self,
-        socket: TcpStream,
-        addr: SocketAddr,
-        pool: ConnectionPool,
-    ) -> anyhow::Result<()> {
+    pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
+        let net = self.net.clone();
+
+        server_conn::Http::new()
+            .http1_keep_alive(true)
+            .serve_connection(socket, service_fn(move |req| proxy(net.clone(), req, addr)))
+            .with_upgrades()
+            .await?;
+
         Ok(())
     }
     pub fn new(net: Net) -> Self {
@@ -30,7 +35,7 @@ pub struct Http {
 
 #[async_trait]
 impl IServer for Http {
-    async fn start(&self, pool: ConnectionPool) -> Result<()> {
+    async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
             .tcp_bind(&mut Context::new(), self.bind.into_address()?)
@@ -39,10 +44,9 @@ impl IServer for Http {
         loop {
             let (socket, addr) = listener.accept().await?;
             let server = self.server.clone();
-            let pool2 = pool.clone();
-            let _ = pool.spawn(async move {
-                if let Err(e) = server.serve_connection(socket, addr, pool2).await {
-                    log::error!("Error when serve_connection: {:?}", e)
+            tokio::spawn(async move {
+                if let Err(e) = server.serve_connection(socket, addr).await {
+                    log::error!("Error when serve_connection: {:?}", e);
                 }
             });
         }
@@ -57,4 +61,59 @@ impl Http {
             bind,
         }
     }
+}
+
+async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result<Response<Body>> {
+    if let Some(mut dst) = host_addr(req.uri()) {
+        if !dst.contains(':') {
+            dst += ":80"
+        }
+        let dst = dst.into_address()?;
+
+        if req.method() == Method::CONNECT {
+            tokio::spawn(async move {
+                match hyper::upgrade::on(req).await {
+                    Ok(upgraded) => {
+                        let stream = net
+                            .tcp_connect(&mut Context::from_socketaddr(addr), dst)
+                            .await?;
+                        if let Err(e) = tunnel(stream, upgraded).await {
+                            log::debug!("tunnel io error: {}", e);
+                        };
+                    }
+                    Err(e) => log::debug!("upgrade error: {}", e),
+                }
+                Ok(()) as anyhow::Result<()>
+            });
+
+            Ok(Response::new(Body::empty()))
+        } else {
+            let stream = net
+                .tcp_connect(&mut Context::from_socketaddr(addr), dst)
+                .await?;
+
+            let (mut request_sender, connection) = client_conn::handshake(stream).await?;
+
+            tokio::spawn(connection);
+
+            let resp = request_sender.send_request(req).await?;
+
+            Ok(resp)
+        }
+    } else {
+        log::error!("host is not socket addr: {:?}", req.uri());
+        let mut resp = Response::new(Body::from("CONNECT must be to a socket address"));
+        *resp.status_mut() = http::StatusCode::BAD_REQUEST;
+
+        Ok(resp)
+    }
+}
+
+fn host_addr(uri: &http::Uri) -> Option<String> {
+    uri.authority().and_then(|auth| Some(auth.to_string()))
+}
+
+async fn tunnel(mut stream: TcpStream, mut upgraded: Upgraded) -> std::io::Result<()> {
+    tokio::io::copy_bidirectional(&mut upgraded, &mut stream).await?;
+    Ok(())
 }

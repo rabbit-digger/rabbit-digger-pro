@@ -9,7 +9,7 @@ use futures::FutureExt;
 use rd_interface::{
     async_trait, Address, Context, INet, IntoDyn, Net, TcpListener, TcpStream, UdpSocket,
 };
-use std::{collections::VecDeque, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::{
     sync::mpsc,
     sync::{RwLock, RwLockReadGuard},
@@ -19,7 +19,7 @@ use tokio::{
 
 pub struct Inner {
     config: Option<config::Config>,
-    events: VecDeque<Event>,
+    // events: VecDeque<Event>,
 }
 
 #[derive(Debug)]
@@ -91,7 +91,7 @@ impl Controller {
     pub fn new() -> Controller {
         let inner = Arc::new(RwLock::new(Inner {
             config: None,
-            events: VecDeque::new(),
+            // events: VecDeque::new(),
         }));
         let (sender, rx) = mpsc::unbounded_channel();
         spawn(process(rx, inner.clone()));
