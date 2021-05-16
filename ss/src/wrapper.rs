@@ -1,8 +1,13 @@
 use crate::udp::{decrypt_payload, encrypt_payload};
 use bytes::BytesMut;
 use rd_interface::{
-    async_trait, impl_async_read_write, registry::ResolveNetRef, Address as RDAddress, ITcpStream,
-    IUdpSocket, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write,
+    registry::{JsonSchema, ResolveNetRef},
+    schemars::{
+        self,
+        schema::{InstanceType, SchemaObject},
+    },
+    Address as RDAddress, ITcpStream, IUdpSocket, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use serde::{
     de::{self, Visitor},
@@ -33,6 +38,21 @@ impl Into<SSAddress> for WrapAddress {
 
 #[derive(Debug, Clone)]
 pub struct WrapCipher(CipherKind);
+
+impl JsonSchema for WrapCipher {
+    fn schema_name() -> String {
+        "Cipher".into()
+    }
+
+    fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        SchemaObject {
+            instance_type: Some(InstanceType::String.into()),
+            format: None,
+            ..Default::default()
+        }
+        .into()
+    }
+}
 
 impl ResolveNetRef for WrapCipher {}
 

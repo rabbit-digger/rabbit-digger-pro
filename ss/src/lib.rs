@@ -4,6 +4,7 @@ mod wrapper;
 use rd_interface::{
     async_trait,
     registry::{NetFactory, NetRef},
+    schemars::{self, JsonSchema},
     Address, Arc, Config, INet, IntoAddress, IntoDyn, Registry, Result, TcpListener, TcpStream,
     UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
 };
@@ -15,7 +16,7 @@ use shadowsocks::{
 };
 use wrapper::{WrapAddress, WrapCipher, WrapSSTcp, WrapSSUdp};
 
-#[derive(Debug, Deserialize, Clone, Config)]
+#[derive(Debug, Deserialize, Clone, Config, JsonSchema)]
 pub struct SSNetConfig {
     server: String,
     port: u16,
