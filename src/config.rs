@@ -15,14 +15,14 @@ pub struct Import {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ConfigWithImport {
+pub struct ConfigExt {
     #[serde(flatten)]
     config: Config,
     #[serde(default)]
     import: Vec<Import>,
 }
 
-pub async fn post_process(config: ConfigWithImport) -> Result<Config> {
+pub async fn post_process(config: ConfigExt) -> Result<Config> {
     let imports = config.import;
     let mut config = config.config;
     for i in imports {

@@ -5,13 +5,21 @@ use tokio_stream::wrappers::TcpListenerStream;
 
 mod filters;
 mod handlers;
+mod reject;
 
-pub async fn run(bind: String, controller: Controller) -> Result<()> {
-    let routes = filters::api(controller);
-    let listener = TcpListener::bind(bind).await?;
-    let listener = TcpListenerStream::new(listener);
+pub struct Server {
+    pub access_token: Option<String>,
+    pub controller: Controller,
+}
 
-    tokio::spawn(warp::serve(routes).run_incoming(listener));
+impl Server {
+    pub async fn run(self, bind: String) -> Result<()> {
+        let routes = filters::api(self);
+        let listener = TcpListener::bind(bind).await?;
+        let listener = TcpListenerStream::new(listener);
 
-    Ok(())
+        tokio::spawn(warp::serve(routes).run_incoming(listener));
+
+        Ok(())
+    }
 }

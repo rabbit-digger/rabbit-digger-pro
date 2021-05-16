@@ -21,6 +21,17 @@ use tokio::fs::read_to_string;
 use crate::util::DebounceStreamExt;
 
 #[derive(StructOpt)]
+struct ApiServer {
+    /// HTTP endpoint bind address
+    #[structopt(short, long, env = "RD_BIND")]
+    bind: Option<String>,
+
+    /// Access token
+    #[structopt(short, long, env = "RD_ACCESS_TOKEN")]
+    access_token: Option<String>,
+}
+
+#[derive(StructOpt)]
 struct Args {
     /// Path to config file
     #[structopt(
@@ -32,9 +43,8 @@ struct Args {
     )]
     config: PathBuf,
 
-    /// HTTP endpoint bind address
-    #[structopt(short, long, env = "RD_BIND")]
-    bind: Option<String>,
+    #[structopt(flatten)]
+    api_server: ApiServer,
 
     /// Write generated config to path
     #[structopt(short, long, parse(from_os_str))]
@@ -62,11 +72,15 @@ async fn real_main(args: Args) -> Result<()> {
 
     let controller = controller::Controller::new();
 
-    if let Some(_bind) = args.bind {
+    if let Some(_bind) = args.api_server.bind {
         #[cfg(feature = "api_server")]
-        api_server::run(_bind, controller.clone())
-            .await
-            .context("Failed to run api server.")?;
+        api_server::Server {
+            controller: controller.clone(),
+            access_token: args.api_server.access_token,
+        }
+        .run(_bind)
+        .await
+        .context("Failed to run api server.")?;
     }
 
     let mut rabbit_digger = RabbitDigger::new()?;
