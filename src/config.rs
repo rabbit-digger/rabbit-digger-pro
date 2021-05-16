@@ -1,9 +1,30 @@
 use anyhow::{Context, Result};
 use rabbit_digger::Config;
-use std::mem::replace;
+use serde_derive::{Deserialize, Serialize};
+use serde_json::Value;
+use std::path::PathBuf;
 
-pub async fn post_process(mut config: Config) -> Result<Config> {
-    let imports = replace(&mut config.import, Vec::new());
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Import {
+    pub name: Option<String>,
+    #[serde(rename = "type")]
+    pub format: String,
+    pub path: PathBuf,
+    #[serde(flatten)]
+    pub opt: Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConfigWithImport {
+    #[serde(flatten)]
+    config: Config,
+    #[serde(default)]
+    import: Vec<Import>,
+}
+
+pub async fn post_process(config: ConfigWithImport) -> Result<Config> {
+    let imports = config.import;
+    let mut config = config.config;
     for i in imports {
         let mut temp_config = Config::default();
         crate::translate::post_process(&mut temp_config, i.clone())

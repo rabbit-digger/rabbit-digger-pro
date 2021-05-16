@@ -1,9 +1,9 @@
 mod clash;
 
+use crate::config::Import;
 use anyhow::{anyhow, Result};
+use rabbit_digger::config::Config;
 use tokio::fs::read_to_string;
-
-use rabbit_digger::config::{Config, Import};
 
 #[cfg(not(feature = "translate"))]
 pub async fn post_process(_config: &mut Config, _import: Import) -> Result<()> {
