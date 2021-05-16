@@ -53,7 +53,8 @@ async fn write_config(path: PathBuf, cfg: &rabbit_digger::Config) -> Result<()> 
 
 async fn real_main(args: Args) -> Result<()> {
     env_logger::Builder::from_env(
-        Env::default().default_filter_or("rabbit_digger=trace,rabbit_digger_pro=trace"),
+        Env::default()
+            .default_filter_or("rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace"),
     )
     .init();
 
