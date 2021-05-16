@@ -3,13 +3,14 @@ mod wrapper;
 
 use crate::config;
 
-use self::event::{Event, EventType};
+use self::event::{BatchEvent, Event, EventType};
 use anyhow::Result;
 use futures::FutureExt;
 use rd_interface::{
     async_trait, Address, Context, INet, IntoDyn, Net, TcpListener, TcpStream, UdpSocket,
 };
 use std::{sync::Arc, time::Duration};
+use tokio::sync::broadcast;
 use tokio::{
     sync::mpsc,
     sync::{RwLock, RwLockReadGuard},
@@ -19,7 +20,7 @@ use tokio::{
 
 pub struct Inner {
     config: Option<config::Config>,
-    // events: VecDeque<Event>,
+    sender: broadcast::Sender<BatchEvent>,
 }
 
 #[derive(Debug)]
@@ -30,7 +31,7 @@ pub struct TaskInfo {
 #[derive(Clone)]
 pub struct Controller {
     inner: Arc<RwLock<Inner>>,
-    sender: mpsc::UnboundedSender<Event>,
+    event_sender: mpsc::UnboundedSender<Event>,
 }
 
 pub struct ControllerNet {
@@ -66,9 +67,9 @@ impl INet for ControllerNet {
     }
 }
 
-async fn process(mut rx: mpsc::UnboundedReceiver<Event>, _inner: Arc<RwLock<Inner>>) {
+async fn process(mut rx: mpsc::UnboundedReceiver<Event>, sender: broadcast::Sender<BatchEvent>) {
     loop {
-        let _e = match rx.recv().now_or_never() {
+        let e = match rx.recv().now_or_never() {
             Some(Some(e)) => e,
             Some(None) => break,
             None => {
@@ -77,30 +78,35 @@ async fn process(mut rx: mpsc::UnboundedReceiver<Event>, _inner: Arc<RwLock<Inne
             }
         };
 
-        // log::trace!("{:?}", e);
+        let mut events = BatchEvent::with_capacity(16);
+        events.push(Arc::new(e));
+        while let Some(Some(e)) = rx.recv().now_or_never() {
+            events.push(Arc::new(e));
+        }
 
-        // let mut inner = inner.write().await;
-        // inner.events.push_back(e);
-        // while let Some(Some(e)) = rx.recv().now_or_never() {
-        //     inner.events.push_back(e);
-        // }
+        // Failed only when no receiver
+        sender.send(events).ok();
     }
 }
 
 impl Controller {
     pub fn new() -> Controller {
+        let (sender, _) = broadcast::channel(16);
         let inner = Arc::new(RwLock::new(Inner {
             config: None,
-            // events: VecDeque::new(),
+            sender: sender.clone(),
         }));
-        let (sender, rx) = mpsc::unbounded_channel();
-        spawn(process(rx, inner.clone()));
-        Controller { inner, sender }
+        let (event_sender, event_receiver) = mpsc::unbounded_channel();
+        spawn(process(event_receiver, sender));
+        Controller {
+            inner,
+            event_sender,
+        }
     }
     pub fn get_net(&self, net: Net) -> Net {
         ControllerNet {
             net,
-            sender: self.sender.clone(),
+            sender: self.event_sender.clone(),
         }
         .into_dyn()
     }
@@ -122,6 +128,9 @@ impl Controller {
     }
     pub async fn lock<'a>(&'a self) -> RwLockReadGuard<'a, Inner> {
         self.inner.read().await
+    }
+    pub async fn get_subscriber(&self) -> broadcast::Receiver<BatchEvent> {
+        self.inner.read().await.sender.subscribe()
     }
 }
 

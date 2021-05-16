@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use rd_interface::Address;
+use rd_interface::{Address, Arc};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -17,6 +17,8 @@ pub struct Event {
     pub event_type: EventType,
     pub time: Instant,
 }
+
+pub type BatchEvent = Vec<Arc<Event>>;
 
 impl Event {
     pub fn new(uuid: Uuid, event_type: EventType) -> Event {
