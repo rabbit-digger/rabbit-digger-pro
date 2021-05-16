@@ -1,10 +1,12 @@
+#[cfg(feature = "api_server")]
+mod api_server;
 mod config;
 mod translate;
 mod util;
 
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use env_logger::Env;
 use futures::{
     future::{ready, TryFutureExt},
@@ -61,7 +63,10 @@ async fn real_main(args: Args) -> Result<()> {
     let controller = controller::Controller::new();
 
     if let Some(_bind) = args.bind {
-        // TODO
+        #[cfg(feature = "api_server")]
+        api_server::run(_bind, controller.clone())
+            .await
+            .context("Failed to run api server.")?;
     }
 
     let mut rabbit_digger = RabbitDigger::new()?;
