@@ -6,7 +6,6 @@ use syn::{parse_macro_input, Data, DeriveInput};
 pub fn config(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
-    // eprintln!("Test {:#?}", input);
     let ident = input.ident;
     let mut resolve_body = quote! {};
 
@@ -31,8 +30,6 @@ pub fn config(input: TokenStream) -> TokenStream {
             }
         }
     };
-
-    // eprintln!("Test {}", expanded.to_string());
 
     TokenStream::from(expanded)
 }
