@@ -8,9 +8,11 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     let at = access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
 
-    prefix
-        .and(at)
-        .and(get_config(server.controller).recover(handle_rejection))
+    prefix.and(at).and(
+        get_config(server.controller.clone())
+            .or(get_registry(server.controller))
+            .recover(handle_rejection),
+    )
 }
 
 pub fn routes(
@@ -42,6 +44,16 @@ pub fn get_config(
         .and(warp::get())
         .and(with_ctl(ctl))
         .and_then(handlers::get_config)
+}
+
+// GET /registry
+pub fn get_registry(
+    ctl: Controller,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("registry")
+        .and(warp::get())
+        .and(with_ctl(ctl))
+        .and_then(handlers::get_registry)
 }
 
 fn with_ctl(ctl: Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {

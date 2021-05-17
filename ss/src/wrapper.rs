@@ -2,17 +2,11 @@ use crate::udp::{decrypt_payload, encrypt_payload};
 use bytes::BytesMut;
 use rd_interface::{
     async_trait, impl_async_read_write,
-    registry::{JsonSchema, ResolveNetRef},
-    schemars::{
-        self,
-        schema::{InstanceType, SchemaObject},
-    },
+    registry::ResolveNetRef,
+    schemars::{self, JsonSchema},
     Address as RDAddress, ITcpStream, IUdpSocket, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
-use serde::{
-    de::{self, Visitor},
-    Deserializer,
-};
+use serde_derive::{Deserialize, Serialize};
 use shadowsocks::{
     context::SharedContext, crypto::v1::CipherKind, relay::socks5::Address as SSAddress,
     ProxyClientStream, ServerAddr, ServerConfig,
@@ -36,63 +30,108 @@ impl Into<SSAddress> for WrapAddress {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct WrapCipher(CipherKind);
-
-impl JsonSchema for WrapCipher {
-    fn schema_name() -> String {
-        "Cipher".into()
-    }
-
-    fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        SchemaObject {
-            instance_type: Some(InstanceType::String.into()),
-            format: None,
-            ..Default::default()
-        }
-        .into()
-    }
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Cipher {
+    #[serde(rename = "none")]
+    NONE,
+    #[serde(rename = "table")]
+    SS_TABLE,
+    #[serde(rename = "rc4-md5")]
+    SS_RC4_MD5,
+    #[serde(rename = "aes-128-ctr")]
+    AES_128_CTR,
+    #[serde(rename = "aes-192-ctr")]
+    AES_192_CTR,
+    #[serde(rename = "aes-256-ctr")]
+    AES_256_CTR,
+    #[serde(rename = "aes-128-cfb1")]
+    AES_128_CFB1,
+    #[serde(rename = "aes-128-cfb8")]
+    AES_128_CFB8,
+    #[serde(rename = "aes-128-cfb")]
+    AES_128_CFB128,
+    #[serde(rename = "aes-192-cfb1")]
+    AES_192_CFB1,
+    #[serde(rename = "aes-192-cfb8")]
+    AES_192_CFB8,
+    #[serde(rename = "aes-192-cfb")]
+    AES_192_CFB128,
+    #[serde(rename = "aes-256-cfb1")]
+    AES_256_CFB1,
+    #[serde(rename = "aes-256-cfb8")]
+    AES_256_CFB8,
+    #[serde(rename = "aes-256-cfb")]
+    AES_256_CFB128,
+    #[serde(rename = "aes-128-ofb")]
+    AES_128_OFB,
+    #[serde(rename = "aes-192-ofb")]
+    AES_192_OFB,
+    #[serde(rename = "aes-256-ofb")]
+    AES_256_OFB,
+    #[serde(rename = "camellia-128-ctr")]
+    CAMELLIA_128_CTR,
+    #[serde(rename = "camellia-192-ctr")]
+    CAMELLIA_192_CTR,
+    #[serde(rename = "camellia-256-ctr")]
+    CAMELLIA_256_CTR,
+    #[serde(rename = "camellia-128-cfb1")]
+    CAMELLIA_128_CFB1,
+    #[serde(rename = "camellia-128-cfb8")]
+    CAMELLIA_128_CFB8,
+    #[serde(rename = "camellia-128-cfb")]
+    CAMELLIA_128_CFB128,
+    #[serde(rename = "camellia-192-cfb1")]
+    CAMELLIA_192_CFB1,
+    #[serde(rename = "camellia-192-cfb8")]
+    CAMELLIA_192_CFB8,
+    #[serde(rename = "camellia-192-cfb")]
+    CAMELLIA_192_CFB128,
+    #[serde(rename = "camellia-256-cfb1")]
+    CAMELLIA_256_CFB1,
+    #[serde(rename = "camellia-256-cfb8")]
+    CAMELLIA_256_CFB8,
+    #[serde(rename = "camellia-256-cfb")]
+    CAMELLIA_256_CFB128,
+    #[serde(rename = "camellia-128-ofb")]
+    CAMELLIA_128_OFB,
+    #[serde(rename = "camellia-192-ofb")]
+    CAMELLIA_192_OFB,
+    #[serde(rename = "camellia-256-ofb")]
+    CAMELLIA_256_OFB,
+    #[serde(rename = "rc4")]
+    RC4,
+    #[serde(rename = "chacha20-ietf")]
+    CHACHA20,
+    #[serde(rename = "aes-128-gcm")]
+    AES_128_GCM,
+    #[serde(rename = "aes-256-gcm")]
+    AES_256_GCM,
+    #[serde(rename = "chacha20-ietf-poly1305")]
+    CHACHA20_POLY1305,
+    #[serde(rename = "aes-128-ccm")]
+    AES_128_CCM,
+    #[serde(rename = "aes-256-ccm")]
+    AES_256_CCM,
+    #[serde(rename = "aes-128-gcm-siv")]
+    AES_128_GCM_SIV,
+    #[serde(rename = "aes-256-gcm-siv")]
+    AES_256_GCM_SIV,
+    #[serde(rename = "xchacha20-ietf-poly1305")]
+    XCHACHA20_POLY1305,
+    #[serde(rename = "sm4-gcm")]
+    SM4_GCM,
+    #[serde(rename = "sm4-ccm")]
+    SM4_CCM,
 }
 
-impl ResolveNetRef for WrapCipher {}
+impl ResolveNetRef for Cipher {}
 
-impl Into<CipherKind> for WrapCipher {
+impl Into<CipherKind> for Cipher {
     fn into(self) -> CipherKind {
-        self.0
+        CipherKind::from_str(&serde_json::to_string(&self).unwrap()).unwrap()
     }
-}
-
-pub fn deserialize_cipher<'de, D>(de: D) -> Result<WrapCipher, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct StrVisitor<'a>(&'a std::marker::PhantomData<()>);
-    impl<'a, 'de> Visitor<'de> for StrVisitor<'a> {
-        type Value = WrapCipher;
-
-        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(
-                f,
-                "a chiper from aes-128-gcm aes-256-gcm
-aes-128-cfb aes-192-cfb aes-256-cfb
-aes-128-ctr aes-192-ctr aes-256-ctr
-rc4-md5 chacha20-ietf
-chacha20-ietf-poly1305 xchacha20-ietf-poly1305"
-            )
-        }
-
-        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            match CipherKind::from_str(s) {
-                Ok(c) => Ok(WrapCipher(c)),
-                Err(_) => Err(de::Error::invalid_value(de::Unexpected::Str(s), &self)),
-            }
-        }
-    }
-
-    de.deserialize_str(StrVisitor(&std::marker::PhantomData))
 }
 
 pub struct WrapSSTcp(pub ProxyClientStream<TcpStream>);

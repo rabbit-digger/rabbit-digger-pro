@@ -8,3 +8,10 @@ pub async fn get_config(ctl: Controller) -> Result<impl warp::Reply, Infallible>
 
     Ok(warp::reply::json(&config))
 }
+
+pub async fn get_registry(ctl: Controller) -> Result<impl warp::Reply, Infallible> {
+    let ctl = ctl.lock().await;
+    let registry = ctl.registry();
+
+    Ok(warp::reply::json(&registry))
+}

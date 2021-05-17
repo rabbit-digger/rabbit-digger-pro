@@ -14,17 +14,17 @@ use shadowsocks::{
     context::Context,
     ProxyClientStream,
 };
-use wrapper::{WrapAddress, WrapCipher, WrapSSTcp, WrapSSUdp};
+use wrapper::{Cipher, WrapAddress, WrapSSTcp, WrapSSUdp};
 
 #[derive(Debug, Deserialize, Clone, Config, JsonSchema)]
 pub struct SSNetConfig {
     server: String,
     port: u16,
     password: String,
+    #[serde(default)]
     udp: bool,
 
-    #[serde(deserialize_with = "crate::wrapper::deserialize_cipher")]
-    cipher: WrapCipher,
+    cipher: Cipher,
 
     #[serde(default)]
     net: NetRef,
