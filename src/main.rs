@@ -56,8 +56,10 @@ struct Args {
 }
 
 fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> Result<()> {
-    // #[cfg(feature = "ss")]
+    #[cfg(feature = "ss")]
     registry.init_with_registry("ss", ss::init)?;
+    #[cfg(feature = "trojan")]
+    registry.init_with_registry("trojan", trojan::init)?;
     Ok(())
 }
 

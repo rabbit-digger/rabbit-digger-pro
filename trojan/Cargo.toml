@@ -1,0 +1,17 @@
+[package]
+name = "trojan"
+version = "0.1.0"
+authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+rd-interface = { path = "../rabbit-digger/rd-interface/", version = "0.4" }
+serde_derive = "1.0"
+serde = "1.0"
+log = "0.4"
+tokio-rustls = "0.22.0"
+sha2 = "0.9.5"
+hex = "0.4.3"
+socks5-protocol = "0.3.4"
+futures = "0.3"
+webpki-roots = "0.21.1"
