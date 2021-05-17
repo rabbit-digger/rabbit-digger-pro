@@ -12,13 +12,26 @@ use serde_derive::Deserialize;
 use sha2::{Digest, Sha224};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
 use tokio_rustls::{
-    rustls::ClientConfig,
+    rustls::{ClientConfig, ServerCertVerified, ServerCertVerifier},
     webpki::{DNSName, DNSNameRef},
     TlsConnector,
 };
 
 mod tcp;
 mod udp;
+
+struct AllowAnyCert;
+impl ServerCertVerifier for AllowAnyCert {
+    fn verify_server_cert(
+        &self,
+        _roots: &tokio_rustls::rustls::RootCertStore,
+        _presented_certs: &[tokio_rustls::rustls::Certificate],
+        _dns_name: DNSNameRef,
+        _ocsp_response: &[u8],
+    ) -> Result<ServerCertVerified, tokio_rustls::rustls::TLSError> {
+        Ok(ServerCertVerified::assertion())
+    }
+}
 
 pub struct TrojanNet {
     net: Net,
@@ -32,9 +45,15 @@ pub struct TrojanNet {
 impl TrojanNet {
     pub fn new(config: TrojanNetConfig) -> Result<Self> {
         let mut client_config = ClientConfig::default();
-        client_config
-            .root_store
-            .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+        if config.skip_cert_verify {
+            client_config
+                .dangerous()
+                .set_certificate_verifier(Arc::new(AllowAnyCert));
+        } else {
+            client_config
+                .root_store
+                .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+        }
         let connector = TlsConnector::from(Arc::new(client_config));
         let sni = DNSNameRef::try_from_ascii_str(&config.sni)
             .map_err(map_other)?
@@ -60,11 +79,16 @@ pub struct TrojanNetConfig {
 
     /// hostname:port
     server: String,
+    /// password in plain text
     password: String,
+
+    /// enable udp or not
     #[serde(default)]
     udp: bool,
 
+    /// sni
     sni: String,
+    /// skip certificate verify
     #[serde(default)]
     skip_cert_verify: bool,
 }

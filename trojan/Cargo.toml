@@ -9,7 +9,7 @@ rd-interface = { path = "../rabbit-digger/rd-interface/", version = "0.4" }
 serde_derive = "1.0"
 serde = "1.0"
 log = "0.4"
-tokio-rustls = "0.22.0"
+tokio-rustls = { version = "0.22.0", features = ["dangerous_configuration"] }
 sha2 = "0.9.5"
 hex = "0.4.3"
 socks5-protocol = "0.3.4"
