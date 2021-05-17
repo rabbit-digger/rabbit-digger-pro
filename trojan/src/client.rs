@@ -18,6 +18,7 @@ use tokio_rustls::{
 };
 
 mod tcp;
+mod udp;
 
 pub struct TrojanNet {
     net: Net,
@@ -68,6 +69,30 @@ pub struct TrojanNetConfig {
     skip_cert_verify: bool,
 }
 
+impl TrojanNet {
+    // cmd 1 for Connect, 3 for Udp associate
+    fn make_head(&self, cmd: u8, addr: S5Addr) -> Result<Vec<u8>> {
+        let head = Vec::<u8>::new();
+        let mut writer = Cursor::new(head);
+
+        writer.write_all(self.password.as_bytes())?;
+        writer.write_all(b"\r\n")?;
+        // Connect
+        writer.write_all(&[cmd])?;
+        addr.write_to(&mut writer).map_err(|e| e.to_io_err())?;
+        writer.write_all(b"\r\n")?;
+
+        Ok(writer.into_inner())
+    }
+}
+
+pub(crate) fn ra2sa(addr: RdAddress) -> S5Addr {
+    match addr {
+        RdAddress::SocketAddr(s) => S5Addr::SocketAddr(s),
+        RdAddress::Domain(d, p) => S5Addr::Domain(d, p),
+    }
+}
+
 #[async_trait]
 impl INet for TrojanNet {
     async fn tcp_connect(
@@ -75,29 +100,11 @@ impl INet for TrojanNet {
         ctx: &mut rd_interface::Context,
         addr: RdAddress,
     ) -> Result<TcpStream> {
-        let addr = match addr {
-            RdAddress::SocketAddr(s) => S5Addr::SocketAddr(s),
-            RdAddress::Domain(d, p) => S5Addr::Domain(d, p),
-        };
-
         let stream = self.net.tcp_connect(ctx, self.server.clone()).await?;
-
         let stream = self.connector.connect(self.sni.as_ref(), stream).await?;
+        let head = self.make_head(1, ra2sa(addr))?;
 
-        let head = Vec::<u8>::new();
-        let mut writer = Cursor::new(head);
-        writer.write_all(self.password.as_bytes())?;
-        writer.write_all(b"\r\n")?;
-        // Connect
-        writer.write_all(b"\x01")?;
-        addr.write_to(&mut writer).map_err(|e| e.to_io_err())?;
-        writer.write_all(b"\r\n")?;
-
-        let tcp = tcp::TrojanTcp {
-            stream,
-            head: Some(writer.into_inner()),
-            is_first: true,
-        };
+        let tcp = tcp::TrojanTcp::new(stream, head);
         Ok(tcp.into_dyn())
     }
 
@@ -112,14 +119,17 @@ impl INet for TrojanNet {
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
-        _addr: RdAddress,
+        addr: RdAddress,
     ) -> Result<UdpSocket> {
         if !self.udp {
             return Err(NOT_ENABLED);
         }
-        let cfg = self.clone();
-        let socket = self.net.udp_bind(ctx, "0.0.0.0:0".into_address()?).await?;
+        let stream = self.net.tcp_connect(ctx, self.server.clone()).await?;
+        let stream = self.connector.connect(self.sni.as_ref(), stream).await?;
+        let head = self.make_head(3, ra2sa(addr))?;
 
-        todo!()
+        let udp = udp::TrojanUdp::new(stream, head);
+
+        Ok(udp.into_dyn())
     }
 }

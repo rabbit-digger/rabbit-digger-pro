@@ -8,9 +8,19 @@ use rd_interface::{
 use tokio_rustls::client::TlsStream;
 
 pub(super) struct TrojanTcp {
-    pub stream: TlsStream<TcpStream>,
-    pub head: Option<Vec<u8>>,
-    pub is_first: bool,
+    stream: TlsStream<TcpStream>,
+    head: Option<Vec<u8>>,
+    is_first: bool,
+}
+
+impl TrojanTcp {
+    pub fn new(stream: TlsStream<TcpStream>, head: Vec<u8>) -> Self {
+        Self {
+            stream,
+            head: Some(head),
+            is_first: true,
+        }
+    }
 }
 
 impl_async_read!(TrojanTcp, stream);
