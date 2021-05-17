@@ -71,6 +71,7 @@ impl RabbitDigger {
                 }
                 Err(Either::Right((e, _))) => return Err(e),
             };
+            controller.remove_registry().await?;
             controller.remove_config().await?;
 
             config = match new_config? {

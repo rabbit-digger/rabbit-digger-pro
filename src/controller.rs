@@ -143,9 +143,6 @@ impl Controller {
     }
     pub(crate) async fn remove_registry(&self) -> Result<()> {
         let mut inner = self.inner.write().await;
-        if inner.registry.is_none() {
-            anyhow::bail!("failed to remove registry from controller")
-        }
         inner.registry = None;
         Ok(())
     }
@@ -159,9 +156,6 @@ impl Controller {
     }
     pub(crate) async fn remove_config(&self) -> Result<()> {
         let mut inner = self.inner.write().await;
-        if inner.config.is_none() {
-            anyhow::bail!("failed to remove config from controller")
-        }
         inner.config = None;
         Ok(())
     }

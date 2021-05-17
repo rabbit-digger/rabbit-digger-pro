@@ -54,6 +54,7 @@ impl Socks5Server {
                 {
                     Ok(socket) => socket,
                     Err(e) => {
+                        log::trace!("Failed to connect {:?}", e);
                         CommandResponse::error(e).write(&mut tx).await?;
                         tx.flush().await?;
                         return Ok(());

@@ -136,12 +136,10 @@ impl ResolveNetRef for NetRef {
 
 macro_rules! impl_empty_resolve {
     ($($x:ident),+ $(,)?) => ($(
-        impl ResolveNetRef for $x {
-            fn resolve(&mut self, _nets: &NetMap) -> Result<()> {
-                Ok(())
-            }
-        }
+        impl ResolveNetRef for $x {}
     )*)
 }
 
 impl_empty_resolve! { String, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, bool, f32, f64 }
+impl<T: ResolveNetRef> ResolveNetRef for Vec<T> {}
+impl<T: ResolveNetRef> ResolveNetRef for Option<T> {}
