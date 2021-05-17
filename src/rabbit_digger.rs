@@ -62,22 +62,24 @@ impl RabbitDigger {
             let new_config = match try_select(run_fut, config_stream.try_next()).await {
                 Ok(Either::Left((_, cfg_fut))) => {
                     log::info!("Exited normally, waiting for next config...");
-                    cfg_fut.await?
+                    cfg_fut.await
                 }
-                Ok(Either::Right((cfg, _))) => cfg,
+                Ok(Either::Right((cfg, _))) => Ok(cfg),
                 Err(Either::Left((e, cfg_fut))) => {
                     log::error!("Error: {:?}, waiting for next config...", e);
-                    cfg_fut.await?
+                    cfg_fut.await
                 }
                 Err(Either::Right((e, _))) => return Err(e),
             };
             controller.remove_config().await?;
 
-            config = match new_config {
+            config = match new_config? {
                 Some(v) => v,
-                None => return Ok(()),
+                None => break,
             }
         }
+
+        Ok(())
     }
 
     pub async fn run_once(
@@ -114,9 +116,11 @@ impl RabbitDigger {
             })
             .collect();
 
+        ctl.update_registry(&registry).await?;
         while let Some((name, r)) = server_tasks.next().await {
             log::info!("Server {} is stopped. Return: {:?}", name, r)
         }
+        ctl.remove_registry().await?;
 
         log::info!("all servers are down, exit.");
 

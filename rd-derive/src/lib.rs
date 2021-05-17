@@ -9,18 +9,23 @@ pub fn config(input: TokenStream) -> TokenStream {
     let ident = input.ident;
     let mut resolve_body = quote! {};
 
-    let fields = match input.data {
-        Data::Struct(s) => s.fields,
-        _ => panic!("Config must be Struct"),
-    };
+    match input.data {
+        Data::Struct(s) => {
+            let fields = s.fields;
 
-    for field in fields {
-        let field_name = field.ident.unwrap();
-        let line = quote! {
-            rd_interface::registry::ResolveNetRef::resolve(&mut self.#field_name, nets)?;
-        };
-        resolve_body.extend(line);
-    }
+            for field in fields {
+                let field_name = field.ident.unwrap();
+                let line = quote! {
+                    rd_interface::registry::ResolveNetRef::resolve(&mut self.#field_name, nets)?;
+                };
+                resolve_body.extend(line);
+            }
+        }
+        Data::Enum(_e) => {
+            // TODO: support enum
+        }
+        _ => panic!("Config must be struct or enum"),
+    };
 
     let expanded = quote! {
         impl rd_interface::registry::ResolveNetRef for #ident {

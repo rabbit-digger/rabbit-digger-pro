@@ -1,15 +1,17 @@
 mod event;
 mod wrapper;
 
-use crate::config;
+use crate::{config, Registry};
 
 use self::event::{BatchEvent, Event, EventType};
 use anyhow::Result;
 use futures::FutureExt;
 use rd_interface::{
-    async_trait, Address, Context, INet, IntoDyn, Net, TcpListener, TcpStream, UdpSocket,
+    async_trait, schemars::schema::RootSchema, Address, Context, INet, IntoDyn, Net, TcpListener,
+    TcpStream, UdpSocket,
 };
-use std::{sync::Arc, time::Duration};
+use serde_derive::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
 use tokio::{
     sync::mpsc,
@@ -18,8 +20,15 @@ use tokio::{
     time::sleep,
 };
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegistrySchema {
+    net: HashMap<String, RootSchema>,
+    server: HashMap<String, RootSchema>,
+}
+
 pub struct Inner {
     config: Option<config::Config>,
+    registry: Option<RegistrySchema>,
     sender: broadcast::Sender<BatchEvent>,
 }
 
@@ -94,6 +103,7 @@ impl Controller {
         let (sender, _) = broadcast::channel(16);
         let inner = Arc::new(RwLock::new(Inner {
             config: None,
+            registry: None,
             sender: sender.clone(),
         }));
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
@@ -109,6 +119,35 @@ impl Controller {
             sender: self.event_sender.clone(),
         }
         .into_dyn()
+    }
+    pub(crate) async fn update_registry(&self, registry: &Registry) -> Result<()> {
+        let mut inner = self.inner.write().await;
+        if inner.registry.is_some() {
+            anyhow::bail!("this controller already has a registry")
+        }
+        let mut r = RegistrySchema {
+            net: HashMap::new(),
+            server: HashMap::new(),
+        };
+
+        for (key, value) in &registry.net {
+            r.net.insert(key.clone(), value.resolver.schema().clone());
+        }
+        for (key, value) in &registry.server {
+            r.server
+                .insert(key.clone(), value.resolver.schema().clone());
+        }
+
+        inner.registry = Some(r);
+        Ok(())
+    }
+    pub(crate) async fn remove_registry(&self) -> Result<()> {
+        let mut inner = self.inner.write().await;
+        if inner.registry.is_none() {
+            anyhow::bail!("failed to remove registry from controller")
+        }
+        inner.registry = None;
+        Ok(())
     }
     pub(crate) async fn update_config(&self, config: config::Config) -> Result<()> {
         let mut inner = self.inner.write().await;
@@ -137,5 +176,8 @@ impl Controller {
 impl Inner {
     pub fn config(&self) -> Option<&config::Config> {
         self.config.as_ref()
+    }
+    pub fn registry(&self) -> Option<&RegistrySchema> {
+        self.registry.as_ref()
     }
 }
