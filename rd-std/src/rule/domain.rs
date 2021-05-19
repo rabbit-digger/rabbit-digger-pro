@@ -1,18 +1,9 @@
-use std::{
-    convert::{TryFrom, TryInto},
-    fmt,
-};
+use std::convert::TryFrom;
 
+use super::config::{DomainMatcher, DomainMatcherMethod as Method};
 use super::matcher::{Matcher, MaybeAsync};
 use anyhow::Result;
 use rd_interface::Address;
-
-#[derive(Debug)]
-pub enum Method {
-    Keyword,
-    Suffix,
-    Match,
-}
 
 impl TryFrom<String> for Method {
     type Error = anyhow::Error;
@@ -27,35 +18,7 @@ impl TryFrom<String> for Method {
     }
 }
 
-impl fmt::Display for Method {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Method::Keyword => "keyword",
-            Method::Suffix => "suffix",
-            Method::Match => "prefix",
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct DomainMatcher {
-    method: Method,
-    domain: String,
-}
-
-impl fmt::Display for DomainMatcher {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "domain({}, {})", self.method, self.domain)
-    }
-}
-
 impl DomainMatcher {
-    pub fn new(method: String, domain: String) -> Result<DomainMatcher> {
-        Ok(DomainMatcher {
-            method: method.try_into()?,
-            domain,
-        })
-    }
     fn test(&self, domain: &str) -> bool {
         match self.method {
             Method::Keyword => domain.contains(&self.domain),

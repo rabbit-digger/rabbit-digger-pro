@@ -1,10 +1,10 @@
 use std::{collections::HashMap, fmt, future::ready, time::Duration};
 
+use crate::builtin::load_builtin;
 use crate::config;
 use crate::controller;
 use crate::registry::Registry;
 use crate::util::topological_sort;
-use crate::{builtin::load_builtin, composite};
 use anyhow::{anyhow, Context, Result};
 use config::AllNet;
 use futures::{
@@ -99,11 +99,7 @@ impl RabbitDigger {
         log::debug!("Registry:\n{}", registry);
 
         let net_cfg = config.net.into_iter().map(|(k, v)| (k, AllNet::Net(v)));
-        let composite_cfg = config
-            .composite
-            .into_iter()
-            .map(|(k, v)| (k, AllNet::Composite(v)));
-        let all_net = net_cfg.chain(composite_cfg).collect();
+        let all_net = net_cfg.collect();
         let net = init_net(&registry, all_net, &config.server)?;
         let servers = init_server(&registry, &net, config.server, wrap_net)?;
 
@@ -163,26 +159,6 @@ impl<'a> fmt::Display for ServerList<'a> {
     }
 }
 
-fn clone_net_by_net_list(
-    net: &HashMap<String, Net>,
-    net_list: &Vec<String>,
-) -> Result<HashMap<String, Net>> {
-    if net_list.len() == 0 {
-        return Ok(net.clone());
-    }
-    net_list
-        .into_iter()
-        .map(|target| {
-            Ok((
-                target.clone(),
-                net.get(target)
-                    .ok_or(anyhow!("target is not found: {}", target))?
-                    .to_owned(),
-            ))
-        })
-        .collect::<Result<HashMap<_, _>>>()
-}
-
 fn init_net(
     registry: &Registry,
     mut all_net: HashMap<String, config::AllNet>,
@@ -226,13 +202,6 @@ fn init_net(
                     Ok(())
                 };
                 load_net().map_err(|e| e.context(format!("Loading net {}", name)))?;
-            }
-            AllNet::Composite(i) => {
-                net.insert(
-                    name.to_string(),
-                    composite::build_composite(clone_net_by_net_list(&net, &i.net_list)?, i)
-                        .context(format!("Loading composite {}", name))?,
-                );
             }
             AllNet::Root(_) => {}
         }

@@ -1,5 +1,5 @@
 use futures::{future::BoxFuture, Future, FutureExt};
-use std::{fmt, pin, task};
+use std::{pin, task};
 
 pub(super) enum MaybeAsync<T> {
     Sync {
@@ -30,11 +30,10 @@ impl<T: Unpin> Future for MaybeAsync<T> {
     }
 }
 
-pub(super) trait Matcher: Send + Sync + fmt::Display {
+pub(super) trait Matcher: Send + Sync {
     fn match_rule(
         &self,
         ctx: &rd_interface::Context,
         addr: &rd_interface::Address,
     ) -> MaybeAsync<bool>;
 }
-pub(super) type BoxMatcher = Box<dyn Matcher>;

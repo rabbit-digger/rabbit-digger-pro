@@ -1,8 +1,7 @@
-use super::matcher::BoxMatcher;
+use super::config;
+use super::matcher::Matcher;
 use super::udp::UdpRuleSocket;
-use super::{any::AnyMatcher, domain::DomainMatcher, ip_cidr::IPMatcher};
-use crate::config::{CompositeRule, CompositeRuleItem, Matcher};
-use std::{collections::HashMap, io};
+use std::io;
 
 use rd_interface::{
     async_trait, context::common_field::SourceAddress, Address, Arc, Context, INet, IntoDyn, Net,
@@ -12,15 +11,7 @@ use rd_interface::{
 pub struct RuleItem {
     pub target_name: String,
     pub target: Net,
-    matcher: BoxMatcher,
-}
-
-fn get_matcher(cfg: Matcher) -> anyhow::Result<BoxMatcher> {
-    Ok(match cfg {
-        Matcher::Any => Box::new(AnyMatcher::new()),
-        Matcher::Domain { method, domain } => Box::new(DomainMatcher::new(method, domain)?),
-        Matcher::IpCidr { ip_cidr } => Box::new(IPMatcher::new(ip_cidr)?),
-    })
+    matcher: config::Matcher,
 }
 
 #[derive(Clone)]
@@ -29,22 +20,18 @@ pub struct Rule {
 }
 
 impl Rule {
-    fn new(net: HashMap<String, Net>, config: CompositeRule) -> anyhow::Result<Rule> {
+    fn new(config: config::RuleConfig) -> Result<Rule> {
         let rule = config
             .rule
             .into_iter()
-            .map(|CompositeRuleItem { target, matcher }| {
-                let matcher = get_matcher(matcher)?;
+            .map(|config::RuleItem { target, matcher }| {
                 Ok(RuleItem {
                     matcher,
-                    target: net
-                        .get(&target)
-                        .ok_or(anyhow::anyhow!("target is not found: {}", target))?
-                        .to_owned(),
-                    target_name: target,
+                    target: target.net(),
+                    target_name: target.name().to_string(),
                 })
             })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
         let rule = Arc::new(rule);
 
         Ok(Rule { rule })
@@ -58,7 +45,7 @@ impl Rule {
         for rule in self.rule.iter() {
             if rule.matcher.match_rule(ctx, &target).await {
                 log::info!(
-                    "[{}] {} -> {} matched rule: {}",
+                    "[{}] {} -> {} matched rule: {:?}",
                     &rule.target_name,
                     &src,
                     &target,
@@ -85,11 +72,10 @@ pub struct RuleNet {
 }
 
 impl RuleNet {
-    pub fn new(net: HashMap<String, Net>, config: CompositeRule) -> anyhow::Result<Net> {
+    pub fn new(config: config::RuleConfig) -> Result<RuleNet> {
         Ok(RuleNet {
-            rule: Rule::new(net, config)?,
-        }
-        .into_dyn())
+            rule: Rule::new(config)?,
+        })
     }
 }
 

@@ -13,6 +13,12 @@ pub struct NetRef {
     net: Option<Net>,
 }
 
+impl From<String> for NetRef {
+    fn from(name: String) -> Self {
+        NetRef { name, net: None }
+    }
+}
+
 impl Default for NetRef {
     fn default() -> Self {
         default_net()
@@ -141,5 +147,19 @@ macro_rules! impl_empty_resolve {
 }
 
 impl_empty_resolve! { String, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, bool, f32, f64 }
-impl<T: ResolveNetRef> ResolveNetRef for Vec<T> {}
-impl<T: ResolveNetRef> ResolveNetRef for Option<T> {}
+impl<T: ResolveNetRef> ResolveNetRef for Vec<T> {
+    fn resolve(&mut self, nets: &NetMap) -> Result<()> {
+        for i in self.iter_mut() {
+            i.resolve(nets)?;
+        }
+        Ok(())
+    }
+}
+impl<T: ResolveNetRef> ResolveNetRef for Option<T> {
+    fn resolve(&mut self, nets: &NetMap) -> Result<()> {
+        for i in self.iter_mut() {
+            i.resolve(nets)?;
+        }
+        Ok(())
+    }
+}
