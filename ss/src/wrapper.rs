@@ -32,7 +32,6 @@ impl Into<SSAddress> for WrapAddress {
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
 pub enum Cipher {
     #[serde(rename = "none")]
     NONE,
@@ -130,7 +129,9 @@ impl ResolveNetRef for Cipher {}
 
 impl Into<CipherKind> for Cipher {
     fn into(self) -> CipherKind {
-        CipherKind::from_str(&serde_json::to_string(&self).unwrap()).unwrap()
+        let s: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&self).unwrap()).unwrap();
+        CipherKind::from_str(s.as_str().unwrap()).unwrap()
     }
 }
 
