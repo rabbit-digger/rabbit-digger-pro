@@ -1,9 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use anyhow::{anyhow, Result};
 use rabbit_digger::{
-    config::{
-        Composite, CompositeName, CompositeRule, CompositeRuleItem, Config, Matcher, Net, Server,
+    config::{Config, Net, Server},
+    rd_std::rule::config::{
+        self as rule_config, AnyMatcher, DomainMatcher, DomainMatcherMethod, IPMatcher, IpCidr,
+        Matcher,
     },
     util::topological_sort,
 };
@@ -108,7 +110,7 @@ impl Clash {
             .ok_or(anyhow!("Name not found. clash name: {}", target))
     }
 
-    fn proxy_group_to_composite(&self, p: ProxyGroup) -> Result<CompositeName> {
+    fn proxy_group_to_net(&self, p: ProxyGroup) -> Result<Net> {
         let net_list = p
             .proxies
             .into_iter()
@@ -116,10 +118,11 @@ impl Clash {
             .collect::<Result<Vec<String>>>()?;
 
         Ok(match p.proxy_group_type.as_ref() {
-            "select" => CompositeName {
-                name: Some(p.name),
-                net_list,
-                composite: Composite::Select {}.into(),
+            "select" => Net {
+                net_type: "select".to_string(),
+                opt: json!({
+                    "net_list": net_list,
+                }),
             },
             _ => {
                 return Err(anyhow!(
@@ -130,7 +133,7 @@ impl Clash {
         })
     }
 
-    fn rule_to_rule(&self, r: &str) -> Result<CompositeRuleItem> {
+    fn rule_to_rule(&self, r: &str) -> Result<rule_config::RuleItem> {
         let bad_rule = || anyhow!("Bad rule.");
         let mut ps = r.split(",");
         let mut ps_next = || ps.next().ok_or_else(bad_rule);
@@ -138,32 +141,33 @@ impl Clash {
         let item = match rule_type {
             "DOMAIN-SUFFIX" | "DOMAIN-KEYWORD" | "DOMAIN" => {
                 let domain = ps_next()?.to_string();
-                let target = self.get_target(ps_next()?)?;
+                let target = self.get_target(ps_next()?)?.into();
                 let method = match rule_type {
-                    "DOMAIN-SUFFIX" => "suffix",
-                    "DOMAIN-KEYWORD" => "keyword",
-                    "DOMAIN" => "match",
+                    "DOMAIN-SUFFIX" => DomainMatcherMethod::Suffix,
+                    "DOMAIN-KEYWORD" => DomainMatcherMethod::Keyword,
+                    "DOMAIN" => DomainMatcherMethod::Match,
                     _ => return Err(bad_rule()),
-                }
-                .to_string();
-                CompositeRuleItem {
+                };
+                rule_config::RuleItem {
                     target,
-                    matcher: Matcher::Domain { method, domain },
+                    matcher: Matcher::Domain(DomainMatcher { method, domain }),
                 }
             }
             "IP-CIDR" | "IP-CIDR6" => {
                 let ip_cidr = ps_next()?.to_string();
-                let target = self.get_target(ps_next()?)?;
-                CompositeRuleItem {
+                let target = self.get_target(ps_next()?)?.into();
+                rule_config::RuleItem {
                     target,
-                    matcher: Matcher::IpCidr { ip_cidr },
+                    matcher: Matcher::IpCidr(IPMatcher {
+                        ip_cidr: IpCidr::from_str(&ip_cidr)?,
+                    }),
                 }
             }
             "MATCH" => {
-                let target = self.get_target(ps_next()?)?;
-                CompositeRuleItem {
+                let target = self.get_target(ps_next()?)?.into();
+                rule_config::RuleItem {
                     target,
-                    matcher: Matcher::Any,
+                    matcher: Matcher::Any(AnyMatcher {}),
                 }
             }
             _ => return Err(anyhow!("Rule prefix {} is not supported", rule_type)),
@@ -212,10 +216,10 @@ impl Clash {
 
             for (old_name, pg) in proxy_groups {
                 let name = self.proxy_group_name(&old_name);
-                match self.proxy_group_to_composite(pg) {
-                    Ok(rule) => {
+                match self.proxy_group_to_net(pg) {
+                    Ok(pg) => {
                         self.name_map.insert(old_name, name.clone());
-                        config.composite.insert(name, rule);
+                        config.net.insert(name, pg);
                     }
                     Err(e) => {
                         log::warn!("proxy_group {} not translated: {:?}", old_name, e);
@@ -234,12 +238,11 @@ impl Clash {
                     Err(e) => log::warn!("rule '{}' not translated: {:?}", r, e),
                 }
             }
-            config.composite.insert(
+            config.net.insert(
                 self.prefix("clash_rule"),
-                CompositeName {
-                    name: None,
-                    net_list: Vec::new(),
-                    composite: Composite::Rule(CompositeRule { rule }).into(),
+                Net {
+                    net_type: "rule".to_string(),
+                    opt: json!({ "rule": rule }),
                 },
             );
         }
