@@ -13,46 +13,36 @@ use tokio::fs::{create_dir_all, write};
 use crate::plugin_loader;
 
 fn anyof_schema(anyof: Vec<Schema>) -> Schema {
-    SchemaObject {
-        object: Some(
-            ObjectValidation {
-                additional_properties: Some(Box::new(
-                    SchemaObject {
-                        instance_type: Some(SingleOrVec::Single(InstanceType::Object.into())),
-                        subschemas: Some(
-                            SubschemaValidation {
-                                any_of: Some(anyof),
-                                ..Default::default()
-                            }
-                            .into(),
-                        ),
-                        ..Default::default()
-                    }
-                    .into(),
-                )),
-                ..Default::default()
-            }
-            .into(),
-        ),
-        ..Default::default()
-    }
-    .into()
+    let mut schema = SchemaObject::default();
+    schema.object().additional_properties = Some(Box::new(
+        SchemaObject {
+            instance_type: Some(InstanceType::Object.into()),
+            subschemas: Some(
+                SubschemaValidation {
+                    any_of: Some(anyof),
+                    ..Default::default()
+                }
+                .into(),
+            ),
+            ..Default::default()
+        }
+        .into(),
+    ));
+    schema.into()
 }
 
 fn append_type(schema: &RootSchema, type_name: &str) -> RootSchema {
     let mut schema = schema.clone();
-    if let Some(ref mut obj) = schema.schema.object {
-        obj.properties.insert(
-            "type".to_string(),
-            SchemaObject {
-                instance_type: Some(SingleOrVec::Single(InstanceType::String.into())),
-                const_value: Some(Value::String(type_name.to_string())),
-                ..Default::default()
-            }
-            .into(),
-        );
-        obj.required.insert("type".to_string());
-    }
+    schema.schema.object().properties.insert(
+        "type".to_string(),
+        SchemaObject {
+            instance_type: Some(SingleOrVec::Single(InstanceType::String.into())),
+            const_value: Some(Value::String(type_name.to_string())),
+            ..Default::default()
+        }
+        .into(),
+    );
+    schema.schema.object().required.insert("type".to_string());
     schema
 }
 
