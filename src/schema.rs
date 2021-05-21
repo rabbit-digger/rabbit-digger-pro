@@ -1,62 +1,62 @@
 use anyhow::Result;
+use rabbit_digger::rd_interface::schemars::schema::{
+    InstanceType, Metadata, ObjectValidation, RootSchema, Schema, SchemaObject, SingleOrVec,
+    SubschemaValidation,
+};
 use rabbit_digger::Registry;
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::iter::FromIterator;
 use std::path::PathBuf;
+use tokio::fs::{create_dir_all, write};
 
 use crate::plugin_loader;
 
+fn anyof_schema(anyof: Vec<Schema>) -> Schema {
+    SchemaObject {
+        object: Some(
+            ObjectValidation {
+                additional_properties: Some(Box::new(
+                    SchemaObject {
+                        instance_type: Some(SingleOrVec::Single(InstanceType::Object.into())),
+                        subschemas: Some(
+                            SubschemaValidation {
+                                any_of: Some(anyof),
+                                ..Default::default()
+                            }
+                            .into(),
+                        ),
+                        ..Default::default()
+                    }
+                    .into(),
+                )),
+                ..Default::default()
+            }
+            .into(),
+        ),
+        ..Default::default()
+    }
+    .into()
+}
+
+fn append_type(schema: &RootSchema, type_name: &str) -> RootSchema {
+    let mut schema = schema.clone();
+    if let Some(ref mut obj) = schema.schema.object {
+        obj.properties.insert(
+            "type".to_string(),
+            SchemaObject {
+                instance_type: Some(SingleOrVec::Single(InstanceType::String.into())),
+                const_value: Some(Value::String(type_name.to_string())),
+                ..Default::default()
+            }
+            .into(),
+        );
+        obj.required.insert("type".to_string());
+    }
+    schema
+}
+
 pub async fn generate_schema(path: PathBuf) -> Result<()> {
-    use rabbit_digger::rd_interface::schemars::schema::{
-        InstanceType, Metadata, ObjectValidation, RootSchema, Schema, SchemaObject, SingleOrVec,
-        SubschemaValidation,
-    };
-    use serde_json::Value;
-    use std::collections::BTreeMap;
-    use std::iter::FromIterator;
-    use tokio::fs::{create_dir_all, write};
-
-    fn anyof_schema(anyof: Vec<Schema>) -> Schema {
-        SchemaObject {
-            object: Some(
-                ObjectValidation {
-                    additional_properties: Some(Box::new(
-                        SchemaObject {
-                            instance_type: Some(SingleOrVec::Single(InstanceType::Object.into())),
-                            subschemas: Some(
-                                SubschemaValidation {
-                                    any_of: Some(anyof),
-                                    ..Default::default()
-                                }
-                                .into(),
-                            ),
-                            ..Default::default()
-                        }
-                        .into(),
-                    )),
-                    ..Default::default()
-                }
-                .into(),
-            ),
-            ..Default::default()
-        }
-        .into()
-    }
-    fn append_type(schema: &RootSchema, type_name: &str) -> RootSchema {
-        let mut schema = schema.clone();
-        if let Some(ref mut obj) = schema.schema.object {
-            obj.properties.insert(
-                "type".to_string(),
-                SchemaObject {
-                    instance_type: Some(SingleOrVec::Single(InstanceType::String.into())),
-                    const_value: Some(Value::String(type_name.to_string())),
-                    ..Default::default()
-                }
-                .into(),
-            );
-            obj.required.insert("type".to_string());
-        }
-        schema
-    }
-
     let mut registry = Registry::new();
 
     rabbit_digger::builtin::load_builtin(&mut registry)?;
