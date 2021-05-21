@@ -1,6 +1,7 @@
 #[cfg(feature = "api_server")]
 mod api_server;
 mod config;
+mod schema;
 mod translate;
 mod util;
 
@@ -53,6 +54,18 @@ struct Args {
     /// Write generated config to path
     #[structopt(long, parse(from_os_str))]
     write_config: Option<PathBuf>,
+
+    #[structopt(subcommand)]
+    cmd: Option<Command>,
+}
+
+#[derive(StructOpt)]
+enum Command {
+    /// Generate schema to path
+    GenerateSchema {
+        #[structopt(parse(from_os_str))]
+        path: PathBuf,
+    },
 }
 
 fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> Result<()> {
@@ -126,6 +139,12 @@ async fn real_main(args: Args) -> Result<()> {
 #[paw::main]
 #[tokio::main]
 async fn main(args: Args) -> Result<()> {
+    match args.cmd {
+        Some(Command::GenerateSchema { path }) => {
+            return schema::generate_schema(path).await;
+        }
+        _ => {}
+    }
     match real_main(args).await {
         Ok(()) => {}
         Err(e) => log::error!("Process exit: {:?}", e),
