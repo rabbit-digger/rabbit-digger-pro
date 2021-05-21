@@ -10,5 +10,6 @@ pub use self::rabbit_digger::RabbitDigger;
 pub use config::Config;
 pub use registry::Registry;
 
+pub use rd_interface;
 #[cfg(feature = "rd-std")]
 pub use rd_std;
