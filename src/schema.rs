@@ -1,7 +1,10 @@
 use anyhow::Result;
-use rabbit_digger::rd_interface::schemars::schema::{
-    InstanceType, Metadata, ObjectValidation, RootSchema, Schema, SchemaObject, SingleOrVec,
-    SubschemaValidation,
+use rabbit_digger::rd_interface::schemars::{
+    schema::{
+        InstanceType, Metadata, ObjectValidation, RootSchema, Schema, SchemaObject, SingleOrVec,
+        SubschemaValidation,
+    },
+    visit::{visit_root_schema, visit_schema_object, Visitor},
 };
 use rabbit_digger::Registry;
 use serde_json::Value;
@@ -46,71 +49,92 @@ fn append_type(schema: &RootSchema, type_name: &str) -> RootSchema {
     schema
 }
 
+// add prefix to all $ref
+struct PrefixVisitor(String);
+impl PrefixVisitor {
+    fn prefix(&self, key: &str) -> String {
+        format!("{}{}", self.0, key)
+    }
+}
+impl Visitor for PrefixVisitor {
+    fn visit_schema_object(&mut self, schema: &mut SchemaObject) {
+        if let Some(ref mut reference) = schema.reference {
+            let r = reference
+                .strip_prefix("#/definitions/")
+                .unwrap_or(reference);
+            *reference = format!("#/definitions/{}", self.prefix(r));
+        }
+        visit_schema_object(self, schema)
+    }
+    fn visit_root_schema(&mut self, root: &mut RootSchema) {
+        root.definitions = root
+            .definitions
+            .clone()
+            .into_iter()
+            .map(|(k, v)| (self.prefix(&k), v))
+            .collect();
+        visit_root_schema(self, root)
+    }
+}
+
 pub async fn generate_schema(path: PathBuf) -> Result<()> {
     let mut registry = Registry::new();
 
     rabbit_digger::builtin::load_builtin(&mut registry)?;
     plugin_loader(&Default::default(), &mut registry)?;
 
-    let net_root = path.join("net");
-    let server_root = path.join("server");
-
-    create_dir_all(&net_root).await?;
-    create_dir_all(&server_root).await?;
+    let mut nets: Vec<Schema> = Vec::new();
+    let mut servers: Vec<Schema> = Vec::new();
+    let mut root: RootSchema = RootSchema::default();
 
     for (id, net) in registry.net.iter() {
-        let schema = net.resolver.schema();
-        let schema = serde_json::to_string_pretty(&append_type(schema, id))?;
-        write(net_root.join(format!("{}.json", id)), schema).await?;
+        let mut schema = append_type(net.resolver.schema(), id);
+        let mut visitor = PrefixVisitor(format!("net_{}_", id));
+
+        visitor.visit_root_schema(&mut schema);
+
+        nets.push(schema.schema.into());
+        root.definitions.extend(schema.definitions);
     }
     for (id, server) in registry.server.iter() {
-        let schema = server.resolver.schema();
-        let schema = serde_json::to_string_pretty(&append_type(schema, id))?;
-        write(server_root.join(format!("{}.json", id)), schema).await?;
+        let mut schema = append_type(server.resolver.schema(), id);
+        let mut visitor = PrefixVisitor(format!("server_{}_", id));
+
+        visitor.visit_root_schema(&mut schema);
+        servers.push(schema.schema.into());
+        root.definitions.extend(schema.definitions);
     }
 
-    let nets: Vec<_> = registry
-        .net
-        .iter()
-        .map(|(k, _)| Schema::new_ref(format!("net/{}.json", k)))
-        .collect();
+    let net_schema = anyof_schema(nets);
+    let server_schema = anyof_schema(servers);
 
-    let servers: Vec<_> = registry
-        .server
-        .iter()
-        .map(|(k, _)| Schema::new_ref(format!("server/{}.json", k)))
-        .collect();
-
-    let net_ref = anyof_schema(nets);
-    let server_ref = anyof_schema(servers);
-
-    let root: RootSchema = RootSchema {
-        schema: SchemaObject {
-            instance_type: Some(SingleOrVec::Single(InstanceType::Object.into())),
-            metadata: Some(
-                Metadata {
-                    title: Some("Config".to_string()),
-                    ..Default::default()
-                }
-                .into(),
-            ),
-            object: Some(
-                ObjectValidation {
-                    properties: BTreeMap::from_iter([
-                        ("net".to_string(), net_ref),
-                        ("server".to_string(), server_ref),
-                    ]),
-                    ..Default::default()
-                }
-                .into(),
-            ),
-            ..Default::default()
-        },
+    root.schema = SchemaObject {
+        instance_type: Some(SingleOrVec::Single(InstanceType::Object.into())),
+        metadata: Some(
+            Metadata {
+                title: Some("Config".to_string()),
+                ..Default::default()
+            }
+            .into(),
+        ),
+        object: Some(
+            ObjectValidation {
+                properties: BTreeMap::from_iter([
+                    ("net".to_string(), net_schema),
+                    ("server".to_string(), server_schema),
+                ]),
+                ..Default::default()
+            }
+            .into(),
+        ),
         ..Default::default()
     };
 
     let schema = serde_json::to_string_pretty(&root)?;
-    write(path.join("config.json"), schema).await?;
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent).await?;
+    }
+    write(path, schema).await?;
 
     Ok(())
 }
