@@ -5,7 +5,7 @@ use rabbit_digger::{
     config::{Config, Net, Server},
     rd_std::rule::config::{
         self as rule_config, AnyMatcher, DomainMatcher, DomainMatcherMethod, IPMatcher, IpCidr,
-        Matcher,
+        Matcher, RuleConfig,
     },
     util::topological_sort,
 };
@@ -159,7 +159,7 @@ impl Clash {
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::IpCidr(IPMatcher {
-                        ip_cidr: IpCidr::from_str(&ip_cidr)?,
+                        ipcidr: IpCidr::from_str(&ip_cidr)?,
                     }),
                 }
             }
