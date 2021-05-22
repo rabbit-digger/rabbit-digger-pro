@@ -61,10 +61,10 @@ struct Args {
 
 #[derive(StructOpt)]
 enum Command {
-    /// Generate schema to path
+    /// Generate schema to path, if not present, output to stdout
     GenerateSchema {
         #[structopt(parse(from_os_str))]
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
 }
 
@@ -141,7 +141,13 @@ async fn real_main(args: Args) -> Result<()> {
 async fn main(args: Args) -> Result<()> {
     match args.cmd {
         Some(Command::GenerateSchema { path }) => {
-            return schema::generate_schema(path).await;
+            if let Some(path) = path {
+                schema::write_schema(path).await?;
+            } else {
+                let s = schema::generate_schema().await?;
+                println!("{}", serde_json::to_string(&s)?);
+            }
+            return Ok(());
         }
         _ => {}
     }

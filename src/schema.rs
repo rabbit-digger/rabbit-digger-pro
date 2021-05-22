@@ -77,7 +77,18 @@ impl Visitor for PrefixVisitor {
     }
 }
 
-pub async fn generate_schema(path: PathBuf) -> Result<()> {
+pub async fn write_schema(path: PathBuf) -> Result<()> {
+    let schema = generate_schema().await?;
+    let schema = serde_json::to_string_pretty(&schema)?;
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent).await?;
+    }
+    write(path, schema).await?;
+
+    Ok(())
+}
+
+pub async fn generate_schema() -> Result<RootSchema> {
     let mut registry = Registry::new();
 
     rabbit_digger::builtin::load_builtin(&mut registry)?;
@@ -130,11 +141,5 @@ pub async fn generate_schema(path: PathBuf) -> Result<()> {
         ..Default::default()
     };
 
-    let schema = serde_json::to_string_pretty(&root)?;
-    if let Some(parent) = path.parent() {
-        create_dir_all(parent).await?;
-    }
-    write(path, schema).await?;
-
-    Ok(())
+    Ok(root)
 }

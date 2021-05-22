@@ -5,7 +5,7 @@ use rabbit_digger::{
     config::{Config, Net, Server},
     rd_std::rule::config::{
         self as rule_config, AnyMatcher, DomainMatcher, DomainMatcherMethod, IPMatcher, IpCidr,
-        Matcher, RuleConfig,
+        Matcher,
     },
     util::topological_sort,
 };
