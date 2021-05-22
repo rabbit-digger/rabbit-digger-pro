@@ -10,7 +10,7 @@ pub enum Error {
     NotEnabled,
     #[error("Not implemented")]
     NotImplemented,
-    #[error("Config error {0}")]
+    #[error("Config error: {0}")]
     Config(#[from] serde_json::Error),
     #[error("Aborted by user")]
     AbortedByUser,

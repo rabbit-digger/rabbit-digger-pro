@@ -23,7 +23,6 @@ pub enum DomainMatcherMethod {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
-#[serde(tag = "type", rename_all = "lowercase")]
 pub struct DomainMatcher {
     pub method: DomainMatcherMethod,
     pub domain: String,
@@ -65,7 +64,7 @@ pub struct IPMatcher {
         serialize_with = "display_fromstr::serialize",
         deserialize_with = "display_fromstr::deserialize"
     )]
-    pub ip_cidr: IpCidr,
+    pub ipcidr: IpCidr,
 }
 
 impl JsonSchema for IpCidr {

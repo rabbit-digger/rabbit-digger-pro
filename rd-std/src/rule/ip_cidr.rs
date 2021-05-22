@@ -10,7 +10,7 @@ impl ResolveNetRef for IPMatcher {}
 impl IPMatcher {
     fn test(&self, address: impl Into<IpAddress>) -> bool {
         let address: IpAddress = address.into();
-        return self.ip_cidr.0.contains_addr(&address);
+        return self.ipcidr.0.contains_addr(&address);
     }
 }
 

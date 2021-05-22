@@ -1,6 +1,6 @@
 //! A registry with plugin name
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use rd_interface::{
     registry::{NetMap, NetResolver, ServerResolver},
     Net, Server, Value,
@@ -8,24 +8,32 @@ use rd_interface::{
 use std::{collections::HashMap, fmt};
 
 pub struct NetItem {
+    id: String,
     pub plugin_name: String,
     pub resolver: NetResolver,
 }
 
 pub struct ServerItem {
+    id: String,
     pub plugin_name: String,
     pub resolver: ServerResolver,
 }
 
 impl NetItem {
-    pub fn build(&self, nets: &NetMap, config: Value) -> rd_interface::Result<Net> {
-        self.resolver.build(nets, config)
+    pub fn build(&self, nets: &NetMap, config: Value) -> Result<Net> {
+        Ok(self
+            .resolver
+            .build(nets, config)
+            .with_context(|| format!("Failed to build net: {}", self.id))?)
     }
 }
 
 impl ServerItem {
-    pub fn build(&self, listen: Net, net: Net, config: Value) -> rd_interface::Result<Server> {
-        self.resolver.build(listen, net, config)
+    pub fn build(&self, listen: Net, net: Net, config: Value) -> Result<Server> {
+        Ok(self
+            .resolver
+            .build(listen, net, config)
+            .with_context(|| format!("Failed to build server: {}", self.id))?)
     }
 }
 
@@ -84,8 +92,9 @@ impl Registry {
     fn add_registry(&mut self, plugin_name: String, registry: rd_interface::Registry) {
         for (k, v) in registry.net {
             self.net.insert(
-                k,
+                k.clone(),
                 NetItem {
+                    id: k,
                     plugin_name: plugin_name.clone(),
                     resolver: v,
                 },
@@ -93,8 +102,9 @@ impl Registry {
         }
         for (k, v) in registry.server {
             self.server.insert(
-                k,
+                k.clone(),
                 ServerItem {
+                    id: k,
                     plugin_name: plugin_name.clone(),
                     resolver: v,
                 },

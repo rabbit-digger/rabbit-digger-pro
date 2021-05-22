@@ -66,7 +66,10 @@ impl RabbitDigger {
                 }
                 Ok(Either::Right((cfg, _))) => Ok(cfg),
                 Err(Either::Left((e, cfg_fut))) => {
-                    log::error!("Error: {:?}, waiting for next config...", e);
+                    log::error!(
+                        "Rabbit digger went to error: {:?}, waiting for next config...",
+                        e
+                    );
                     cfg_fut.await
                 }
                 Err(Either::Right((e, _))) => return Err(e),
