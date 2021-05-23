@@ -1,11 +1,11 @@
 use ::std::{io, pin::Pin, task};
 use std::net::SocketAddr;
 
+use crate::tls::TlsStream;
 use futures::ready;
 use rd_interface::{
     async_trait, impl_async_read, AsyncWrite, ITcpStream, TcpStream, NOT_IMPLEMENTED,
 };
-use tokio_rustls::client::TlsStream;
 
 pub(super) struct TrojanTcp {
     stream: TlsStream<TcpStream>,

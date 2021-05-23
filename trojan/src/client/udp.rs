@@ -6,6 +6,7 @@ use std::{
 };
 
 use super::ra2sa;
+use crate::tls::TlsStream;
 use rd_interface::{
     async_trait, Address as RDAddress, IUdpSocket, Result, TcpStream, NOT_IMPLEMENTED,
 };
@@ -14,7 +15,6 @@ use tokio::{
     io::{self, split, AsyncReadExt, ReadHalf, WriteHalf},
     sync::Mutex,
 };
-use tokio_rustls::client::TlsStream;
 
 pub(super) struct TrojanUdp {
     read: Mutex<ReadHalf<TlsStream<TcpStream>>>,

@@ -2,6 +2,7 @@ use client::{TrojanNet, TrojanNetConfig};
 use rd_interface::{registry::NetFactory, Registry, Result};
 
 mod client;
+mod tls;
 
 impl NetFactory for TrojanNet {
     const NAME: &'static str = "trojan";

@@ -1,63 +1,34 @@
 use std::io::{Cursor, Write};
 
+use crate::tls::{TlsConnector, TlsConnectorConfig};
 use rd_interface::{
     async_trait,
-    error::map_other,
     registry::NetRef,
     schemars::{self, JsonSchema},
-    Address as RdAddress, Arc, Config, INet, IntoAddress, IntoDyn, Net, Result, TcpListener,
-    TcpStream, UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
+    Address as RdAddress, Config, INet, IntoAddress, IntoDyn, Net, Result, TcpListener, TcpStream,
+    UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
 };
 use serde_derive::Deserialize;
 use sha2::{Digest, Sha224};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
-use tokio_rustls::{
-    rustls::{ClientConfig, ServerCertVerified, ServerCertVerifier},
-    webpki::{DNSName, DNSNameRef},
-    TlsConnector,
-};
 
 mod tcp;
 mod udp;
-
-struct AllowAnyCert;
-impl ServerCertVerifier for AllowAnyCert {
-    fn verify_server_cert(
-        &self,
-        _roots: &tokio_rustls::rustls::RootCertStore,
-        _presented_certs: &[tokio_rustls::rustls::Certificate],
-        _dns_name: DNSNameRef,
-        _ocsp_response: &[u8],
-    ) -> Result<ServerCertVerified, tokio_rustls::rustls::TLSError> {
-        Ok(ServerCertVerified::assertion())
-    }
-}
 
 pub struct TrojanNet {
     net: Net,
     server: RdAddress,
     connector: TlsConnector,
-    sni: DNSName,
     password: String,
     udp: bool,
 }
 
 impl TrojanNet {
     pub fn new(config: TrojanNetConfig) -> Result<Self> {
-        let mut client_config = ClientConfig::default();
-        if config.skip_cert_verify {
-            client_config
-                .dangerous()
-                .set_certificate_verifier(Arc::new(AllowAnyCert));
-        } else {
-            client_config
-                .root_store
-                .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-        }
-        let connector = TlsConnector::from(Arc::new(client_config));
-        let sni = DNSNameRef::try_from_ascii_str(&config.sni)
-            .map_err(map_other)?
-            .into();
+        let connector = TlsConnector::new(TlsConnectorConfig {
+            skip_cert_verify: config.skip_cert_verify,
+            sni: config.sni,
+        })?;
         let server = config.server.into_address()?;
 
         let password = hex::encode(Sha224::digest(config.password.as_bytes()));
@@ -65,7 +36,6 @@ impl TrojanNet {
             net: config.net.net(),
             server,
             connector,
-            sni,
             password,
             udp: config.udp,
         })
@@ -125,7 +95,7 @@ impl INet for TrojanNet {
         addr: RdAddress,
     ) -> Result<TcpStream> {
         let stream = self.net.tcp_connect(ctx, self.server.clone()).await?;
-        let stream = self.connector.connect(self.sni.as_ref(), stream).await?;
+        let stream = self.connector.connect(stream).await?;
         let head = self.make_head(1, ra2sa(addr))?;
 
         let tcp = tcp::TrojanTcp::new(stream, head);
@@ -149,7 +119,7 @@ impl INet for TrojanNet {
             return Err(NOT_ENABLED);
         }
         let stream = self.net.tcp_connect(ctx, self.server.clone()).await?;
-        let stream = self.connector.connect(self.sni.as_ref(), stream).await?;
+        let stream = self.connector.connect(stream).await?;
         let head = self.make_head(3, ra2sa(addr))?;
 
         let udp = udp::TrojanUdp::new(stream, head);
