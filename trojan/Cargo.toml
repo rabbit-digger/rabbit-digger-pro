@@ -17,10 +17,14 @@ webpki-roots = "0.21.1"
 tokio = "1.0"
 
 tokio-rustls = { version = "0.22.0", features = ["dangerous_configuration"], optional = true }
+
 openssl-crate = { package = "openssl", version = "0.10", features = ["vendored"], optional = true }
 tokio-openssl = { version = "0.6.1", optional = true }
 
+tokio-native-tls = { version = "0.3.0", optional = true }
+
 [features]
-default = ["openssl"]
+default = ["native-tls"]
 rustls = ["tokio-rustls"]
 openssl = ["openssl-crate", "tokio-openssl"]
+native-tls = ["tokio-native-tls"]

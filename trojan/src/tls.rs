@@ -6,6 +6,10 @@ mod backend;
 #[path = "tls/openssl.rs"]
 mod backend;
 
+#[cfg(feature = "native-tls")]
+#[path = "tls/native-tls.rs"]
+mod backend;
+
 pub use backend::*;
 
 pub struct TlsConnectorConfig {
