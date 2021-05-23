@@ -8,9 +8,8 @@ use rabbit_digger::rd_interface::schemars::{
 };
 use rabbit_digger::Registry;
 use serde_json::Value;
-use std::collections::BTreeMap;
 use std::iter::FromIterator;
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::Path};
 use tokio::fs::{create_dir_all, write};
 
 use crate::plugin_loader;
@@ -77,7 +76,8 @@ impl Visitor for PrefixVisitor {
     }
 }
 
-pub async fn write_schema(path: PathBuf) -> Result<()> {
+pub async fn write_schema(path: impl AsRef<Path>) -> Result<()> {
+    let path = path.as_ref();
     let schema = generate_schema().await?;
     let schema = serde_json::to_string_pretty(&schema)?;
     if let Some(parent) = path.parent() {

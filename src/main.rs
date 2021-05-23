@@ -5,7 +5,10 @@ mod schema;
 mod translate;
 mod util;
 
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use anyhow::{Context, Result};
 use env_logger::Env;
@@ -66,6 +69,11 @@ enum Command {
         #[structopt(parse(from_os_str))]
         path: Option<PathBuf>,
     },
+    /// Run in server mode
+    Server {
+        #[structopt(flatten)]
+        api_server: ApiServer,
+    },
 }
 
 fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> Result<()> {
@@ -76,32 +84,31 @@ fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> Resul
     Ok(())
 }
 
-async fn write_config(path: PathBuf, cfg: &rabbit_digger::Config) -> Result<()> {
+async fn write_config(path: impl AsRef<Path>, cfg: &rabbit_digger::Config) -> Result<()> {
     let content = serde_yaml::to_string(cfg)?;
     tokio::fs::write(path, content.as_bytes()).await?;
     Ok(())
 }
 
-async fn real_main(args: Args) -> Result<()> {
-    env_logger::Builder::from_env(
-        Env::default()
-            .default_filter_or("rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace"),
-    )
-    .init();
-
-    let controller = controller::Controller::new();
-
-    if let Some(_bind) = args.api_server.bind {
+async fn run_api_server(controller: &controller::Controller, api_server: &ApiServer) -> Result<()> {
+    if let Some(_bind) = &api_server.bind {
         #[cfg(feature = "api_server")]
         api_server::Server {
             controller: controller.clone(),
-            access_token: args.api_server._access_token,
-            web_ui: args.api_server._web_ui,
+            access_token: api_server._access_token.to_owned(),
+            web_ui: api_server._web_ui.to_owned(),
         }
         .run(_bind)
         .await
         .context("Failed to run api server.")?;
     }
+    Ok(())
+}
+
+async fn real_main(args: Args) -> Result<()> {
+    let controller = controller::Controller::new();
+
+    run_api_server(&controller, &args.api_server).await?;
 
     let mut rabbit_digger = RabbitDigger::new()?;
     rabbit_digger.plugin_loader = Box::new(plugin_loader);
@@ -114,7 +121,6 @@ async fn real_main(args: Args) -> Result<()> {
         .chain(
             config_stream
                 .try_filter(|e| ready(e.kind.is_modify()))
-                .map_err(Into::<anyhow::Error>::into)
                 .map(|_| Ok(()))
                 .debounce(Duration::from_millis(100)),
         )
@@ -122,11 +128,12 @@ async fn real_main(args: Args) -> Result<()> {
         .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)))
         .and_then(config::post_process)
         .and_then(|c: rabbit_digger::Config| async {
-            if let Some(path) = write_config_path.clone() {
+            if let Some(path) = &write_config_path {
                 write_config(path, &c).await?;
             };
             Ok(c)
         });
+
     pin_mut!(config_stream);
     rabbit_digger
         .run_stream(&controller, config_stream)
@@ -139,7 +146,13 @@ async fn real_main(args: Args) -> Result<()> {
 #[paw::main]
 #[tokio::main]
 async fn main(args: Args) -> Result<()> {
-    match args.cmd {
+    env_logger::Builder::from_env(
+        Env::default()
+            .default_filter_or("rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace"),
+    )
+    .init();
+
+    match &args.cmd {
         Some(Command::GenerateSchema { path }) => {
             if let Some(path) = path {
                 schema::write_schema(path).await?;
@@ -149,11 +162,20 @@ async fn main(args: Args) -> Result<()> {
             }
             return Ok(());
         }
-        _ => {}
+        Some(Command::Server { api_server }) => {
+            let controller = controller::Controller::new();
+
+            run_api_server(&controller, &api_server).await?;
+
+            return Ok(());
+        }
+        None => {}
     }
+
     match real_main(args).await {
         Ok(()) => {}
         Err(e) => log::error!("Process exit: {:?}", e),
     }
+
     Ok(())
 }

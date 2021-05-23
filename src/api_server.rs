@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use anyhow::Result;
 use rabbit_digger::controller::Controller;
 use tokio::net::TcpListener;
@@ -14,13 +16,14 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn run(self, bind: String) -> Result<()> {
+    pub async fn run(self, bind: &str) -> Result<SocketAddr> {
         let routes = filters::routes(self);
         let listener = TcpListener::bind(bind).await?;
+        let local_addr = listener.local_addr()?;
         let listener = TcpListenerStream::new(listener);
 
         tokio::spawn(warp::serve(routes).run_incoming(listener));
 
-        Ok(())
+        Ok(local_addr)
     }
 }
