@@ -34,7 +34,7 @@ struct ApiServer {
     #[structopt(long, env = "RD_ACCESS_TOKEN")]
     _access_token: Option<String>,
 
-    /// Web UI. Maybe file path or http://hostname:port.
+    /// Web UI. Folder path.
     #[structopt(long, env = "RD_WEB_UI")]
     _web_ui: Option<String>,
 }
