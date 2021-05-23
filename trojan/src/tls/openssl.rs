@@ -1,7 +1,7 @@
 use std::pin::Pin;
 
 use super::TlsConnectorConfig;
-use openssl::ssl::{SslConnector, SslMethod};
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use openssl_crate as openssl;
 use rd_interface::{error::map_other, AsyncRead, AsyncWrite, Result};
 
@@ -14,12 +14,14 @@ pub struct TlsConnector {
 
 impl TlsConnector {
     pub fn new(config: TlsConnectorConfig) -> Result<TlsConnector> {
-        let connector = SslConnector::builder(SslMethod::tls())
-            .map_err(map_other)?
-            .build();
+        let mut builder = SslConnector::builder(SslMethod::tls()).map_err(map_other)?;
+
+        if config.skip_cert_verify {
+            builder.set_verify(SslVerifyMode::NONE);
+        }
 
         Ok(TlsConnector {
-            connector,
+            connector: builder.build(),
             sni: config.sni,
         })
     }
