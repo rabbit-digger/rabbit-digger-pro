@@ -18,7 +18,7 @@ use futures::{
     stream::{self, StreamExt, TryStreamExt},
 };
 use notify_stream::{notify::RecursiveMode, notify_stream};
-use rabbit_digger::{controller, RabbitDigger, Registry};
+use rabbit_digger::{controller, Registry};
 use structopt::StructOpt;
 use tokio::fs::read_to_string;
 
@@ -107,11 +107,9 @@ async fn run_api_server(controller: &controller::Controller, api_server: &ApiSer
 
 async fn real_main(args: Args) -> Result<()> {
     let controller = controller::Controller::new();
+    controller.set_plugin_loader(plugin_loader).await;
 
     run_api_server(&controller, &args.api_server).await?;
-
-    let mut rabbit_digger = RabbitDigger::new()?;
-    rabbit_digger.plugin_loader = Box::new(plugin_loader);
 
     let config_path = args.config.clone();
     let config_stream = notify_stream(&config_path, RecursiveMode::Recursive)?;
@@ -135,8 +133,8 @@ async fn real_main(args: Args) -> Result<()> {
         });
 
     pin_mut!(config_stream);
-    rabbit_digger
-        .run_stream(&controller, config_stream)
+    controller
+        .run_stream(config_stream)
         .await
         .context("Failed to run RabbitDigger")?;
 
