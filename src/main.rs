@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use env_logger::Env;
-use rabbit_digger::{config::Config, controller, RabbitDigger};
+use rabbit_digger::{config::Config, controller};
 use structopt::StructOpt;
 use tokio::fs::read_to_string;
 
@@ -27,8 +27,7 @@ async fn real_main(args: Args) -> Result<()> {
 
     let controller = controller::Controller::new();
 
-    let rabbit_digger = RabbitDigger::new()?;
-    rabbit_digger.run(&controller, config).await?;
+    controller.run(config).await?;
 
     Ok(())
 }

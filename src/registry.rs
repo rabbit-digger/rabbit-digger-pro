@@ -37,6 +37,7 @@ impl ServerItem {
     }
 }
 
+#[derive(Debug)]
 pub struct Registry {
     pub net: HashMap<String, NetItem>,
     pub server: HashMap<String, ServerItem>,

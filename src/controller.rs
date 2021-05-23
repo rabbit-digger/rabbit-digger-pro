@@ -1,18 +1,25 @@
 mod event;
 mod wrapper;
 
-use crate::{config, Registry};
+use crate::{
+    config,
+    rabbit_digger::{RabbitDigger, RabbitDiggerBuilder},
+    Registry,
+};
 
 use self::event::{BatchEvent, Event, EventType};
-use anyhow::Result;
-use futures::FutureExt;
+use anyhow::{anyhow, Result};
+use futures::{
+    future::{ready, try_select, Either},
+    pin_mut, stream, FutureExt, Stream, StreamExt, TryStreamExt,
+};
 use rd_interface::{
     async_trait, schemars::schema::RootSchema, Address, Context, INet, IntoDyn, Net, TcpListener,
     TcpStream, UdpSocket,
 };
 use serde_derive::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::sync::broadcast;
+use tokio::{sync::broadcast, time::timeout};
 use tokio::{
     sync::mpsc,
     sync::{RwLock, RwLockReadGuard},
@@ -27,14 +34,35 @@ pub struct RegistrySchema {
 }
 
 pub struct Inner {
-    config: Option<config::Config>,
-    registry: Option<RegistrySchema>,
     sender: broadcast::Sender<BatchEvent>,
+    builder: RabbitDiggerBuilder,
+    state: State,
 }
 
 #[derive(Debug)]
 pub struct TaskInfo {
     pub name: String,
+}
+
+#[derive(Debug)]
+pub struct Running {
+    config: config::Config,
+    registry: RegistrySchema,
+}
+
+#[derive(Debug)]
+pub enum State {
+    Idle,
+    Running(Running),
+}
+
+impl State {
+    fn running(&self) -> Option<&Running> {
+        match self {
+            State::Running(r) => Some(r),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -102,9 +130,9 @@ impl Controller {
     pub fn new() -> Controller {
         let (sender, _) = broadcast::channel(16);
         let inner = Arc::new(RwLock::new(Inner {
-            config: None,
-            registry: None,
             sender: sender.clone(),
+            state: State::Idle,
+            builder: RabbitDiggerBuilder::new(),
         }));
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
         spawn(process(event_receiver, sender));
@@ -113,6 +141,69 @@ impl Controller {
             event_sender,
         }
     }
+
+    pub async fn run(&self, config: config::Config) -> Result<()> {
+        let config_stream = stream::once(ready(Ok(config)));
+        self.run_stream(config_stream).await
+    }
+
+    pub async fn run_stream<S>(&self, config_stream: S) -> Result<()>
+    where
+        S: Stream<Item = Result<config::Config>>,
+    {
+        futures::pin_mut!(config_stream);
+
+        let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
+            Ok(Ok(Some(cfg))) => cfg,
+            Ok(Err(e)) => return Err(e.context(format!("Failed to get first config."))),
+            Err(_) | Ok(Ok(None)) => {
+                return Err(anyhow!("The config_stream is empty, can not start."))
+            }
+        };
+        let mut config_stream = config_stream.chain(stream::pending());
+
+        loop {
+            log::info!("rabbit digger is starting...");
+
+            let RabbitDigger {
+                config: rd_config,
+                registry,
+                servers,
+                ..
+            } = self.inner.read().await.builder.build(self, config)?;
+
+            self.inner.write().await.state = State::Running(Running {
+                config: rd_config,
+                registry: get_registry_schema(&registry)?,
+            });
+
+            let run_fut = RabbitDigger::run(servers);
+            pin_mut!(run_fut);
+            let new_config = match try_select(run_fut, config_stream.try_next()).await {
+                Ok(Either::Left((_, cfg_fut))) => {
+                    log::info!("Exited normally, waiting for next config...");
+                    cfg_fut.await
+                }
+                Ok(Either::Right((cfg, _))) => Ok(cfg),
+                Err(Either::Left((e, cfg_fut))) => {
+                    log::error!(
+                        "Rabbit digger went to error: {:?}, waiting for next config...",
+                        e
+                    );
+                    cfg_fut.await
+                }
+                Err(Either::Right((e, _))) => return Err(e),
+            };
+
+            config = match new_config? {
+                Some(v) => v,
+                None => break,
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn get_net(&self, net: Net) -> Net {
         ControllerNet {
             net,
@@ -120,44 +211,12 @@ impl Controller {
         }
         .into_dyn()
     }
-    pub(crate) async fn update_registry(&self, registry: &Registry) -> Result<()> {
-        let mut inner = self.inner.write().await;
-        if inner.registry.is_some() {
-            anyhow::bail!("this controller already has a registry")
-        }
-        let mut r = RegistrySchema {
-            net: HashMap::new(),
-            server: HashMap::new(),
-        };
 
-        for (key, value) in &registry.net {
-            r.net.insert(key.clone(), value.resolver.schema().clone());
-        }
-        for (key, value) in &registry.server {
-            r.server
-                .insert(key.clone(), value.resolver.schema().clone());
-        }
-
-        inner.registry = Some(r);
-        Ok(())
-    }
-    pub(crate) async fn remove_registry(&self) -> Result<()> {
-        let mut inner = self.inner.write().await;
-        inner.registry = None;
-        Ok(())
-    }
-    pub(crate) async fn update_config(&self, config: config::Config) -> Result<()> {
-        let mut inner = self.inner.write().await;
-        if inner.config.is_some() {
-            anyhow::bail!("this controller already has a config")
-        }
-        inner.config = Some(config);
-        Ok(())
-    }
-    pub(crate) async fn remove_config(&self) -> Result<()> {
-        let mut inner = self.inner.write().await;
-        inner.config = None;
-        Ok(())
+    pub async fn set_plugin_loader(
+        &self,
+        plugin_loader: impl Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static,
+    ) {
+        self.inner.write().await.builder.plugin_loader = Arc::new(plugin_loader);
     }
     pub async fn lock<'a>(&'a self) -> RwLockReadGuard<'a, Inner> {
         self.inner.read().await
@@ -169,9 +228,26 @@ impl Controller {
 
 impl Inner {
     pub fn config(&self) -> Option<&config::Config> {
-        self.config.as_ref()
+        self.state.running().map(|i| &i.config)
     }
     pub fn registry(&self) -> Option<&RegistrySchema> {
-        self.registry.as_ref()
+        self.state.running().map(|i| &i.registry)
     }
+}
+
+fn get_registry_schema(registry: &Registry) -> Result<RegistrySchema> {
+    let mut r = RegistrySchema {
+        net: HashMap::new(),
+        server: HashMap::new(),
+    };
+
+    for (key, value) in &registry.net {
+        r.net.insert(key.clone(), value.resolver.schema().clone());
+    }
+    for (key, value) in &registry.server {
+        r.server
+            .insert(key.clone(), value.resolver.schema().clone());
+    }
+
+    Ok(r)
 }

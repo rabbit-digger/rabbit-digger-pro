@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, future::ready, time::Duration};
+use std::{collections::HashMap, fmt};
 
 use crate::builtin::load_builtin;
 use crate::config;
@@ -7,90 +7,62 @@ use crate::registry::Registry;
 use crate::util::topological_sort;
 use anyhow::{anyhow, Context, Result};
 use config::AllNet;
-use futures::{
-    future::{try_select, Either},
-    pin_mut,
-    prelude::*,
-    stream::{self, FuturesUnordered, Stream},
-    StreamExt,
-};
-use rd_interface::{Net, Server, Value};
-use tokio::time::timeout;
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
+use rd_interface::{Arc, Net, Server, Value};
 
-pub type PluginLoader = Box<dyn Fn(&config::Config, &mut Registry) -> Result<()> + 'static>;
-pub struct RabbitDigger {
+pub type PluginLoader =
+    Arc<dyn Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static>;
+
+#[derive(Clone)]
+pub struct RabbitDiggerBuilder {
     pub plugin_loader: PluginLoader,
 }
 
+pub struct RabbitDigger {
+    pub config: config::Config,
+    pub registry: Registry,
+    pub nets: HashMap<String, Net>,
+    pub servers: Vec<ServerInfo>,
+}
+
+impl fmt::Debug for RabbitDigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RabbitDigger").finish()
+    }
+}
+
 impl RabbitDigger {
-    pub fn new() -> Result<RabbitDigger> {
-        Ok(RabbitDigger {
-            plugin_loader: Box::new(|_, _| Ok(())),
-        })
-    }
-    pub async fn run(
-        &self,
-        controller: &controller::Controller,
-        config: config::Config,
-    ) -> Result<()> {
-        let config_stream = stream::once(ready(Ok(config)));
-        self.run_stream(controller, config_stream).await
-    }
-    pub async fn run_stream<S>(
-        &self,
-        controller: &controller::Controller,
-        mut config_stream: S,
-    ) -> Result<()>
-    where
-        S: Stream<Item = Result<config::Config>> + Unpin,
-    {
-        let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
-            Ok(Ok(Some(cfg))) => cfg,
-            Ok(Err(e)) => return Err(e.context(format!("Failed to get first config."))),
-            Err(_) | Ok(Ok(None)) => {
-                return Err(anyhow!("The config_stream is empty, can not start."))
-            }
-        };
-        let mut config_stream = config_stream.chain(stream::pending());
+    pub async fn run(servers: Vec<ServerInfo>) -> Result<()> {
+        log::info!("Server:\n{}", ServerList(&servers));
 
-        loop {
-            log::info!("rabbit digger is starting...");
+        let mut server_tasks: FuturesUnordered<_> = servers
+            .iter()
+            .map(|i| {
+                let name = i.name.clone();
+                start_server(&i.server).map(|r| (name, r)).boxed()
+            })
+            .collect();
 
-            controller.update_config(config.clone()).await?;
-            let run_fut = self.run_once(controller, config);
-            pin_mut!(run_fut);
-            let new_config = match try_select(run_fut, config_stream.try_next()).await {
-                Ok(Either::Left((_, cfg_fut))) => {
-                    log::info!("Exited normally, waiting for next config...");
-                    cfg_fut.await
-                }
-                Ok(Either::Right((cfg, _))) => Ok(cfg),
-                Err(Either::Left((e, cfg_fut))) => {
-                    log::error!(
-                        "Rabbit digger went to error: {:?}, waiting for next config...",
-                        e
-                    );
-                    cfg_fut.await
-                }
-                Err(Either::Right((e, _))) => return Err(e),
-            };
-            controller.remove_registry().await?;
-            controller.remove_config().await?;
-
-            config = match new_config? {
-                Some(v) => v,
-                None => break,
-            }
+        while let Some((name, r)) = server_tasks.next().await {
+            log::info!("Server {} is stopped. Return: {:?}", name, r)
         }
 
+        log::info!("all servers are down, exit.");
         Ok(())
     }
+}
 
-    pub async fn run_once(
+impl RabbitDiggerBuilder {
+    pub fn new() -> RabbitDiggerBuilder {
+        RabbitDiggerBuilder {
+            plugin_loader: Arc::new(|_, _| Ok(())),
+        }
+    }
+    pub fn build(
         &self,
         ctl: &controller::Controller,
         config: config::Config,
-    ) -> Result<()> {
+    ) -> Result<RabbitDigger> {
         let wrap_net = {
             let c = ctl.clone();
             move |net: Net| c.get_net(net)
@@ -101,39 +73,29 @@ impl RabbitDigger {
         (self.plugin_loader)(&config, &mut registry)?;
         log::debug!("Registry:\n{}", registry);
 
-        let net_cfg = config.net.into_iter().map(|(k, v)| (k, AllNet::Net(v)));
-        let all_net = net_cfg.collect();
-        let net = init_net(&registry, all_net, &config.server)?;
-        let servers = init_server(&registry, &net, config.server, wrap_net)?;
-
-        log::info!("Server:\n{}", ServerList(&servers));
-
-        let mut server_tasks: FuturesUnordered<_> = servers
-            .into_iter()
-            .map(|i| {
-                let name = i.name;
-                start_server(i.server).map(|r| (name, r)).boxed()
-            })
+        let all_net = config
+            .net
+            .iter()
+            .map(|(k, v)| (k.to_string(), AllNet::Net(v.clone())))
             .collect();
+        let nets = build_net(&registry, all_net, &config.server)?;
+        let servers = build_server(&registry, &nets, &config.server, wrap_net)?;
 
-        ctl.update_registry(&registry).await?;
-        while let Some((name, r)) = server_tasks.next().await {
-            log::info!("Server {} is stopped. Return: {:?}", name, r)
-        }
-        ctl.remove_registry().await?;
-
-        log::info!("all servers are down, exit.");
-
-        Ok(())
+        Ok(RabbitDigger {
+            config,
+            registry,
+            nets,
+            servers,
+        })
     }
 }
 
-async fn start_server(server: Server) -> Result<()> {
+async fn start_server(server: &Server) -> Result<()> {
     server.start().await?;
     Ok(())
 }
 
-struct ServerInfo {
+pub struct ServerInfo {
     name: String,
     listen: String,
     net: String,
@@ -162,7 +124,7 @@ impl<'a> fmt::Display for ServerList<'a> {
     }
 }
 
-fn init_net(
+fn build_net(
     registry: &Registry,
     mut all_net: HashMap<String, config::AllNet>,
     server: &config::ConfigServer,
@@ -213,13 +175,14 @@ fn init_net(
     Ok(net)
 }
 
-fn init_server(
+fn build_server(
     registry: &Registry,
     net: &HashMap<String, Net>,
-    config: config::ConfigServer,
+    config: &config::ConfigServer,
     wrapper: impl Fn(Net) -> Net,
 ) -> Result<Vec<ServerInfo>> {
     let mut servers: Vec<ServerInfo> = Vec::new();
+    let config = config.clone();
 
     for (name, i) in config {
         let name = &name;
