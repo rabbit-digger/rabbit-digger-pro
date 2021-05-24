@@ -2,7 +2,7 @@ use std::{convert::Infallible, future, path::PathBuf};
 
 use super::{handlers, reject::handle_rejection, reject::ApiError, Server};
 use rabbit_digger::controller::Controller;
-use warp::{hyper::Method, Filter, Rejection};
+use warp::{Filter, Rejection};
 
 pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     let at = access_token(server.access_token);
