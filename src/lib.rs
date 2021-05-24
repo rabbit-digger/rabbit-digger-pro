@@ -1,5 +1,5 @@
 #[cfg(feature = "api_server")]
-mod api_server;
+pub mod api_server;
 mod config;
 mod schema;
 mod translate;
@@ -14,6 +14,7 @@ use futures::{
     Stream,
 };
 use notify_stream::{notify::RecursiveMode, notify_stream};
+pub use rabbit_digger;
 use rabbit_digger::Registry;
 use tokio::fs::read_to_string;
 
