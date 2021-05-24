@@ -1,7 +1,7 @@
 #[cfg(feature = "api_server")]
 pub mod api_server;
 mod config;
-mod schema;
+pub mod schema;
 mod translate;
 mod util;
 
