@@ -5,24 +5,15 @@ mod schema;
 mod translate;
 mod util;
 
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use controller::Controller;
 use env_logger::Env;
-use futures::{
-    future::{ready, TryFutureExt},
-    pin_mut,
-    stream::{self, StreamExt, TryStreamExt},
-};
-use notify_stream::{notify::RecursiveMode, notify_stream};
-use rabbit_digger::{controller, Registry};
+use futures::{pin_mut, stream::TryStreamExt};
+use rabbit_digger::controller;
+use rabbit_digger_pro::{plugin_loader, watch_config_stream};
 use structopt::StructOpt;
-use tokio::fs::read_to_string;
-
-use crate::util::DebounceStreamExt;
 
 #[derive(StructOpt)]
 struct ApiServer {
@@ -76,21 +67,13 @@ enum Command {
     },
 }
 
-fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> Result<()> {
-    #[cfg(feature = "ss")]
-    registry.init_with_registry("ss", ss::init)?;
-    #[cfg(feature = "trojan")]
-    registry.init_with_registry("trojan", trojan::init)?;
-    Ok(())
-}
-
 async fn write_config(path: impl AsRef<Path>, cfg: &rabbit_digger::Config) -> Result<()> {
     let content = serde_yaml::to_string(cfg)?;
     tokio::fs::write(path, content.as_bytes()).await?;
     Ok(())
 }
 
-async fn run_api_server(controller: &controller::Controller, api_server: &ApiServer) -> Result<()> {
+async fn run_api_server(controller: &Controller, api_server: &ApiServer) -> Result<()> {
     if let Some(_bind) = &api_server.bind {
         #[cfg(feature = "api_server")]
         api_server::Server {
@@ -106,26 +89,16 @@ async fn run_api_server(controller: &controller::Controller, api_server: &ApiSer
 }
 
 async fn real_main(args: Args) -> Result<()> {
-    let controller = controller::Controller::new();
+    let controller = Controller::new();
     controller.set_plugin_loader(plugin_loader).await;
 
     run_api_server(&controller, &args.api_server).await?;
 
     let config_path = args.config.clone();
-    let config_stream = notify_stream(&config_path, RecursiveMode::Recursive)?;
     let write_config_path = args.write_config;
 
-    let config_stream = stream::once(async { Ok(()) })
-        .chain(
-            config_stream
-                .try_filter(|e| ready(e.kind.is_modify()))
-                .map(|_| Ok(()))
-                .debounce(Duration::from_millis(100)),
-        )
-        .and_then(move |_| read_to_string(config_path.clone()).map_err(Into::into))
-        .and_then(|s| ready(serde_yaml::from_str(&s).map_err(Into::into)))
-        .and_then(config::post_process)
-        .and_then(|c: rabbit_digger::Config| async {
+    let config_stream =
+        watch_config_stream(config_path)?.and_then(|c: rabbit_digger::Config| async {
             if let Some(path) = &write_config_path {
                 write_config(path, &c).await?;
             };
@@ -161,7 +134,7 @@ async fn main(args: Args) -> Result<()> {
             return Ok(());
         }
         Some(Command::Server { api_server }) => {
-            let controller = controller::Controller::new();
+            let controller = Controller::new();
 
             run_api_server(&controller, &api_server).await?;
 
