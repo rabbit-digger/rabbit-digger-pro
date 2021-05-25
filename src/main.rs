@@ -23,6 +23,10 @@ struct ApiServer {
     /// Web UI. Folder path.
     #[structopt(long, env = "RD_WEB_UI")]
     _web_ui: Option<String>,
+
+    /// Userdata.
+    #[structopt(long, env = "RD_USERDATA", parse(from_os_str))]
+    _userdata: Option<PathBuf>,
 }
 
 #[derive(StructOpt)]
@@ -75,6 +79,7 @@ async fn run_api_server(controller: &Controller, api_server: &ApiServer) -> Resu
             controller: controller.clone(),
             access_token: api_server._access_token.to_owned(),
             web_ui: api_server._web_ui.to_owned(),
+            userdata: api_server._userdata.to_owned(),
         }
         .run(_bind)
         .await

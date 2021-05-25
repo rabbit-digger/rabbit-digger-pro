@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, path::PathBuf};
 
 use anyhow::Result;
 use rabbit_digger::controller::Controller;
@@ -13,6 +13,7 @@ pub struct Server {
     pub access_token: Option<String>,
     pub controller: Controller,
     pub web_ui: Option<String>,
+    pub userdata: Option<PathBuf>,
 }
 
 impl Server {

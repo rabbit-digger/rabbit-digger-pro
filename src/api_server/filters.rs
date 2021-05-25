@@ -7,6 +7,10 @@ use warp::{Filter, Rejection};
 pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     let at = access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
+    // TODO: read or write userdata by API
+    let userdata = server
+        .userdata
+        .or(dirs::config_dir().map(|d| d.join("rabbit-digger")));
 
     prefix.and(at).and(
         get_config(&server.controller)
