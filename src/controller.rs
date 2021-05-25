@@ -63,6 +63,16 @@ impl State {
             _ => None,
         }
     }
+    fn change(&mut self, new_state: State) -> Result<()> {
+        match (&self, &new_state) {
+            (State::Idle, State::Idle) => {}
+            (State::Idle, State::Running(_)) => {}
+            (State::Running(_), State::Idle) => {}
+            _ => return Err(anyhow!("Invalid state: {:?}", &self)),
+        };
+        *self = new_state;
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -147,6 +157,10 @@ impl Controller {
         self.run_stream(config_stream).await
     }
 
+    async fn change_state(&self, new_state: State) -> Result<()> {
+        self.inner.write().await.state.change(new_state)
+    }
+
     pub async fn run_stream<S>(&self, config_stream: S) -> Result<()>
     where
         S: Stream<Item = Result<config::Config>>,
@@ -172,10 +186,11 @@ impl Controller {
                 ..
             } = self.inner.read().await.builder.build(self, config)?;
 
-            self.inner.write().await.state = State::Running(Running {
+            self.change_state(State::Running(Running {
                 config: rd_config,
                 registry: get_registry_schema(&registry)?,
-            });
+            }))
+            .await?;
 
             let run_fut = RabbitDigger::run(servers);
             pin_mut!(run_fut);
@@ -195,7 +210,7 @@ impl Controller {
                 Err(Either::Right((e, _))) => Err(e),
             };
 
-            self.inner.write().await.state = State::Idle;
+            self.change_state(State::Idle).await?;
 
             config = match new_config? {
                 Some(v) => v,
