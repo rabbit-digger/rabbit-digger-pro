@@ -1,10 +1,3 @@
-#[cfg(feature = "api_server")]
-pub mod api_server;
-mod config;
-pub mod schema;
-mod translate;
-mod util;
-
 use std::{
     path::{Path, PathBuf},
     time::Duration,
@@ -24,11 +17,22 @@ use yaml_merge_keys::merge_keys_serde;
 
 use crate::util::DebounceStreamExt;
 
+#[cfg(feature = "api_server")]
+pub mod api_server;
+mod config;
+pub mod schema;
+mod select;
+mod translate;
+mod util;
+
 pub fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> Result<()> {
     #[cfg(feature = "ss")]
     registry.init_with_registry("ss", ss::init)?;
     #[cfg(feature = "trojan")]
     registry.init_with_registry("trojan", trojan::init)?;
+
+    registry.init_with_registry("rabbit-digger-pro", select::init)?;
+
     Ok(())
 }
 
