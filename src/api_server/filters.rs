@@ -9,8 +9,9 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     let prefix = warp::path!("api" / ..);
 
     prefix.and(at).and(
-        get_config(server.controller.clone())
-            .or(get_registry(server.controller))
+        get_config(&server.controller)
+            .or(get_registry(&server.controller))
+            .or(get_state(&server.controller))
             .recover(handle_rejection),
     )
 }
@@ -39,7 +40,7 @@ pub fn routes(
 
 // GET /config
 pub fn get_config(
-    ctl: Controller,
+    ctl: &Controller,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("config")
         .and(warp::get())
@@ -49,7 +50,7 @@ pub fn get_config(
 
 // GET /registry
 pub fn get_registry(
-    ctl: Controller,
+    ctl: &Controller,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("registry")
         .and(warp::get())
@@ -57,7 +58,17 @@ pub fn get_registry(
         .and_then(handlers::get_registry)
 }
 
-fn with_ctl(ctl: Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {
+pub fn get_state(
+    ctl: &Controller,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("state")
+        .and(warp::get())
+        .and(with_ctl(ctl))
+        .and_then(handlers::get_state)
+}
+
+fn with_ctl(ctl: &Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {
+    let ctl = ctl.clone();
     warp::any().map(move || ctl.clone())
 }
 
