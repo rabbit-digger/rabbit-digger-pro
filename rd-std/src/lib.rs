@@ -5,7 +5,6 @@ pub mod http;
 pub mod mixed;
 pub mod redir;
 pub mod rule;
-pub mod select;
 pub mod socks5;
 
 pub fn init(registry: &mut Registry) -> Result<()> {
@@ -14,7 +13,6 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     mixed::init(registry)?;
     redir::init(registry)?;
     rule::init(registry)?;
-    select::init(registry)?;
     socks5::init(registry)?;
     Ok(())
 }
