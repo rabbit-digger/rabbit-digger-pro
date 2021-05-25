@@ -1,10 +1,3 @@
-#[cfg(feature = "api_server")]
-mod api_server;
-mod config;
-mod schema;
-mod translate;
-mod util;
-
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -12,7 +5,9 @@ use controller::Controller;
 use env_logger::Env;
 use futures::{pin_mut, stream::TryStreamExt};
 use rabbit_digger::controller;
-use rabbit_digger_pro::{plugin_loader, watch_config_stream};
+#[cfg(feature = "api_server")]
+use rabbit_digger_pro::api_server;
+use rabbit_digger_pro::{plugin_loader, schema, watch_config_stream};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
