@@ -18,6 +18,8 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, warp::Reject
     let code;
     let message;
 
+    log::error!("handle_rejection: {:?}", err);
+
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = "NOT_FOUND";
