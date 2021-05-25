@@ -22,15 +22,17 @@ pub struct ConfigExt {
     import: Vec<Import>,
 }
 
-pub async fn post_process(config: ConfigExt) -> Result<Config> {
-    let imports = config.import;
-    let mut config = config.config;
-    for i in imports {
-        let mut temp_config = Config::default();
-        crate::translate::post_process(&mut temp_config, i.clone())
-            .await
-            .context(format!("post process of import: {:?}", i))?;
-        config.merge(temp_config);
+impl ConfigExt {
+    pub async fn post_process(self) -> Result<Config> {
+        let imports = self.import;
+        let mut config = self.config;
+        for i in imports {
+            let mut temp_config = Config::default();
+            crate::translate::post_process(&mut temp_config, i.clone())
+                .await
+                .context(format!("post process of import: {:?}", i))?;
+            config.merge(temp_config);
+        }
+        Ok(config)
     }
-    Ok(config)
 }

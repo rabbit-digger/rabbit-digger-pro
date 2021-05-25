@@ -8,14 +8,19 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     let at = access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
     // TODO: read or write userdata by API
-    let userdata = server
+    let _userdata = server
         .userdata
         .or(dirs::config_dir().map(|d| d.join("rabbit-digger")));
+    let ctl = &server.controller;
 
-    prefix.and(at).and(
-        get_config(&server.controller)
-            .or(get_registry(&server.controller))
-            .or(get_state(&server.controller))
+    prefix.and(
+        ws_event(&server.controller)
+            .or(at.and(
+                get_config(ctl)
+                    .or(post_config(ctl))
+                    .or(get_registry(ctl))
+                    .or(get_state(ctl)),
+            ))
             .recover(handle_rejection),
     )
 }
@@ -52,6 +57,17 @@ pub fn get_config(
         .and_then(handlers::get_config)
 }
 
+// POST /config
+pub fn post_config(
+    ctl: &Controller,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("config")
+        .and(warp::post())
+        .and(with_ctl(ctl))
+        .and(warp::body::json())
+        .and_then(handlers::post_config)
+}
+
 // GET /registry
 pub fn get_registry(
     ctl: &Controller,
@@ -62,6 +78,7 @@ pub fn get_registry(
         .and_then(handlers::get_registry)
 }
 
+// GET /state
 pub fn get_state(
     ctl: &Controller,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -69,6 +86,16 @@ pub fn get_state(
         .and(warp::get())
         .and(with_ctl(ctl))
         .and_then(handlers::get_state)
+}
+
+// Websocket /event
+pub fn ws_event(
+    ctl: &Controller,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("event")
+        .and(with_ctl(ctl))
+        .and(warp::ws())
+        .and_then(handlers::ws_event)
 }
 
 fn with_ctl(ctl: &Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {

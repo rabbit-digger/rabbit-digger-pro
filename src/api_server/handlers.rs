@@ -1,11 +1,29 @@
 use std::convert::Infallible;
 
+use futures::{SinkExt, Stream, TryFutureExt, TryStreamExt};
 use rabbit_digger::controller::Controller;
+use serde_json::json;
+use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
+use warp::ws::{Message, WebSocket};
+
+use crate::config::ConfigExt;
 
 pub async fn get_config(ctl: Controller) -> Result<impl warp::Reply, Infallible> {
     let ctl = ctl.lock().await;
 
     Ok(warp::reply::json(&ctl.config()))
+}
+
+pub async fn post_config(
+    ctl: Controller,
+    config: ConfigExt,
+) -> Result<impl warp::Reply, Infallible> {
+    tokio::spawn(
+        config
+            .post_process()
+            .and_then(move |c| async move { ctl.run(c).await }),
+    );
+    Ok(warp::reply::json(&json!({ "ok": true })))
 }
 
 pub async fn get_registry(ctl: Controller) -> Result<impl warp::Reply, Infallible> {
@@ -18,4 +36,31 @@ pub async fn get_state(ctl: Controller) -> Result<impl warp::Reply, Infallible> 
     let ctl = ctl.lock().await;
 
     Ok(warp::reply::json(&ctl.state()))
+}
+
+async fn forward(
+    mut sub: impl Stream<Item = Result<Message, BroadcastStreamRecvError>> + Unpin,
+    mut ws: WebSocket,
+) -> anyhow::Result<()> {
+    while let Some(item) = sub.try_next().await? {
+        ws.send(item).await?;
+    }
+    Ok(())
+}
+
+pub async fn ws_event(ctl: Controller, ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
+    let sub = BroadcastStream::new(ctl.get_subscriber().await);
+    let sub = sub.map_ok(|i| {
+        Message::text(
+            i.into_iter()
+                .map(|e| format!("{:?}", e))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+    });
+    Ok(ws.on_upgrade(move |ws| async move {
+        if let Err(e) = forward(sub, ws).await {
+            log::error!("WebSocket event error: {:?}", e)
+        }
+    }))
 }

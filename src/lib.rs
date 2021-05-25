@@ -45,7 +45,7 @@ pub fn deserialize_config(_path: &Path, s: &str) -> Result<config::ConfigExt> {
 pub async fn read_config(path: PathBuf) -> Result<rabbit_digger::Config> {
     let s = read_to_string(&path).await?;
     let config = deserialize_config(path.as_path(), &s)?;
-    config::post_process(config).await
+    config.post_process().await
 }
 
 pub fn watch_config_stream(
