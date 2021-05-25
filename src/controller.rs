@@ -192,8 +192,10 @@ impl Controller {
                     );
                     cfg_fut.await
                 }
-                Err(Either::Right((e, _))) => return Err(e),
+                Err(Either::Right((e, _))) => Err(e),
             };
+
+            self.inner.write().await.state = State::Idle;
 
             config = match new_config? {
                 Some(v) => v,
@@ -232,6 +234,12 @@ impl Inner {
     }
     pub fn registry(&self) -> Option<&RegistrySchema> {
         self.state.running().map(|i| &i.registry)
+    }
+    pub fn state(&self) -> &'static str {
+        match self.state {
+            State::Idle => "Idle",
+            State::Running(_) => "Running",
+        }
     }
 }
 
