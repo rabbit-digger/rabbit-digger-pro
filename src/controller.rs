@@ -183,10 +183,13 @@ impl Controller {
 
     pub async fn start(&self, config: config::Config) -> OnceConfigStopper {
         let (tx, rx) = oneshot::channel::<()>();
-        let config_stream = stream::once(ready(Ok(config))).chain(stream::once(async move {
-            rx.await.context("Stopper is dropped.")?;
-            Err(anyhow!("Aborted by stopper"))
-        }));
+        let config_stream = stream::once(ready(Ok(config))).chain(
+            stream::once(async move {
+                rx.await.context("Stopper is dropped.")?;
+                Err(anyhow!("Aborted by stopper"))
+            })
+            .skip(1),
+        );
         let this = self.clone();
         let handle = tokio::spawn(async move { this.run_stream(config_stream).await });
         OnceConfigStopper { tx, handle }
