@@ -8,14 +8,15 @@ use crate::{
 };
 
 use self::event::{BatchEvent, Event, EventType};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use futures::{
+    channel::oneshot,
     future::{ready, try_select, Either},
     pin_mut, stream, FutureExt, Stream, StreamExt, TryStreamExt,
 };
 use rd_interface::{
-    async_trait, schemars::schema::RootSchema, Address, Context, INet, IntoDyn, Net, TcpListener,
-    TcpStream, UdpSocket,
+    async_trait, schemars::schema::RootSchema, Address, INet, IntoDyn, Net, TcpListener, TcpStream,
+    UdpSocket,
 };
 use serde_derive::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -26,6 +27,25 @@ use tokio::{
     task::spawn,
     time::sleep,
 };
+
+pub struct OnceConfigStopper {
+    tx: oneshot::Sender<()>,
+    handle: tokio::task::JoinHandle<Result<()>>,
+}
+
+impl OnceConfigStopper {
+    pub async fn wait(self) -> Result<()> {
+        self.handle.await??;
+        Ok(())
+    }
+    pub async fn stop(self) -> Result<()> {
+        // Only receiver is dropped the send return Error, so ignore it when
+        // it was already stopped.
+        self.tx.send(()).ok();
+        self.handle.await??;
+        Ok(())
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegistrySchema {
@@ -90,7 +110,7 @@ pub struct ControllerNet {
 impl INet for ControllerNet {
     async fn tcp_connect(
         &self,
-        ctx: &mut Context,
+        ctx: &mut rd_interface::Context,
         addr: Address,
     ) -> rd_interface::Result<TcpStream> {
         let tcp = self.net.tcp_connect(ctx, addr.clone()).await?;
@@ -102,14 +122,18 @@ impl INet for ControllerNet {
     // TODO: wrap TcpListener
     async fn tcp_bind(
         &self,
-        ctx: &mut Context,
+        ctx: &mut rd_interface::Context,
         addr: Address,
     ) -> rd_interface::Result<TcpListener> {
         self.net.tcp_bind(ctx, addr).await
     }
 
     // TODO: wrap UdpSocket
-    async fn udp_bind(&self, ctx: &mut Context, addr: Address) -> rd_interface::Result<UdpSocket> {
+    async fn udp_bind(
+        &self,
+        ctx: &mut rd_interface::Context,
+        addr: Address,
+    ) -> rd_interface::Result<UdpSocket> {
         self.net.udp_bind(ctx, addr).await
     }
 }
@@ -153,8 +177,19 @@ impl Controller {
     }
 
     pub async fn run(&self, config: config::Config) -> Result<()> {
-        let config_stream = stream::once(ready(Ok(config)));
+        let config_stream = stream::once(ready(Ok(config))).chain(stream::pending());
         self.run_stream(config_stream).await
+    }
+
+    pub async fn start(&self, config: config::Config) -> OnceConfigStopper {
+        let (tx, rx) = oneshot::channel::<()>();
+        let config_stream = stream::once(ready(Ok(config))).chain(stream::once(async move {
+            rx.await.context("Stopper is dropped.")?;
+            Err(anyhow!("Aborted by stopper"))
+        }));
+        let this = self.clone();
+        let handle = tokio::spawn(async move { this.run_stream(config_stream).await });
+        OnceConfigStopper { tx, handle }
     }
 
     async fn change_state(&self, new_state: State) -> Result<()> {
@@ -174,7 +209,6 @@ impl Controller {
                 return Err(anyhow!("The config_stream is empty, can not start."))
             }
         };
-        let mut config_stream = config_stream.chain(stream::pending());
 
         loop {
             log::info!("rabbit digger is starting...");
