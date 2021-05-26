@@ -1,7 +1,9 @@
 use std::{convert::Infallible, future, path::PathBuf};
 
 use super::{handlers, reject::handle_rejection, reject::ApiError, Server};
-use rabbit_digger::controller::Controller;
+use rabbit_digger::controller::{Controller, OnceConfigStopper};
+use rd_interface::Arc;
+use tokio::sync::Mutex;
 use warp::{Filter, Rejection};
 
 pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
@@ -61,10 +63,12 @@ pub fn get_config(
 pub fn post_config(
     ctl: &Controller,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    let stopper: Arc<Mutex<Option<OnceConfigStopper>>> = Arc::new(Mutex::new(None));
     warp::path!("config")
         .and(warp::post())
         .and(with_ctl(ctl))
         .and(warp::body::json())
+        .and(warp::any().map(move || stopper.clone()))
         .and_then(handlers::post_config)
 }
 

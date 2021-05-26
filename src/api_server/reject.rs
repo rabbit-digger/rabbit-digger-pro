@@ -7,6 +7,15 @@ pub enum ApiError {
 }
 impl warp::reject::Reject for ApiError {}
 
+#[derive(Debug)]
+struct CustomReject(anyhow::Error);
+
+impl warp::reject::Reject for CustomReject {}
+
+pub(crate) fn custom_reject(error: impl Into<anyhow::Error>) -> warp::Rejection {
+    warp::reject::custom(CustomReject(error.into()))
+}
+
 /// An API error serializable to JSON.
 #[derive(Serialize)]
 struct ErrorMessage {

@@ -1,8 +1,11 @@
 use std::convert::Infallible;
 
-use futures::{SinkExt, Stream, TryFutureExt, TryStreamExt};
-use rabbit_digger::controller::Controller;
+use super::reject::custom_reject;
+use futures::{SinkExt, Stream, TryStreamExt};
+use rabbit_digger::controller::{Controller, OnceConfigStopper};
+use rd_interface::Arc;
 use serde_json::json;
+use tokio::sync::Mutex;
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 use warp::ws::{Message, WebSocket};
 
@@ -17,12 +20,14 @@ pub async fn get_config(ctl: Controller) -> Result<impl warp::Reply, Infallible>
 pub async fn post_config(
     ctl: Controller,
     config: ConfigExt,
-) -> Result<impl warp::Reply, Infallible> {
-    tokio::spawn(
-        config
-            .post_process()
-            .and_then(move |c| async move { ctl.run(c).await }),
-    );
+    last_stopper: Arc<Mutex<Option<OnceConfigStopper>>>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let config = config.post_process().await.map_err(custom_reject)?;
+    let mut last_stopper = last_stopper.lock().await;
+    if let Some(stopper) = last_stopper.take() {
+        stopper.stop().await.map_err(custom_reject)?;
+    }
+    *last_stopper = Some(ctl.start(config).await);
     Ok(warp::reply::json(&json!({ "ok": true })))
 }
 
