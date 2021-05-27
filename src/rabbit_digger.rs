@@ -9,6 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use config::AllNet;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use rd_interface::{Arc, Net, Server, Value};
+use serde_json::Map;
 
 pub type PluginLoader =
     Arc<dyn Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static>;
@@ -131,20 +132,24 @@ fn build_net(
 ) -> Result<HashMap<String, Net>> {
     let mut net: HashMap<String, Net> = HashMap::new();
 
-    all_net.insert(
-        "noop".to_string(),
-        AllNet::Net(config::Net {
-            net_type: "noop".to_string(),
-            opt: Value::Null,
-        }),
-    );
-    all_net.insert(
-        "local".to_string(),
-        AllNet::Net(config::Net {
-            net_type: "local".to_string(),
-            opt: Value::Null,
-        }),
-    );
+    if !all_net.contains_key("noop") {
+        all_net.insert(
+            "noop".to_string(),
+            AllNet::Net(config::Net {
+                net_type: "noop".to_string(),
+                opt: Value::Object(Map::new()),
+            }),
+        );
+    }
+    if !all_net.contains_key("local") {
+        all_net.insert(
+            "local".to_string(),
+            AllNet::Net(config::Net {
+                net_type: "local".to_string(),
+                opt: Value::Object(Map::new()),
+            }),
+        );
+    }
     all_net.insert(
         "_".to_string(),
         AllNet::Root(server.values().map(|i| i.net.clone()).collect()),

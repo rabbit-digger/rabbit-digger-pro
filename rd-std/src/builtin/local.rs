@@ -5,19 +5,30 @@ use std::{
 
 use rd_interface::{
     async_trait, impl_async_read_write,
-    registry::{EmptyConfig, NetFactory},
-    Address, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    registry::NetFactory,
+    schemars::{self, JsonSchema},
+    Address, Config, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
+use serde_derive::Deserialize;
 use tokio::net;
 
-pub struct LocalNet;
+#[derive(Debug, Deserialize, Config, JsonSchema, Clone)]
+pub struct LocalConfig {
+    /// set ttl
+    #[serde(default)]
+    ttl: Option<u32>,
+    #[serde(default)]
+    nodelay: Option<bool>,
+}
+
+pub struct LocalNet(LocalConfig);
 pub struct CompatTcp(pub(crate) net::TcpStream);
-pub struct Listener(net::TcpListener);
+pub struct Listener(net::TcpListener, LocalConfig);
 pub struct Udp(net::UdpSocket);
 
 impl LocalNet {
-    fn new() -> LocalNet {
-        LocalNet
+    fn new(config: LocalConfig) -> LocalNet {
+        LocalNet(config)
     }
 }
 async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
@@ -51,6 +62,12 @@ impl CompatTcp {
 impl rd_interface::ITcpListener for Listener {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
         let (socket, addr) = self.0.accept().await?;
+        if let Some(ttl) = self.1.ttl {
+            socket.set_ttl(ttl)?;
+        }
+        if let Some(nodelay) = self.1.nodelay {
+            socket.set_nodelay(nodelay)?;
+        }
         Ok((CompatTcp::new(socket).into_dyn(), addr))
     }
 
@@ -85,7 +102,14 @@ impl INet for LocalNet {
         #[cfg(feature = "local_log")]
         log::trace!("local::tcp_connect {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
-        Ok(CompatTcp::new(net::TcpStream::connect(addr).await?).into_dyn())
+        let tcp = net::TcpStream::connect(addr).await?;
+        if let Some(ttl) = self.0.ttl {
+            tcp.set_ttl(ttl)?;
+        }
+        if let Some(nodelay) = self.0.nodelay {
+            tcp.set_nodelay(nodelay)?;
+        }
+        Ok(CompatTcp::new(tcp).into_dyn())
     }
 
     async fn tcp_bind(
@@ -96,23 +120,31 @@ impl INet for LocalNet {
         #[cfg(feature = "local_log")]
         log::trace!("local::tcp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
-        Ok(Listener(net::TcpListener::bind(addr).await?).into_dyn())
+        let listener = net::TcpListener::bind(addr).await?;
+        if let Some(ttl) = self.0.ttl {
+            listener.set_ttl(ttl)?;
+        }
+        Ok(Listener(listener, self.0.clone()).into_dyn())
     }
 
     async fn udp_bind(&self, _ctx: &mut rd_interface::Context, addr: Address) -> Result<UdpSocket> {
         #[cfg(feature = "local_log")]
         log::trace!("local::udp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
-        Ok(Udp(net::UdpSocket::bind(addr).await?).into_dyn())
+        let udp = net::UdpSocket::bind(addr).await?;
+        if let Some(ttl) = self.0.ttl {
+            udp.set_ttl(ttl)?;
+        }
+        Ok(Udp(udp).into_dyn())
     }
 }
 
 impl NetFactory for LocalNet {
     const NAME: &'static str = "local";
-    type Config = EmptyConfig;
+    type Config = LocalConfig;
     type Net = Self;
 
-    fn new(_config: Self::Config) -> Result<Self> {
-        Ok(LocalNet::new())
+    fn new(config: Self::Config) -> Result<Self> {
+        Ok(LocalNet::new(config))
     }
 }
