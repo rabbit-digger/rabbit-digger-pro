@@ -67,7 +67,7 @@ pub async fn ws_event(ctl: Controller, ws: warp::ws::Ws) -> Result<impl warp::Re
     });
     Ok(ws.on_upgrade(move |ws| async move {
         if let Err(e) = forward(sub, ws).await {
-            log::error!("WebSocket event error: {:?}", e)
+            tracing::error!("WebSocket event error: {:?}", e)
         }
     }))
 }

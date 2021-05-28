@@ -197,7 +197,7 @@ impl Clash {
                     config.net.insert(name, p);
                 }
                 Err(e) => {
-                    log::warn!("proxy {} not translated: {:?}", old_name, e);
+                    tracing::warn!("proxy {} not translated: {:?}", old_name, e);
                     config.net.insert(name, ghost_net());
                 }
             };
@@ -222,7 +222,7 @@ impl Clash {
                         config.net.insert(name, pg);
                     }
                     Err(e) => {
-                        log::warn!("proxy_group {} not translated: {:?}", old_name, e);
+                        tracing::warn!("proxy_group {} not translated: {:?}", old_name, e);
                     }
                 };
             }
@@ -235,7 +235,7 @@ impl Clash {
                     Ok(r) => {
                         rule.push(r);
                     }
-                    Err(e) => log::warn!("rule '{}' not translated: {:?}", r, e),
+                    Err(e) => tracing::warn!("rule '{}' not translated: {:?}", r, e),
                 }
             }
             config.net.insert(

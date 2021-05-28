@@ -194,7 +194,7 @@ impl IUdpSocket for WrapSSUdp {
         )
         .await?;
 
-        log::trace!(
+        tracing::trace!(
             "UDP server client receive from {}, addr {}, packet length {} bytes, payload length {} bytes",
             target_addr,
             addr,
@@ -223,7 +223,7 @@ impl IUdpSocket for WrapSSUdp {
             &mut send_buf,
         );
 
-        log::trace!(
+        tracing::trace!(
             "UDP server client send to, addr {}, payload length {} bytes, packet length {} bytes",
             addr,
             payload.len(),
@@ -236,7 +236,7 @@ impl IUdpSocket for WrapSSUdp {
             .await?;
 
         if send_buf.len() != send_len {
-            log::warn!(
+            tracing::warn!(
                 "UDP server client send {} bytes, but actually sent {} bytes",
                 send_buf.len(),
                 send_len

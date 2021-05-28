@@ -77,7 +77,7 @@ fn encrypt_payload_stream(
             }
         }
 
-        log::trace!("UDP packet generated stream iv {:?}", ByteStr::new(iv));
+        tracing::trace!("UDP packet generated stream iv {:?}", ByteStr::new(iv));
     } else {
         context.check_nonce_and_set(iv);
     }
@@ -116,7 +116,7 @@ fn encrypt_payload_aead(
             }
         }
 
-        log::trace!("UDP packet generated aead salt {:?}", ByteStr::new(salt));
+        tracing::trace!("UDP packet generated aead salt {:?}", ByteStr::new(salt));
     } else {
         context.check_nonce_and_set(salt);
     }
@@ -179,11 +179,11 @@ async fn decrypt_payload_stream(
 
     let (iv, data) = payload.split_at_mut(iv_len);
     if context.check_nonce_and_set(iv) {
-        log::debug!("detected repeated iv {:?}", ByteStr::new(iv));
+        tracing::debug!("detected repeated iv {:?}", ByteStr::new(iv));
         return Err(io::Error::new(io::ErrorKind::Other, "detected repeated iv"));
     }
 
-    log::trace!("UDP packet got stream IV {:?}", ByteStr::new(iv));
+    tracing::trace!("UDP packet got stream IV {:?}", ByteStr::new(iv));
     let mut cipher = Cipher::new(method, key, iv);
 
     assert_eq!(cipher.decrypt_packet(data), true);
@@ -212,14 +212,14 @@ async fn decrypt_payload_aead(
 
     let (salt, data) = payload.split_at_mut(salt_len);
     if context.check_nonce_and_set(salt) {
-        log::debug!("detected repeated salt {:?}", ByteStr::new(salt));
+        tracing::debug!("detected repeated salt {:?}", ByteStr::new(salt));
         return Err(io::Error::new(
             io::ErrorKind::Other,
             "detected repeated salt",
         ));
     }
 
-    log::trace!("UDP packet got AEAD salt {:?}", ByteStr::new(salt));
+    tracing::trace!("UDP packet got AEAD salt {:?}", ByteStr::new(salt));
 
     let mut cipher = Cipher::new(method, &key, &salt);
     let tag_len = cipher.tag_len();

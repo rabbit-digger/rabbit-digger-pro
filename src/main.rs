@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use controller::Controller;
-use env_logger::Env;
 use futures::{pin_mut, stream::TryStreamExt};
 use rabbit_digger::controller;
 #[cfg(feature = "api_server")]
@@ -117,11 +116,13 @@ async fn real_main(args: Args) -> Result<()> {
 #[paw::main]
 #[tokio::main]
 async fn main(args: Args) -> Result<()> {
-    env_logger::Builder::from_env(
-        Env::default()
-            .default_filter_or("rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace"),
-    )
-    .init();
+    if std::env::var_os("RUST_LOG").is_none() {
+        std::env::set_var(
+            "RUST_LOG",
+            "rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace",
+        )
+    }
+    tracing_subscriber::fmt::init();
 
     match &args.cmd {
         Some(Command::GenerateSchema { path }) => {
@@ -145,7 +146,7 @@ async fn main(args: Args) -> Result<()> {
 
     match real_main(args).await {
         Ok(()) => {}
-        Err(e) => log::error!("Process exit: {:?}", e),
+        Err(e) => tracing::error!("Process exit: {:?}", e),
     }
 
     Ok(())

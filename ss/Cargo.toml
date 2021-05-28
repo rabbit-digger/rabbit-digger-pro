@@ -11,6 +11,6 @@ shadowsocks = { version = "1.10.3", features = [ "stream-cipher", "aead-cipher-e
 serde_derive = "1.0"
 serde = "1.0"
 bytes = "1.0"
-log = "0.4"
+tracing = "0.1.26"
 byte_string = "1.0"
 serde_json = "1.0"
