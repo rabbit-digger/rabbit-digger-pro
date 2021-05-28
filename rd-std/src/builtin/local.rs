@@ -100,7 +100,7 @@ impl INet for LocalNet {
         addr: Address,
     ) -> Result<TcpStream> {
         #[cfg(feature = "local_log")]
-        log::trace!("local::tcp_connect {:?} {:?}", _ctx, addr);
+        tracing::trace!("local::tcp_connect {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
         let tcp = net::TcpStream::connect(addr).await?;
         if let Some(ttl) = self.0.ttl {
@@ -118,7 +118,7 @@ impl INet for LocalNet {
         addr: Address,
     ) -> Result<TcpListener> {
         #[cfg(feature = "local_log")]
-        log::trace!("local::tcp_bind {:?} {:?}", _ctx, addr);
+        tracing::trace!("local::tcp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
         let listener = net::TcpListener::bind(addr).await?;
         if let Some(ttl) = self.0.ttl {
@@ -129,7 +129,7 @@ impl INet for LocalNet {
 
     async fn udp_bind(&self, _ctx: &mut rd_interface::Context, addr: Address) -> Result<UdpSocket> {
         #[cfg(feature = "local_log")]
-        log::trace!("local::udp_bind {:?} {:?}", _ctx, addr);
+        tracing::trace!("local::udp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
         let udp = net::UdpSocket::bind(addr).await?;
         if let Some(ttl) = self.0.ttl {

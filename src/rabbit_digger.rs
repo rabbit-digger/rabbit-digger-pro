@@ -34,7 +34,7 @@ impl fmt::Debug for RabbitDigger {
 
 impl RabbitDigger {
     pub async fn run(servers: Vec<ServerInfo>) -> Result<()> {
-        log::info!("Server:\n{}", ServerList(&servers));
+        tracing::info!("Server:\n{}", ServerList(&servers));
 
         let mut server_tasks: FuturesUnordered<_> = servers
             .iter()
@@ -45,10 +45,10 @@ impl RabbitDigger {
             .collect();
 
         while let Some((name, r)) = server_tasks.next().await {
-            log::info!("Server {} is stopped. Return: {:?}", name, r)
+            tracing::info!("Server {} is stopped. Return: {:?}", name, r)
         }
 
-        log::info!("all servers are down, exit.");
+        tracing::info!("all servers are down, exit.");
         Ok(())
     }
 }
@@ -72,7 +72,7 @@ impl RabbitDiggerBuilder {
 
         load_builtin(&mut registry)?;
         (self.plugin_loader)(&config, &mut registry)?;
-        log::debug!("Registry:\n{}", registry);
+        tracing::debug!("Registry:\n{}", registry);
 
         let all_net = config
             .net

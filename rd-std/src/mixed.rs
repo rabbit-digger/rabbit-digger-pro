@@ -58,7 +58,7 @@ impl IServer for HttpSocks5 {
             let server = self.server.clone();
             let _ = tokio::spawn(async move {
                 if let Err(e) = server.serve_connection(socket, addr).await {
-                    log::error!("Error when serve_connection: {:?}", e)
+                    tracing::error!("Error when serve_connection: {:?}", e)
                 }
             });
         }

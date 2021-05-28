@@ -44,7 +44,7 @@ impl Rule {
 
         for rule in self.rule.iter() {
             if rule.matcher.match_rule(ctx, &target).await {
-                log::info!(
+                tracing::info!(
                     "[{}] {} -> {} matched rule: {:?}",
                     &rule.target_name,
                     &src,
@@ -55,7 +55,7 @@ impl Rule {
             }
         }
 
-        log::info!("{} -> {} not matched, reject", src, target);
+        tracing::info!("{} -> {} not matched, reject", src, target);
         Err(rd_interface::Error::IO(
             io::ErrorKind::ConnectionRefused.into(),
         ))
@@ -96,7 +96,7 @@ impl INet for RuleNet {
             .await;
 
         if let Err(e) = &r {
-            log::error!("{} -> {} Failed to connect: {:?}", &src, &addr, e);
+            tracing::error!("{} -> {} Failed to connect: {:?}", &src, &addr, e);
         }
 
         r

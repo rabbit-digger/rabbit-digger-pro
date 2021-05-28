@@ -214,7 +214,7 @@ impl Controller {
         };
 
         loop {
-            log::info!("rabbit digger is starting...");
+            tracing::info!("rabbit digger is starting...");
 
             let RabbitDigger {
                 config: rd_config,
@@ -233,12 +233,12 @@ impl Controller {
             pin_mut!(run_fut);
             let new_config = match try_select(run_fut, config_stream.try_next()).await {
                 Ok(Either::Left((_, cfg_fut))) => {
-                    log::info!("Exited normally, waiting for next config...");
+                    tracing::info!("Exited normally, waiting for next config...");
                     cfg_fut.await
                 }
                 Ok(Either::Right((cfg, _))) => Ok(cfg),
                 Err(Either::Left((e, cfg_fut))) => {
-                    log::error!(
+                    tracing::error!(
                         "Rabbit digger went to error: {:?}, waiting for next config...",
                         e
                     );

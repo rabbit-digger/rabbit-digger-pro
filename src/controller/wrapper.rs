@@ -25,7 +25,7 @@ impl Drop for TcpStream {
 impl TcpStream {
     pub fn send(&self, event_type: EventType) {
         if self.sender.send(Event::new(self.uuid, event_type)).is_err() {
-            log::warn!("Failed to send event");
+            tracing::warn!("Failed to send event");
         }
     }
     pub fn new(inner: rd_interface::TcpStream, sender: UnboundedSender<Event>) -> TcpStream {

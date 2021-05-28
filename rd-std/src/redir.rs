@@ -49,7 +49,7 @@ mod linux {
                 let net = self.net.clone();
                 let _ = tokio::spawn(async move {
                     if let Err(e) = Self::serve_connection(net, socket, addr).await {
-                        log::error!("Error when serve_connection: {:?}", e);
+                        tracing::error!("Error when serve_connection: {:?}", e);
                     }
                 });
             }

@@ -46,7 +46,7 @@ impl IServer for Http {
             let server = self.server.clone();
             tokio::spawn(async move {
                 if let Err(e) = server.serve_connection(socket, addr).await {
-                    log::error!("Error when serve_connection: {:?}", e);
+                    tracing::error!("Error when serve_connection: {:?}", e);
                 }
             });
         }
@@ -78,10 +78,10 @@ async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result
                             .tcp_connect(&mut Context::from_socketaddr(addr), dst)
                             .await?;
                         if let Err(e) = tunnel(stream, upgraded).await {
-                            log::debug!("tunnel io error: {}", e);
+                            tracing::debug!("tunnel io error: {}", e);
                         };
                     }
-                    Err(e) => log::debug!("upgrade error: {}", e),
+                    Err(e) => tracing::debug!("upgrade error: {}", e),
                 }
                 Ok(()) as anyhow::Result<()>
             });
@@ -101,7 +101,7 @@ async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result
             Ok(resp)
         }
     } else {
-        log::error!("host is not socket addr: {:?}", req.uri());
+        tracing::error!("host is not socket addr: {:?}", req.uri());
         let mut resp = Response::new(Body::from("CONNECT must be to a socket address"));
         *resp.status_mut() = http::StatusCode::BAD_REQUEST;
 

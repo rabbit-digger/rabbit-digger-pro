@@ -37,7 +37,7 @@ async fn real_main(args: Args) -> Result<()> {
 async fn main(args: Args) -> Result<()> {
     match real_main(args).await {
         Ok(()) => {}
-        Err(e) => log::error!("Process exit: {:?}", e),
+        Err(e) => tracing::error!("Process exit: {:?}", e),
     }
     Ok(())
 }

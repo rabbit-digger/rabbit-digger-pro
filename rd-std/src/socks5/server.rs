@@ -54,7 +54,7 @@ impl Socks5Server {
                 {
                     Ok(socket) => socket,
                     Err(e) => {
-                        log::trace!("Failed to connect {:?}", e);
+                        tracing::trace!("Failed to connect {:?}", e);
                         CommandResponse::error(e).write(&mut tx).await?;
                         tx.flush().await?;
                         return Ok(());
@@ -193,7 +193,7 @@ impl IServer for Socks5 {
             let server = self.server.clone();
             let _ = tokio::spawn(async move {
                 if let Err(e) = server.serve_connection(socket, addr).await {
-                    log::error!("Error when serve_connection: {:?}", e)
+                    tracing::error!("Error when serve_connection: {:?}", e)
                 }
             });
         }
