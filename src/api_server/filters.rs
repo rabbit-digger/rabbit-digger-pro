@@ -10,7 +10,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     let at = access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
     // TODO: read or write userdata by API
-    let _userdata = server
+    let userdata = &server
         .userdata
         .or(dirs::config_dir().map(|d| d.join("rabbit-digger")));
     let ctl = &server.controller;
@@ -21,7 +21,9 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
                 get_config(ctl)
                     .or(post_config(ctl))
                     .or(get_registry(ctl))
-                    .or(get_state(ctl)),
+                    .or(get_state(ctl))
+                    .or(get_userdata(&userdata))
+                    .or(put_userdata(&userdata)),
             ))
             .recover(handle_rejection),
     )
@@ -92,6 +94,27 @@ pub fn get_state(
         .and_then(handlers::get_state)
 }
 
+pub fn get_userdata(
+    userdata: &Option<PathBuf>,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("userdata")
+        .and(warp::get())
+        .and(with_userdata(userdata))
+        .and(warp::path::tail())
+        .and_then(handlers::get_userdata)
+}
+
+pub fn put_userdata(
+    userdata: &Option<PathBuf>,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("userdata")
+        .and(warp::put())
+        .and(with_userdata(userdata))
+        .and(warp::path::tail())
+        .and(warp::body::stream())
+        .and_then(handlers::put_userdata)
+}
+
 // Websocket /event
 pub fn ws_event(
     ctl: &Controller,
@@ -105,6 +128,19 @@ pub fn ws_event(
 fn with_ctl(ctl: &Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {
     let ctl = ctl.clone();
     warp::any().map(move || ctl.clone())
+}
+
+fn with_userdata(
+    userdata: &Option<PathBuf>,
+) -> impl Filter<Extract = (PathBuf,), Error = Rejection> + Clone {
+    let userdata = userdata.clone();
+    if let Some(userdata) = userdata {
+        warp::any().map(move || userdata.clone()).boxed()
+    } else {
+        warp::any()
+            .and_then(|| future::ready(Err(warp::reject::custom(ApiError::Forbidden))))
+            .boxed()
+    }
 }
 
 fn access_token(

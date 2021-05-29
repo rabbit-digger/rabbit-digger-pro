@@ -1,12 +1,19 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, path::PathBuf};
 
 use super::reject::custom_reject;
-use futures::{SinkExt, Stream, TryStreamExt};
+use futures::{pin_mut, SinkExt, Stream, TryStreamExt};
 use rabbit_digger::controller::{Controller, OnceConfigStopper};
 use rd_interface::Arc;
-use tokio::sync::Mutex;
+use serde_json::json;
+use tokio::{fs::File, sync::Mutex};
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
-use warp::ws::{Message, WebSocket};
+use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
+use warp::{
+    hyper::Response,
+    path::Tail,
+    ws::{Message, WebSocket},
+    Buf,
+};
 
 use crate::config::ConfigExt;
 
@@ -43,6 +50,42 @@ pub async fn get_state(ctl: Controller) -> Result<impl warp::Reply, Infallible> 
     let ctl = ctl.lock().await;
 
     Ok(warp::reply::json(&ctl.state()))
+}
+
+pub async fn get_userdata(
+    mut userdata: PathBuf,
+    tail: Tail,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    // TOOD prevent ".." attack
+    userdata.push(tail.as_str());
+    let file = File::open(userdata).await.map_err(custom_reject)?;
+    let stream = FramedRead::new(file, BytesCodec::new());
+    let resp = Response::builder()
+        .body(warp::hyper::body::Body::wrap_stream(stream))
+        .map_err(custom_reject)?;
+    Ok(resp)
+}
+
+pub async fn put_userdata(
+    mut userdata: PathBuf,
+    tail: Tail,
+    body: impl Stream<Item = Result<impl Buf, warp::Error>>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    // TOOD prevent ".." attack
+    userdata.push(tail.as_str());
+    let file = File::create(userdata).await.map_err(custom_reject)?;
+    let mut stream = FramedWrite::new(file, BytesCodec::new());
+    let mut size = 0;
+    pin_mut!(body);
+    while let Some(mut chunk) = body.try_next().await.map_err(custom_reject)? {
+        let len = chunk.remaining();
+        size += len;
+        stream
+            .send(chunk.copy_to_bytes(len))
+            .await
+            .map_err(custom_reject)?;
+    }
+    Ok(warp::reply::json(&json!({"ok": true, "copied": size})))
 }
 
 async fn forward(
