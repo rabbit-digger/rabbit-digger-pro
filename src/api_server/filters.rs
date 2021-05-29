@@ -97,7 +97,7 @@ pub fn get_state(
 pub fn get_userdata(
     userdata: &Option<PathBuf>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("userdata")
+    warp::path("userdata")
         .and(warp::get())
         .and(with_userdata(userdata))
         .and(warp::path::tail())
@@ -107,7 +107,7 @@ pub fn get_userdata(
 pub fn put_userdata(
     userdata: &Option<PathBuf>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("userdata")
+    warp::path("userdata")
         .and(warp::put())
         .and(with_userdata(userdata))
         .and(warp::path::tail())

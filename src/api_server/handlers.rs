@@ -1,6 +1,6 @@
 use std::{convert::Infallible, path::PathBuf};
 
-use super::reject::custom_reject;
+use super::reject::{custom_reject, ApiError};
 use futures::{pin_mut, SinkExt, Stream, TryStreamExt};
 use rabbit_digger::controller::{Controller, OnceConfigStopper};
 use rd_interface::Arc;
@@ -58,7 +58,9 @@ pub async fn get_userdata(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     // TOOD prevent ".." attack
     userdata.push(tail.as_str());
-    let file = File::open(userdata).await.map_err(custom_reject)?;
+    let file = File::open(userdata)
+        .await
+        .map_err(|_| warp::reject::custom(ApiError::NotFound))?;
     let stream = FramedRead::new(file, BytesCodec::new());
     let resp = Response::builder()
         .body(warp::hyper::body::Body::wrap_stream(stream))

@@ -4,6 +4,7 @@ use warp::{hyper::StatusCode, Rejection, Reply};
 #[derive(Debug)]
 pub enum ApiError {
     Forbidden,
+    NotFound,
 }
 impl warp::reject::Reject for ApiError {}
 
@@ -35,6 +36,9 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, warp::Reject
     } else if let Some(ApiError::Forbidden) = err.find() {
         code = StatusCode::FORBIDDEN;
         message = "Forbidden"
+    } else if let Some(ApiError::NotFound) = err.find() {
+        code = StatusCode::NOT_FOUND;
+        message = "Not found"
     } else {
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "Internal server error"
