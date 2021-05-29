@@ -112,10 +112,10 @@ fn access_token(
 ) -> impl Filter<Extract = (), Error = Rejection> + Clone {
     warp::header::optional::<String>("authorization")
         .and_then(move |header: Option<String>| {
-            future::ready(if header == access_token {
-                Ok(())
-            } else {
-                Err(warp::reject::custom(ApiError::Forbidden))
+            future::ready(match &access_token {
+                Some(token) if token == &header.unwrap_or_default() => Ok(()),
+                None => Ok(()),
+                _ => Err(warp::reject::custom(ApiError::Forbidden)),
             })
         })
         .untuple_one()

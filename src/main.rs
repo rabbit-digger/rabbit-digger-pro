@@ -139,6 +139,8 @@ async fn main(args: Args) -> Result<()> {
 
             run_api_server(&controller, &api_server).await?;
 
+            tokio::signal::ctrl_c().await?;
+
             return Ok(());
         }
         None => {}
