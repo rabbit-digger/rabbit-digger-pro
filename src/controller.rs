@@ -1,5 +1,6 @@
 mod event;
-mod wrapper;
+mod server_net;
+mod wrap_net;
 
 use crate::{
     config,
@@ -7,17 +8,14 @@ use crate::{
     Registry,
 };
 
-use self::event::{BatchEvent, Event, EventType};
+use self::event::{BatchEvent, Event};
 use anyhow::{anyhow, Context, Result};
 use futures::{
     channel::oneshot,
     future::{ready, try_select, Either},
     pin_mut, stream, FutureExt, Stream, StreamExt, TryStreamExt,
 };
-use rd_interface::{
-    async_trait, schemars::schema::RootSchema, Address, INet, IntoDyn, Net, TcpListener, TcpStream,
-    UdpSocket,
-};
+use rd_interface::{schemars::schema::RootSchema, IntoDyn, Net};
 use serde_derive::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{sync::broadcast, time::timeout};
@@ -99,43 +97,6 @@ impl State {
 pub struct Controller {
     inner: Arc<RwLock<Inner>>,
     event_sender: mpsc::UnboundedSender<Event>,
-}
-
-pub struct ControllerNet {
-    net: Net,
-    sender: mpsc::UnboundedSender<Event>,
-}
-
-#[async_trait]
-impl INet for ControllerNet {
-    async fn tcp_connect(
-        &self,
-        ctx: &mut rd_interface::Context,
-        addr: Address,
-    ) -> rd_interface::Result<TcpStream> {
-        let tcp = self.net.tcp_connect(ctx, addr.clone()).await?;
-        let tcp = wrapper::TcpStream::new(tcp, self.sender.clone());
-        tcp.send(EventType::NewTcp(addr));
-        Ok(tcp.into_dyn())
-    }
-
-    // TODO: wrap TcpListener
-    async fn tcp_bind(
-        &self,
-        ctx: &mut rd_interface::Context,
-        addr: Address,
-    ) -> rd_interface::Result<TcpListener> {
-        self.net.tcp_bind(ctx, addr).await
-    }
-
-    // TODO: wrap UdpSocket
-    async fn udp_bind(
-        &self,
-        ctx: &mut rd_interface::Context,
-        addr: Address,
-    ) -> rd_interface::Result<UdpSocket> {
-        self.net.udp_bind(ctx, addr).await
-    }
 }
 
 async fn process(mut rx: mpsc::UnboundedReceiver<Event>, sender: broadcast::Sender<BatchEvent>) {
@@ -258,8 +219,17 @@ impl Controller {
         Ok(())
     }
 
-    pub fn get_net(&self, net: Net) -> Net {
-        ControllerNet {
+    pub fn get_net(&self, net_name: String, net: Net) -> Net {
+        wrap_net::ControllerNet {
+            net_name,
+            net,
+            sender: self.event_sender.clone(),
+        }
+        .into_dyn()
+    }
+
+    pub fn get_server_net(&self, net: Net) -> Net {
+        server_net::ControllerServerNet {
             net,
             sender: self.event_sender.clone(),
         }

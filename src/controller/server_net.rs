@@ -1,18 +1,58 @@
-use rd_interface::{async_trait, AsyncRead, AsyncWrite, ReadBuf};
 use std::{
     io,
     net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::sync::mpsc::UnboundedSender;
-use uuid::Uuid;
 
 use super::event::{Event, EventType};
+use rd_interface::{
+    async_trait, Address, AsyncRead, AsyncWrite, INet, IntoDyn, Net, ReadBuf, TcpListener,
+    UdpSocket,
+};
+use tokio::sync::mpsc;
+use uuid::Uuid;
+
+pub struct ControllerServerNet {
+    pub net: Net,
+    pub sender: mpsc::UnboundedSender<Event>,
+}
+
+#[async_trait]
+impl INet for ControllerServerNet {
+    async fn tcp_connect(
+        &self,
+        ctx: &mut rd_interface::Context,
+        addr: Address,
+    ) -> rd_interface::Result<rd_interface::TcpStream> {
+        let tcp = self.net.tcp_connect(ctx, addr.clone()).await?;
+        let tcp = TcpStream::new(tcp, self.sender.clone());
+        tcp.send(EventType::NewTcp(addr));
+        Ok(tcp.into_dyn())
+    }
+
+    // TODO: wrap TcpListener
+    async fn tcp_bind(
+        &self,
+        ctx: &mut rd_interface::Context,
+        addr: Address,
+    ) -> rd_interface::Result<TcpListener> {
+        self.net.tcp_bind(ctx, addr).await
+    }
+
+    // TODO: wrap UdpSocket
+    async fn udp_bind(
+        &self,
+        ctx: &mut rd_interface::Context,
+        addr: Address,
+    ) -> rd_interface::Result<UdpSocket> {
+        self.net.udp_bind(ctx, addr).await
+    }
+}
 
 pub struct TcpStream {
     inner: rd_interface::TcpStream,
-    sender: UnboundedSender<Event>,
+    sender: mpsc::UnboundedSender<Event>,
     uuid: Uuid,
 }
 
@@ -28,7 +68,7 @@ impl TcpStream {
             tracing::warn!("Failed to send event");
         }
     }
-    pub fn new(inner: rd_interface::TcpStream, sender: UnboundedSender<Event>) -> TcpStream {
+    pub fn new(inner: rd_interface::TcpStream, sender: mpsc::UnboundedSender<Event>) -> TcpStream {
         let uuid = Uuid::new_v4();
         TcpStream {
             inner,

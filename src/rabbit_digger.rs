@@ -66,7 +66,11 @@ impl RabbitDiggerBuilder {
     ) -> Result<RabbitDigger> {
         let wrap_net = {
             let c = ctl.clone();
-            move |net: Net| c.get_net(net)
+            move |net_name: String, net: Net| c.get_net(net_name, net)
+        };
+        let wrap_server_net = {
+            let c = ctl.clone();
+            move |net: Net| c.get_server_net(net)
         };
         let mut registry = Registry::new();
 
@@ -79,8 +83,8 @@ impl RabbitDiggerBuilder {
             .iter()
             .map(|(k, v)| (k.to_string(), AllNet::Net(v.clone())))
             .collect();
-        let nets = build_net(&registry, all_net, &config.server)?;
-        let servers = build_server(&registry, &nets, &config.server, wrap_net)?;
+        let nets = build_net(&registry, all_net, &config.server, wrap_net)?;
+        let servers = build_server(&registry, &nets, &config.server, wrap_server_net)?;
 
         Ok(RabbitDigger {
             config,
@@ -129,8 +133,9 @@ fn build_net(
     registry: &Registry,
     mut all_net: HashMap<String, config::AllNet>,
     server: &config::ConfigServer,
+    wrapper: impl Fn(String, Net) -> Net,
 ) -> Result<HashMap<String, Net>> {
-    let mut net: HashMap<String, Net> = HashMap::new();
+    let mut net_map: HashMap<String, Net> = HashMap::new();
 
     if !all_net.contains_key("noop") {
         all_net.insert(
@@ -164,11 +169,12 @@ fn build_net(
                 let load_net = || -> Result<()> {
                     let net_item = registry.get_net(&i.net_type)?;
 
-                    let proxy = net_item.build(&net, i.opt).context(format!(
+                    let net = net_item.build(&net_map, i.opt).context(format!(
                         "Failed to build net {:?}. Please check your config.",
                         name
                     ))?;
-                    net.insert(name.to_string(), proxy);
+                    let net = wrapper(name.to_string(), net);
+                    net_map.insert(name.to_string(), net);
                     Ok(())
                 };
                 load_net().map_err(|e| e.context(format!("Loading net {}", name)))?;
@@ -177,7 +183,7 @@ fn build_net(
         }
     }
 
-    Ok(net)
+    Ok(net_map)
 }
 
 fn build_server(
