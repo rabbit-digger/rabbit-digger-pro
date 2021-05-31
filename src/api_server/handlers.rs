@@ -5,7 +5,10 @@ use futures::{pin_mut, SinkExt, Stream, TryStreamExt};
 use rabbit_digger::controller::{Controller, OnceConfigStopper};
 use rd_interface::Arc;
 use serde_json::json;
-use tokio::{fs::File, sync::Mutex};
+use tokio::{
+    fs::{create_dir_all, File},
+    sync::Mutex,
+};
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 use warp::{
@@ -73,9 +76,10 @@ pub async fn put_userdata(
     tail: Tail,
     body: impl Stream<Item = Result<impl Buf, warp::Error>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    create_dir_all(&userdata).await.map_err(custom_reject)?;
     // TOOD prevent ".." attack
     userdata.push(tail.as_str());
-    let file = File::create(userdata).await.map_err(custom_reject)?;
+    let file = File::create(&userdata).await.map_err(custom_reject)?;
     let mut stream = FramedWrite::new(file, BytesCodec::new());
     let mut size = 0;
     pin_mut!(body);
