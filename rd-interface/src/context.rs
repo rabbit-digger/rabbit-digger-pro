@@ -23,7 +23,7 @@ pub trait CommonField: DeserializeOwned + Serialize + 'static {
 #[derive(Debug, Clone)]
 pub struct Context {
     data: HashMap<String, Value>,
-    composite_list: Vec<String>,
+    net_list: Vec<String>,
 }
 
 impl Context {
@@ -31,7 +31,7 @@ impl Context {
     pub fn new() -> Context {
         Context {
             data: HashMap::new(),
-            composite_list: Vec::new(),
+            net_list: Vec::new(),
         }
     }
     /// new a context from socket addr
@@ -80,13 +80,13 @@ impl Context {
     pub fn get_common<T: CommonField>(&self) -> Result<T> {
         self.get(T::KEY)
     }
-    /// Add composite to composite_list
-    pub fn append_composite(&mut self, composite_name: impl Into<String>) {
-        self.composite_list.push(composite_name.into())
+    /// Add net to net_list
+    pub fn append_net(&mut self, net_name: impl Into<String>) {
+        self.net_list.push(net_name.into())
     }
-    /// Get composite_list
-    pub fn composite_list(&self) -> &Vec<String> {
-        &self.composite_list
+    /// Get net_list
+    pub fn net_list(&self) -> &Vec<String> {
+        &self.net_list
     }
 }
 

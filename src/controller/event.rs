@@ -1,9 +1,10 @@
-use std::time::Instant;
+use std::time::SystemTime;
 
 use rd_interface::{Address, Arc};
+use serde_derive::Serialize;
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum EventType {
     NewTcp(Address),
     CloseConnection,
@@ -11,11 +12,11 @@ pub enum EventType {
     Inbound(usize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Event {
     pub uuid: Uuid,
     pub event_type: EventType,
-    pub time: Instant,
+    pub time: SystemTime,
 }
 
 pub type BatchEvent = Vec<Arc<Event>>;
@@ -25,7 +26,7 @@ impl Event {
         Event {
             uuid,
             event_type,
-            time: Instant::now(),
+            time: SystemTime::now(),
         }
     }
 }

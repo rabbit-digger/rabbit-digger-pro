@@ -1,3 +1,4 @@
+use serde_derive::{Deserialize, Serialize};
 use std::{
     fmt,
     io::{Error, ErrorKind, Result},
@@ -5,7 +6,7 @@ use std::{
 };
 
 /// Address can be IPv4, IPv6 address or a domain with port.
-#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord)]
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub enum Address {
     SocketAddr(SocketAddr),
     Domain(String, u16),

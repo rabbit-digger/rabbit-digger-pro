@@ -62,7 +62,6 @@ impl Rule {
     }
     pub async fn get_rule_append(&self, ctx: &mut Context, target: &Address) -> Result<&RuleItem> {
         let rule = self.get_rule(ctx, target).await?;
-        ctx.append_composite(&rule.target_name);
         Ok(rule)
     }
 }
