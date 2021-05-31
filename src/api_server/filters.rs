@@ -7,23 +7,55 @@ use tokio::sync::Mutex;
 use warp::{Filter, Rejection};
 
 pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
-    let at = access_token(server.access_token);
+    let at = check_access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
     // TODO: read or write userdata by API
     let userdata = &server
         .userdata
         .or(dirs::config_dir().map(|d| d.join("rabbit-digger")));
     let ctl = &server.controller;
+    let stopper: Arc<Mutex<Option<OnceConfigStopper>>> = Arc::new(Mutex::new(None));
+
+    let get_config = warp::path!("config")
+        .and(warp::get())
+        .and(with_ctl(ctl))
+        .and_then(handlers::get_config);
+    let post_config = warp::path!("config")
+        .and(warp::post())
+        .and(with_ctl(ctl))
+        .and(warp::body::json())
+        .and(warp::any().map(move || stopper.clone()))
+        .and_then(handlers::post_config);
+    let get_registry = warp::path!("registry")
+        .and(warp::get())
+        .and(with_ctl(ctl))
+        .and_then(handlers::get_registry);
+    let get_state = warp::path!("state")
+        .and(warp::get())
+        .and(with_ctl(ctl))
+        .and_then(handlers::get_state);
+
+    let get_userdata = warp::path("userdata")
+        .and(warp::get())
+        .and(with_userdata(userdata))
+        .and(warp::path::tail())
+        .and_then(handlers::get_userdata);
+    let put_userdata = warp::path("userdata")
+        .and(warp::put())
+        .and(with_userdata(userdata))
+        .and(warp::path::tail())
+        .and(warp::body::stream())
+        .and_then(handlers::put_userdata);
 
     prefix.and(
         ws_event(&server.controller)
             .or(at.and(
-                get_config(ctl)
-                    .or(post_config(ctl))
-                    .or(get_registry(ctl))
-                    .or(get_state(ctl))
-                    .or(get_userdata(&userdata))
-                    .or(put_userdata(&userdata)),
+                get_config
+                    .or(post_config)
+                    .or(get_registry)
+                    .or(get_state)
+                    .or(get_userdata)
+                    .or(put_userdata),
             ))
             .recover(handle_rejection),
     )
@@ -49,70 +81,6 @@ pub fn routes(
         .allow_methods(["GET", "POST"]);
 
     return api(server).or(forward).with(cors);
-}
-
-// GET /config
-pub fn get_config(
-    ctl: &Controller,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("config")
-        .and(warp::get())
-        .and(with_ctl(ctl))
-        .and_then(handlers::get_config)
-}
-
-// POST /config
-pub fn post_config(
-    ctl: &Controller,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    let stopper: Arc<Mutex<Option<OnceConfigStopper>>> = Arc::new(Mutex::new(None));
-    warp::path!("config")
-        .and(warp::post())
-        .and(with_ctl(ctl))
-        .and(warp::body::json())
-        .and(warp::any().map(move || stopper.clone()))
-        .and_then(handlers::post_config)
-}
-
-// GET /registry
-pub fn get_registry(
-    ctl: &Controller,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("registry")
-        .and(warp::get())
-        .and(with_ctl(ctl))
-        .and_then(handlers::get_registry)
-}
-
-// GET /state
-pub fn get_state(
-    ctl: &Controller,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("state")
-        .and(warp::get())
-        .and(with_ctl(ctl))
-        .and_then(handlers::get_state)
-}
-
-pub fn get_userdata(
-    userdata: &Option<PathBuf>,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("userdata")
-        .and(warp::get())
-        .and(with_userdata(userdata))
-        .and(warp::path::tail())
-        .and_then(handlers::get_userdata)
-}
-
-pub fn put_userdata(
-    userdata: &Option<PathBuf>,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("userdata")
-        .and(warp::put())
-        .and(with_userdata(userdata))
-        .and(warp::path::tail())
-        .and(warp::body::stream())
-        .and_then(handlers::put_userdata)
 }
 
 // Websocket /event
@@ -143,7 +111,7 @@ fn with_userdata(
     }
 }
 
-fn access_token(
+fn check_access_token(
     access_token: Option<String>,
 ) -> impl Filter<Extract = (), Error = Rejection> + Clone {
     warp::header::optional::<String>("authorization")
