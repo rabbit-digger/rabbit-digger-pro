@@ -7,8 +7,8 @@ use std::{
 
 use super::event::{Event, EventType};
 use rd_interface::{
-    async_trait, Address, AsyncRead, AsyncWrite, INet, IntoDyn, Net, ReadBuf, TcpListener,
-    UdpSocket,
+    async_trait, context::common_field, Address, AsyncRead, AsyncWrite, INet, IntoDyn, Net,
+    ReadBuf, TcpListener, UdpSocket,
 };
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -26,6 +26,13 @@ impl INet for ControllerServerNet {
         addr: Address,
     ) -> rd_interface::Result<rd_interface::TcpStream> {
         let tcp = self.net.tcp_connect(ctx, addr.clone()).await?;
+        let src = ctx
+            .get_common::<common_field::SourceAddress>()
+            .map(|s| s.addr.to_string())
+            .unwrap_or_default();
+
+        tracing::info!("{:?} {} -> {}", &ctx.net_list(), &src, &addr,);
+
         let tcp = TcpStream::new(tcp, self.sender.clone());
         tcp.send(EventType::NewTcp(addr));
         Ok(tcp.into_dyn())

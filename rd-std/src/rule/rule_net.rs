@@ -44,7 +44,7 @@ impl Rule {
 
         for rule in self.rule.iter() {
             if rule.matcher.match_rule(ctx, &target).await {
-                tracing::info!(
+                tracing::trace!(
                     "[{}] {} -> {} matched rule: {:?}",
                     &rule.target_name,
                     &src,
