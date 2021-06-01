@@ -8,7 +8,7 @@ use crate::{
     Registry,
 };
 
-use self::event::{BatchEvent, Event};
+pub use self::event::{BatchEvent, Event};
 use anyhow::{anyhow, Context, Result};
 use futures::{
     channel::oneshot,
