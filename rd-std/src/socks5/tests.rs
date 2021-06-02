@@ -2,6 +2,8 @@ use super::*;
 use crate::builtin::local::{LocalConfig, LocalNet};
 use crate::tests::{assert_echo, get_registry, spawn_echo_server};
 use rd_interface::{IServer, IntoDyn};
+use std::time::Duration;
+use tokio::time::sleep;
 
 #[test]
 fn test_socks5_smoke() {
@@ -16,6 +18,8 @@ async fn test_socks5_server_client() {
 
     let server = server::Socks5::new(local.clone(), local.clone(), "127.0.0.1:16666".to_string());
     tokio::spawn(async move { server.start().await });
+
+    sleep(Duration::from_secs(1)).await;
 
     let client = client::Socks5Client::new(local, "127.0.0.1".to_string(), 16666).into_dyn();
 
