@@ -20,7 +20,10 @@ struct Args {
 }
 
 async fn real_main(args: Args) -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("rabbit_digger=trace")).init();
+    if std::env::var_os("RUST_LOG").is_none() {
+        std::env::set_var("RUST_LOG", "rabbit_digger=trace")
+    }
+    tracing_subscriber::fmt::init();
 
     let content = read_to_string(args.config).await?;
     let config: Config = serde_yaml::from_str(&content)?;
