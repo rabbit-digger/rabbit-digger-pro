@@ -45,3 +45,7 @@ members = [
 lto = true
 codegen-units = 1
 panic = 'abort'
+
+[[bin]]
+name = "rabbit-digger"
+required-features = ["tracing-subscriber"]

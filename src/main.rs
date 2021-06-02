@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use env_logger::Env;
 use rabbit_digger::{config::Config, controller};
 use structopt::StructOpt;
 use tokio::fs::read_to_string;
