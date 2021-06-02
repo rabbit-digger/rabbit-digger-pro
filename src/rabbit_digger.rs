@@ -85,6 +85,11 @@ impl RabbitDiggerBuilder {
             .collect();
         let nets = build_net(&registry, all_net, &config.server, wrap_net)?;
         let servers = build_server(&registry, &nets, &config.server, wrap_server_net)?;
+        tracing::debug!(
+            "net and server are built. net count: {}, server count: {}",
+            nets.len(),
+            servers.len()
+        );
 
         Ok(RabbitDigger {
             config,
