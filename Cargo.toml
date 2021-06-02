@@ -33,6 +33,9 @@ rd-interface = { path = "./rabbit-digger/rd-interface/", version = "0.4" }
 ss = { path = "./ss", optional = true }
 trojan = { path = "./trojan", optional = true }
 
+[dev-dependencies]
+rusty-hook = "0.11.0"
+
 [features]
 default = [ "api_server", "translate", "ss", "trojan" ]
 translate = []
