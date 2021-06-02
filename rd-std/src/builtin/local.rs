@@ -12,13 +12,15 @@ use rd_interface::{
 use serde_derive::Deserialize;
 use tokio::net;
 
-#[derive(Debug, Deserialize, Config, JsonSchema, Clone)]
+#[derive(Debug, Deserialize, Config, JsonSchema, Clone, Default)]
 pub struct LocalConfig {
     /// set ttl
     #[serde(default)]
-    ttl: Option<u32>,
+    pub ttl: Option<u32>,
+
+    /// set nodelay
     #[serde(default)]
-    nodelay: Option<bool>,
+    pub nodelay: Option<bool>,
 }
 
 pub struct LocalNet(LocalConfig);
@@ -27,10 +29,11 @@ pub struct Listener(net::TcpListener, LocalConfig);
 pub struct Udp(net::UdpSocket);
 
 impl LocalNet {
-    fn new(config: LocalConfig) -> LocalNet {
+    pub fn new(config: LocalConfig) -> LocalNet {
         LocalNet(config)
     }
 }
+
 async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
     use tokio::net::lookup_host;
 

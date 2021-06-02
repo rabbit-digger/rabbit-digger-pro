@@ -1,9 +1,11 @@
+pub use client::Socks5Client;
+pub use server::Socks5Server;
+
 mod client;
 mod common;
 mod server;
-
-pub use client::Socks5Client;
-pub use server::Socks5Server;
+#[cfg(test)]
+mod tests;
 
 use rd_interface::{
     registry::{NetFactory, NetRef, ServerFactory},
