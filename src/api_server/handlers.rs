@@ -107,12 +107,8 @@ async fn forward(
 pub async fn ws_event(ctl: Controller, ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
     let sub = BroadcastStream::new(ctl.get_subscriber().await);
     let sub = sub.map_ok(|i| {
-        Message::text(
-            i.into_iter()
-                .map(|e| format!("{:?}", e))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        )
+        let events = serde_json::to_string(&i).unwrap();
+        Message::text(events)
     });
     Ok(ws.on_upgrade(move |ws| async move {
         if let Err(e) = forward(sub, ws).await {
