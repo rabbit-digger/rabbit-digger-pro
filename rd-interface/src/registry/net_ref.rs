@@ -5,8 +5,15 @@ use schemars::{
     JsonSchema,
 };
 use serde::{de, ser};
-use std::{fmt, ops::Deref, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap, LinkedList, VecDeque},
+    fmt,
+    ops::Deref,
+    sync::Arc,
+};
 
+/// `NetRef` represents a reference to another `Net`. It is a string in the configuration file.
+/// The default value is `"local"`.
 #[derive(Clone)]
 pub struct NetRef {
     name: String,
@@ -82,6 +89,16 @@ impl<'de> de::Deserialize<'de> for NetRef {
                 write!(formatter, "Net name string")
             }
 
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(NetRef {
+                    name: v.to_string(),
+                    net: None,
+                })
+            }
+
             fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
             where
                 E: de::Error,
@@ -109,10 +126,13 @@ impl JsonSchema for NetRef {
     }
 }
 
+/// `ResolveNetRef` parses all internal `NetRef`s from strings to real `Net` values.
 pub trait ResolveNetRef {
+    /// After calling resolve, all internal `NetRef`s will be filled with the corresponding Net in `nets`.
     fn resolve(&mut self, _nets: &NetMap) -> Result<()> {
         Ok(())
     }
+    /// Get all internal `NetRef`s.
     fn get_dependency(&mut self) -> Result<Vec<String>> {
         let noop = Arc::new(NotImplementedNet);
         let mut tmp_map = NetMap::new();
@@ -145,21 +165,58 @@ macro_rules! impl_empty_resolve {
         impl ResolveNetRef for $x {}
     )*)
 }
+macro_rules! impl_container_resolve {
+    ($($x:ident),+ $(,)?) => ($(
+        impl<T: ResolveNetRef> ResolveNetRef for $x<T> {
+			fn resolve(&mut self, nets: &NetMap) -> Result<()> {
+				for i in self.iter_mut() {
+					i.resolve(nets)?;
+				}
+				Ok(())
+			}
+		}
+    )*)
+}
+macro_rules! impl_key_container_resolve {
+    ($($x:ident),+ $(,)?) => ($(
+        impl<K, T: ResolveNetRef> ResolveNetRef for $x<K, T> {
+			fn resolve(&mut self, nets: &NetMap) -> Result<()> {
+				for (_, i) in self.iter_mut() {
+					i.resolve(nets)?;
+				}
+				Ok(())
+			}
+		}
+    )*)
+}
 
 impl_empty_resolve! { String, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, bool, f32, f64 }
-impl<T: ResolveNetRef> ResolveNetRef for Vec<T> {
-    fn resolve(&mut self, nets: &NetMap) -> Result<()> {
-        for i in self.iter_mut() {
-            i.resolve(nets)?;
+impl_container_resolve! { Vec, Option, VecDeque, Result, LinkedList }
+impl_key_container_resolve! { HashMap, BTreeMap }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{IntoDyn, NotImplementedNet};
+    use serde_derive::Deserialize;
+
+    #[test]
+    fn test_net_ref() {
+        #[derive(Deserialize)]
+        struct TestConfig {
+            net: Vec<NetRef>,
         }
-        Ok(())
-    }
-}
-impl<T: ResolveNetRef> ResolveNetRef for Option<T> {
-    fn resolve(&mut self, nets: &NetMap) -> Result<()> {
-        for i in self.iter_mut() {
-            i.resolve(nets)?;
-        }
-        Ok(())
+
+        let mut test: TestConfig = serde_json::from_str(r#"{ "net": ["test"] }"#).unwrap();
+
+        assert_eq!(test.net[0].name(), "test");
+
+        let mut net_map = NetMap::new();
+        let noop = NotImplementedNet.into_dyn();
+
+        net_map.insert("test".to_string(), noop.clone());
+        test.net.resolve(&net_map).unwrap();
+
+        assert_eq!(Arc::as_ptr(&test.net[0]), Arc::as_ptr(&noop))
     }
 }
