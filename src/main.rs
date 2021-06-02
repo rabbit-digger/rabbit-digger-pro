@@ -136,6 +136,7 @@ async fn main(args: Args) -> Result<()> {
         }
         Some(Command::Server { api_server }) => {
             let controller = Controller::new();
+            controller.set_plugin_loader(plugin_loader).await;
 
             run_api_server(&controller, &api_server).await?;
 
