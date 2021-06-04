@@ -4,14 +4,17 @@ use rd_interface::{
     async_trait, impl_async_read_write,
     registry::ResolveNetRef,
     schemars::{self, JsonSchema},
-    Address as RDAddress, ITcpStream, IUdpSocket, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    Address as RDAddress, AsyncRead, AsyncWrite, ITcpStream, IUdpSocket, ReadBuf, TcpStream,
+    UdpSocket, NOT_IMPLEMENTED,
 };
 use serde_derive::{Deserialize, Serialize};
 use shadowsocks::{
-    context::SharedContext, crypto::v1::CipherKind, relay::socks5::Address as SSAddress,
+    context::SharedContext,
+    crypto::v1::CipherKind,
+    relay::{socks5::Address as SSAddress, tcprelay::crypto_io},
     ProxyClientStream, ServerAddr, ServerConfig,
 };
-use std::{net::SocketAddr, str::FromStr};
+use std::{io, net::SocketAddr, pin::Pin, str::FromStr, task};
 
 pub struct WrapAddress(pub RDAddress);
 
@@ -31,7 +34,7 @@ impl Into<SSAddress> for WrapAddress {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Cipher {
     #[serde(rename = "none")]
     NONE,
@@ -244,5 +247,57 @@ impl IUdpSocket for WrapSSUdp {
         }
 
         Ok(send_len)
+    }
+}
+
+pub struct CryptoStream<S>(crypto_io::CryptoStream<S>, SharedContext);
+
+impl<S> CryptoStream<S> {
+    pub fn from_stream(context: SharedContext, stream: S, method: CipherKind, key: &[u8]) -> Self {
+        CryptoStream(
+            crypto_io::CryptoStream::<S>::from_stream(&context, stream, method, key),
+            context,
+        )
+    }
+}
+
+impl<S> AsyncRead for CryptoStream<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> task::Poll<io::Result<()>> {
+        let CryptoStream(s, c) = Pin::get_mut(self);
+        s.poll_read_decrypted(cx, &c, buf)
+    }
+}
+
+impl<S> AsyncWrite for CryptoStream<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+    ) -> task::Poll<Result<usize, io::Error>> {
+        self.0.poll_write_encrypted(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Result<(), io::Error>> {
+        self.0.poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Result<(), io::Error>> {
+        self.0.poll_shutdown(cx)
     }
 }
