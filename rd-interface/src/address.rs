@@ -27,14 +27,15 @@ fn no_addr() -> Error {
     ErrorKind::AddrNotAvailable.into()
 }
 
-fn host_to_address(host: &str, port: u16) -> Address {
-    let host = host
-        .strip_prefix('[')
+fn strip_brackets(host: &str) -> &str {
+    host.strip_prefix('[')
         .map(|h| h.strip_suffix(']'))
         .flatten()
-        .unwrap_or(host);
+        .unwrap_or(host)
+}
 
-    match str::parse::<IpAddr>(host) {
+fn host_to_address(host: &str, port: u16) -> Address {
+    match strip_brackets(host).parse::<IpAddr>() {
         Ok(ip) => {
             let addr = SocketAddr::new(ip, port);
             addr.into()
@@ -116,7 +117,7 @@ impl Address {
     {
         match self {
             Address::SocketAddr(s) => Ok(*s),
-            Address::Domain(d, p) => match str::parse::<IpAddr>(d) {
+            Address::Domain(d, p) => match strip_brackets(d).parse::<IpAddr>() {
                 Ok(ip) => Ok(SocketAddr::new(ip, *p)),
                 Err(_) => f(d.to_string(), *p).await,
             },
