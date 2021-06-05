@@ -131,7 +131,7 @@ pub struct Channel {
 }
 
 impl Channel {
-    pub async fn send(&mut self, cmd: CommandRequest) -> Result<()> {
+    pub async fn send(&mut self, cmd: impl serde::Serialize) -> Result<()> {
         let channel = &mut self.tcp;
         let cmd = bincode::serialize(&cmd).map_err(|e| Error::Other(e))?;
         channel.write_u16(cmd.len() as u16).await?;
@@ -139,7 +139,7 @@ impl Channel {
         Ok(())
     }
 
-    pub async fn recv(&mut self) -> Result<CommandResponse> {
+    pub async fn recv<D: serde::de::DeserializeOwned>(&mut self) -> Result<D> {
         let channel = &mut self.tcp;
         let len = channel.read_u16().await?;
         let mut buf = vec![0u8; len as usize];
