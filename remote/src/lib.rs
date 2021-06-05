@@ -6,6 +6,7 @@ use rd_interface::{
     Config, Net, Registry, Result,
 };
 use serde_derive::Deserialize;
+use server::RemoteServer;
 
 mod net;
 mod protocol;
@@ -19,7 +20,7 @@ pub struct RemoteNetConfig {
 }
 
 impl NetFactory for RemoteNet {
-    const NAME: &'static str = "shadowsocks";
+    const NAME: &'static str = "remote";
     type Config = RemoteNetConfig;
     type Net = Self;
 
@@ -29,19 +30,20 @@ impl NetFactory for RemoteNet {
     }
 }
 
-// impl ServerFactory for SSServer {
-//     const NAME: &'static str = "shadowsocks";
-//     type Config = SSServerConfig;
-//     type Server = Self;
+impl ServerFactory for RemoteServer {
+    const NAME: &'static str = "remote";
+    type Config = protocol::Config;
+    type Server = Self;
 
-//     fn new(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
-//         Ok(SSServer::new(listen, net, cfg))
-//     }
-// }
+    fn new(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
+        let protocol = get_protocol(listen, cfg)?;
+        Ok(RemoteServer::new(protocol, net))
+    }
+}
 
 pub fn init(registry: &mut Registry) -> Result<()> {
-    // registry.add_net::<SSNet>();
-    // registry.add_server::<SSServer>();
+    registry.add_net::<RemoteNet>();
+    registry.add_server::<RemoteServer>();
 
     Ok(())
 }
