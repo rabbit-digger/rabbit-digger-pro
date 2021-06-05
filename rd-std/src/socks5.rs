@@ -1,11 +1,4 @@
-pub use client::Socks5Client;
-pub use server::Socks5Server;
-
-mod client;
-mod common;
-mod server;
-#[cfg(test)]
-mod tests;
+pub use self::{client::Socks5Client, server::Socks5Server};
 
 use rd_interface::{
     registry::{NetFactory, NetRef, ServerFactory},
@@ -13,6 +6,12 @@ use rd_interface::{
     Config, Net, Registry, Result,
 };
 use serde_derive::Deserialize;
+
+mod client;
+mod common;
+mod server;
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ClientConfig {
