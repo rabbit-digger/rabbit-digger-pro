@@ -14,14 +14,14 @@ fn test_http_smoke() {
 #[tokio::test]
 async fn test_http_server_client() {
     let local = LocalNet::new(LocalConfig::default()).into_dyn();
-    spawn_echo_server(&local, "127.0.0.1:26666").await;
+    spawn_echo_server(&local, "127.0.0.1:26667").await;
 
-    let server = server::Http::new(local.clone(), local.clone(), "127.0.0.1:16666".to_string());
+    let server = server::Http::new(local.clone(), local.clone(), "127.0.0.1:16667".to_string());
     tokio::spawn(async move { server.start().await });
 
     sleep(Duration::from_secs(1)).await;
 
-    let client = client::HttpClient::new(local, "127.0.0.1".to_string(), 16666).into_dyn();
+    let client = client::HttpClient::new(local, "127.0.0.1".to_string(), 16667).into_dyn();
 
-    assert_echo(&client, "127.0.0.1:26666").await;
+    assert_echo(&client, "127.0.0.1:26667").await;
 }

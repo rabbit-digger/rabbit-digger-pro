@@ -49,8 +49,9 @@ impl INet for HttpClient {
             .body(Body::empty())
             .unwrap();
         let connection = connection.without_shutdown();
-        let _connect_resp = request_sender.send_request(connect_req).await.map_err(map_err)?;
+        let _connect_resp = request_sender.send_request(connect_req);
         let io = connection.await.map_err(map_err)?.io;
+        let _connect_resp = _connect_resp.await.map_err(map_err)?;
         Ok(HttpTcpStream(io).into_dyn())
     }
 
