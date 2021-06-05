@@ -99,7 +99,7 @@ pub struct Controller {
     event_sender: mpsc::UnboundedSender<Event>,
 }
 
-async fn process(mut rx: mpsc::UnboundedReceiver<Event>, sender: broadcast::Sender<BatchEvent>) {
+async fn recv_event(mut rx: mpsc::UnboundedReceiver<Event>, sender: broadcast::Sender<BatchEvent>) {
     loop {
         let e = match rx.recv().now_or_never() {
             Some(Some(e)) => e,
@@ -110,14 +110,14 @@ async fn process(mut rx: mpsc::UnboundedReceiver<Event>, sender: broadcast::Send
             }
         };
 
-        let mut events = BatchEvent::with_capacity(16);
-        events.push(Arc::new(e));
+        let mut events = Vec::with_capacity(16);
+        events.push(e);
         while let Some(Some(e)) = rx.recv().now_or_never() {
-            events.push(Arc::new(e));
+            events.push(e);
         }
 
         // Failed only when no receiver
-        sender.send(events).ok();
+        sender.send(Arc::new(events)).ok();
     }
 }
 
@@ -130,7 +130,7 @@ impl Controller {
             builder: RabbitDiggerBuilder::new(),
         }));
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        spawn(process(event_receiver, sender));
+        spawn(recv_event(event_receiver, sender));
         Controller {
             inner,
             event_sender,

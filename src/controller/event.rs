@@ -29,7 +29,7 @@ where
     serializer.serialize_u64(n.as_millis() as u64)
 }
 
-pub type BatchEvent = Vec<Arc<Event>>;
+pub type BatchEvent = Arc<Vec<Event>>;
 
 impl Event {
     pub fn new(uuid: Uuid, event_type: EventType) -> Event {
