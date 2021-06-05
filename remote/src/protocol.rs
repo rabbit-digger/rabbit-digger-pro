@@ -10,6 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::RwLock;
 
 #[derive(Deserialize, JsonSchema, Config)]
+#[serde(tag = "mode", rename_all = "lowercase")]
 pub enum Connection {
     Active { remote: String },
     Passive { bind: String },
@@ -17,7 +18,9 @@ pub enum Connection {
 
 #[derive(Deserialize, JsonSchema, Config)]
 pub struct Config {
+    #[serde(flatten)]
     conn: Connection,
+    #[serde(default)]
     udp_in_tcp: bool,
     token: String,
 }
@@ -103,6 +106,7 @@ pub fn get_protocol(net: Net, config: Config) -> Result<Arc<dyn Protocol>> {
 }
 
 async fn handshake(channel: &mut TcpStream, token: &str) -> Result<()> {
+    channel.write_all(token.as_bytes()).await?;
     let mut buf = vec![0u8; token.len()];
     channel.read_exact(&mut buf).await?;
 

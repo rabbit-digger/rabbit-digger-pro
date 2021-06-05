@@ -16,6 +16,7 @@ mod server;
 pub struct RemoteNetConfig {
     #[serde(default)]
     net: NetRef,
+    #[serde(flatten)]
     config: protocol::Config,
 }
 
