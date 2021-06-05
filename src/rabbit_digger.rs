@@ -162,7 +162,12 @@ fn build_net(
     }
     all_net.insert(
         "_".to_string(),
-        AllNet::Root(server.values().map(|i| i.net.clone()).collect()),
+        AllNet::Root(
+            server
+                .values()
+                .flat_map(|i| [i.net.clone(), i.listen.clone()])
+                .collect(),
+        ),
     );
 
     let all_net = topological_sort(all_net, |n| n.get_dependency(registry))?
