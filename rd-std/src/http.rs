@@ -1,16 +1,43 @@
+pub use self::{client::HttpClient, server::HttpServer};
+
 use rd_interface::{
-    registry::ServerFactory,
+    registry::{NetFactory, NetRef, ServerFactory},
     schemars::{self, JsonSchema},
     Config, Net, Registry, Result,
 };
 use serde_derive::Deserialize;
-pub use server::HttpServer;
 
+mod client;
 mod server;
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug, Deserialize, Config, JsonSchema)]
+pub struct ClientConfig {
+    address: String,
+    port: u16,
+
+    #[serde(default)]
+    net: NetRef,
+}
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ServerConfig {
     bind: String,
+}
+
+impl NetFactory for HttpClient {
+    const NAME: &'static str = "http";
+    type Config = ClientConfig;
+    type Net = Self;
+
+    fn new(config: Self::Config) -> Result<Self> {
+        Ok(HttpClient::new(
+            config.net.net(),
+            config.address,
+            config.port,
+        ))
+    }
 }
 
 impl ServerFactory for server::Http {
@@ -24,6 +51,7 @@ impl ServerFactory for server::Http {
 }
 
 pub fn init(registry: &mut Registry) -> Result<()> {
+    registry.add_net::<HttpClient>();
     registry.add_server::<server::Http>();
     Ok(())
 }
