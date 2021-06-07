@@ -1,0 +1,17 @@
+[package]
+name = "raw"
+version = "0.1.0"
+authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.4" }
+# rd-interface = "0.3"
+serde_derive = "1.0"
+serde = "1.0"
+tracing = "0.1.26"
+tokio-smoltcp = "0.1.1"
+smoltcp = "0.7"
+tokio = { version = "1.5.0", features = ["rt"] }
+pcap = "0.8.1"
+futures = "0.3"

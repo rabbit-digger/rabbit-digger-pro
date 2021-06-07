@@ -33,12 +33,13 @@ rd-interface = { path = "./rabbit-digger/rd-interface/", version = "0.4" }
 ss = { path = "./protocol/ss", optional = true }
 trojan = { path = "./protocol/trojan", optional = true }
 remote = { path = "./protocol/remote", optional = true }
+raw = { path = "./protocol/raw", optional = true }
 
 [dev-dependencies]
 rusty-hook = "0.11.0"
 
 [features]
-default = [ "api_server", "translate", "ss", "trojan", "remote" ]
+default = [ "api_server", "translate", "ss", "trojan", "remote", "raw" ]
 translate = []
 api_server = [ "warp", "dirs" ]
 local_log = [ "rabbit-digger/local_log" ]
@@ -48,6 +49,7 @@ members = [
     "protocol/ss",
     "protocol/trojan",
     "protocol/remote",
+    "protocol/raw",
 ]
 exclude = ["rabbit-digger"]
 
