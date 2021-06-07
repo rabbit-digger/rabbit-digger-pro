@@ -30,9 +30,9 @@ warp = { version = "0.3.1", default-features = false, features = ["websocket"], 
 dirs = { version = "3.0.2", optional = true }
 rd-interface = { path = "./rabbit-digger/rd-interface/", version = "0.4" }
 
-ss = { path = "./ss", optional = true }
-trojan = { path = "./trojan", optional = true }
-remote = { path = "./remote", optional = true }
+ss = { path = "./protocol/ss", optional = true }
+trojan = { path = "./protocol/trojan", optional = true }
+remote = { path = "./protocol/remote", optional = true }
 
 [dev-dependencies]
 rusty-hook = "0.11.0"
@@ -45,9 +45,9 @@ local_log = [ "rabbit-digger/local_log" ]
 
 [workspace]
 members = [
-    "ss",
-    "trojan",
-    "remote",
+    "protocol/ss",
+    "protocol/trojan",
+    "protocol/remote",
 ]
 exclude = ["rabbit-digger"]
 
