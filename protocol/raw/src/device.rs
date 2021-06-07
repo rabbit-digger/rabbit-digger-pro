@@ -3,11 +3,23 @@ use rd_interface::{Error, ErrorContext, Result};
 use tokio_smoltcp::device::Interface;
 
 pub fn get_device(name: &str) -> Result<Device> {
-    Device::list()
-        .context("Failed to list device")?
-        .into_iter()
-        .find(|d| d.name == name)
-        .ok_or(Error::Other("Device not found".into()))
+    let mut devices = Device::list().context("Failed to list device")?;
+
+    if let Some(id) = devices.iter().position(|d| d.name == name) {
+        Ok(devices.remove(id))
+    } else {
+        Err(Error::Other(
+            format!(
+                "Failed to find device {} from {:?}",
+                name,
+                devices
+                    .into_iter()
+                    .map(|i| format!("[{}] {}", i.name, i.desc.unwrap_or_default()))
+                    .collect::<Vec<String>>()
+            )
+            .into(),
+        ))
+    }
 }
 
 #[cfg(unix)]
