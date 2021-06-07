@@ -39,7 +39,7 @@ raw = { path = "./protocol/raw", optional = true }
 rusty-hook = "0.11.0"
 
 [features]
-default = [ "api_server", "translate", "ss", "trojan", "remote", "raw" ]
+default = [ "api_server", "translate", "ss", "trojan", "remote" ]
 translate = []
 api_server = [ "warp", "dirs" ]
 local_log = [ "rabbit-digger/local_log" ]
