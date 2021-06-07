@@ -1,11 +1,8 @@
-use super::event::Event;
 use rd_interface::{async_trait, Address, INet, Net, TcpListener, UdpSocket};
-use tokio::sync::mpsc;
 
 pub struct ControllerNet {
     pub net_name: String,
     pub net: Net,
-    pub sender: mpsc::UnboundedSender<Event>,
 }
 
 #[async_trait]

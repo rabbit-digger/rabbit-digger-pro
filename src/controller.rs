@@ -1,3 +1,4 @@
+mod connection;
 mod event;
 mod server_net;
 mod wrap_net;
@@ -8,6 +9,7 @@ use crate::{
     Registry,
 };
 
+use self::connection::ConnectionConfig;
 pub use self::event::{BatchEvent, Event};
 use anyhow::{anyhow, Context, Result};
 use futures::{
@@ -96,7 +98,7 @@ impl State {
 #[derive(Clone)]
 pub struct Controller {
     inner: Arc<RwLock<Inner>>,
-    event_sender: mpsc::UnboundedSender<Event>,
+    config: ConnectionConfig,
 }
 
 async fn recv_event(mut rx: mpsc::UnboundedReceiver<Event>, sender: broadcast::Sender<BatchEvent>) {
@@ -133,7 +135,7 @@ impl Controller {
         spawn(recv_event(event_receiver, sender));
         Controller {
             inner,
-            event_sender,
+            config: ConnectionConfig::new(event_sender),
         }
     }
 
@@ -220,18 +222,13 @@ impl Controller {
     }
 
     pub fn get_net(&self, net_name: String, net: Net) -> Net {
-        wrap_net::ControllerNet {
-            net_name,
-            net,
-            sender: self.event_sender.clone(),
-        }
-        .into_dyn()
+        wrap_net::ControllerNet { net_name, net }.into_dyn()
     }
 
     pub fn get_server_net(&self, net: Net) -> Net {
         server_net::ControllerServerNet {
             net,
-            sender: self.event_sender.clone(),
+            config: self.config.clone(),
         }
         .into_dyn()
     }

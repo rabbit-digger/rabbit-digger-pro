@@ -5,17 +5,18 @@ use std::{
     task::{Context, Poll},
 };
 
-use super::event::{Event, EventType};
+use super::{
+    connection::{Connection, ConnectionConfig},
+    event::EventType,
+};
 use rd_interface::{
     async_trait, context::common_field, Address, AsyncRead, AsyncWrite, INet, IntoDyn, Net,
     ReadBuf, TcpListener, UdpSocket,
 };
-use tokio::sync::mpsc;
-use uuid::Uuid;
 
 pub struct ControllerServerNet {
     pub net: Net,
-    pub sender: mpsc::UnboundedSender<Event>,
+    pub config: ConnectionConfig,
 }
 
 #[async_trait]
@@ -33,8 +34,7 @@ impl INet for ControllerServerNet {
 
         tracing::info!("{:?} {} -> {}", &ctx.net_list(), &src, &addr,);
 
-        let tcp = TcpStream::new(tcp, self.sender.clone());
-        tcp.send(EventType::NewTcp(addr));
+        let tcp = TcpStream::new(tcp, self.config.clone(), addr);
         Ok(tcp.into_dyn())
     }
 
@@ -59,28 +59,18 @@ impl INet for ControllerServerNet {
 
 pub struct TcpStream {
     inner: rd_interface::TcpStream,
-    sender: mpsc::UnboundedSender<Event>,
-    uuid: Uuid,
-}
-
-impl Drop for TcpStream {
-    fn drop(&mut self) {
-        self.send(EventType::CloseConnection);
-    }
+    conn: Connection,
 }
 
 impl TcpStream {
-    pub fn send(&self, event_type: EventType) {
-        if self.sender.send(Event::new(self.uuid, event_type)).is_err() {
-            tracing::warn!("Failed to send event");
-        }
-    }
-    pub fn new(inner: rd_interface::TcpStream, sender: mpsc::UnboundedSender<Event>) -> TcpStream {
-        let uuid = Uuid::new_v4();
+    pub fn new(
+        inner: rd_interface::TcpStream,
+        config: ConnectionConfig,
+        addr: Address,
+    ) -> TcpStream {
         TcpStream {
             inner,
-            sender,
-            uuid,
+            conn: Connection::new(config, EventType::NewTcp(addr)),
         }
     }
 }
@@ -95,7 +85,7 @@ impl AsyncRead for TcpStream {
         match Pin::new(&mut self.inner).poll_read(cx, buf) {
             Poll::Ready(Ok(())) => {
                 let s = buf.filled().len() - before;
-                self.send(EventType::Inbound(s));
+                self.conn.send(EventType::Inbound(s));
                 Ok(()).into()
             }
             r => r,
@@ -110,7 +100,7 @@ impl AsyncWrite for TcpStream {
     ) -> Poll<io::Result<usize>> {
         match Pin::new(&mut self.inner).poll_write(cx, buf) {
             Poll::Ready(Ok(s)) => {
-                self.send(EventType::Outbound(s));
+                self.conn.send(EventType::Outbound(s));
                 Ok(s).into()
             }
             r => r,
