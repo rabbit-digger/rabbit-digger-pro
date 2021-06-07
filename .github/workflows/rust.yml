@@ -8,7 +8,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
             artifact_name: rabbit-digger-pro
@@ -16,6 +16,9 @@ jobs:
           - os: windows-latest
             artifact_name: rabbit-digger-pro.exe
             release_name: rabbit-digger-pro-windows-amd64.exe
+          - os: macos-latest
+            artifact_name: rabbit-digger-pro
+            release_name: rabbit-digger-pro-macos-amd64
     steps:
       - uses: actions/checkout@v2
         with:
