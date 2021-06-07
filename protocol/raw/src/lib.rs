@@ -55,7 +55,8 @@ impl RawNet {
             gateway,
             buffer_size: Default::default(),
         };
-        let device = FutureDevice::new(device::get_by_device(device)?, config.mtu);
+        let mut device = FutureDevice::new(device::get_by_device(device)?, config.mtu);
+        device.caps.max_burst_size = Some(100);
 
         let (net, fut) = Net::new(device, net_config);
         tokio::spawn(fut);
