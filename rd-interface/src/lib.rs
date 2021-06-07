@@ -1,6 +1,6 @@
 pub use address::{Address, IntoAddress};
 pub use context::Context;
-pub use error::{Error, Result, NOT_ENABLED, NOT_IMPLEMENTED};
+pub use error::{Error, ErrorContext, ErrorWithContext, Result, NOT_ENABLED, NOT_IMPLEMENTED};
 pub use interface::*;
 pub use rd_derive::Config;
 pub use registry::Registry;
