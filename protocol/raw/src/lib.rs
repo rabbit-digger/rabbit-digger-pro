@@ -53,6 +53,7 @@ impl RawNet {
             ethernet_addr,
             ip_addr,
             gateway,
+            buffer_size: Default::default(),
         };
         let device = FutureDevice::new(device::get_by_device(device)?, config.mtu);
 
