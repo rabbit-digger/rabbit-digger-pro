@@ -3,37 +3,56 @@ use std::{
     net::SocketAddr,
 };
 
+use futures::{future::BoxFuture, FutureExt};
 use rd_interface::{
     async_trait,
     registry::{NetFactory, NetRef},
     schemars::{self, JsonSchema},
-    Address, Config, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    Address, Arc, Config, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
 use serde_derive::Deserialize;
 
-pub struct Udp(UdpSocket);
+type Resolver =
+    Arc<dyn Fn(String, u16) -> BoxFuture<'static, io::Result<SocketAddr>> + Send + Sync>;
+pub struct Udp(UdpSocket, Resolver);
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ResolveConfig {
     net: NetRef,
+    #[serde(default = "bool_true")]
+    ipv4: bool,
+    #[serde(default = "bool_true")]
+    ipv6: bool,
 }
 
-pub struct ResolveNet(ResolveConfig);
+fn bool_true() -> bool {
+    true
+}
+
+pub struct ResolveNet {
+    config: ResolveConfig,
+    resolver: Resolver,
+}
 
 impl ResolveNet {
     pub fn new(config: ResolveConfig) -> ResolveNet {
-        ResolveNet(config)
+        use tokio::net::lookup_host;
+
+        let (ipv4, ipv6) = (config.ipv4, config.ipv6);
+
+        let resolver: Resolver = Arc::new(move |domain: String, port: u16| {
+            async move {
+                let domain = (domain.as_ref(), port);
+                lookup_host(domain)
+                    .await?
+                    .filter(|i| (ipv4 && i.is_ipv4()) || (ipv6 && i.is_ipv6()))
+                    .next()
+                    .ok_or(io::Error::from(ErrorKind::AddrNotAvailable))
+            }
+            .boxed()
+        });
+        ResolveNet { config, resolver }
     }
-}
-
-async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
-    use tokio::net::lookup_host;
-
-    let domain = (domain.as_ref(), port);
-    lookup_host(domain)
-        .await?
-        .next()
-        .ok_or(ErrorKind::AddrNotAvailable.into())
 }
 
 #[async_trait]
@@ -43,7 +62,7 @@ impl rd_interface::IUdpSocket for Udp {
     }
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        let addr = addr.resolve(lookup_host).await?;
+        let addr = addr.resolve(&*self.1).await?;
         self.0.send_to(buf, addr.into()).await.map_err(Into::into)
     }
 
@@ -59,8 +78,8 @@ impl INet for ResolveNet {
         ctx: &mut rd_interface::Context,
         addr: Address,
     ) -> Result<TcpStream> {
-        let addr = addr.resolve(lookup_host).await?;
-        let tcp = self.0.net.tcp_connect(ctx, addr.into()).await?;
+        let addr = addr.resolve(&*self.resolver).await?;
+        let tcp = self.config.net.tcp_connect(ctx, addr.into()).await?;
         Ok(tcp)
     }
 
@@ -69,13 +88,13 @@ impl INet for ResolveNet {
         ctx: &mut rd_interface::Context,
         addr: Address,
     ) -> Result<TcpListener> {
-        self.0.net.tcp_bind(ctx, addr).await
+        self.config.net.tcp_bind(ctx, addr).await
     }
 
     async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: Address) -> Result<UdpSocket> {
-        let addr = addr.resolve(lookup_host).await?;
-        let udp = self.0.net.udp_bind(ctx, addr.into()).await?;
-        Ok(Udp(udp).into_dyn())
+        let addr = addr.resolve(&*self.resolver).await?;
+        let udp = self.config.net.udp_bind(ctx, addr.into()).await?;
+        Ok(Udp(udp, self.resolver.clone()).into_dyn())
     }
 }
 
