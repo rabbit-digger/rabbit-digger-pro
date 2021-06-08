@@ -1,15 +1,14 @@
 use super::NetMap;
-use crate::{Error, Net, NotImplementedNet, Result};
+use crate::{Net, Result};
 use schemars::{
     schema::{InstanceType, SchemaObject},
     JsonSchema,
 };
 use serde::{de, ser};
 use std::{
-    collections::{BTreeMap, HashMap, LinkedList, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, LinkedList, VecDeque},
     fmt,
     ops::Deref,
-    sync::Arc,
 };
 
 /// `NetRef` represents a reference to another `Net`. It is a string in the configuration file.
@@ -129,23 +128,13 @@ impl JsonSchema for NetRef {
 /// `ResolveNetRef` parses all internal `NetRef`s from strings to real `Net` values.
 pub trait ResolveNetRef {
     /// After calling resolve, all internal `NetRef`s will be filled with the corresponding Net in `nets`.
-    fn resolve(&mut self, _nets: &NetMap) -> Result<()> {
-        Ok(())
-    }
+    fn resolve(&mut self, _nets: &NetMap) -> Result<()>;
     /// Get all internal `NetRef`s.
+    fn get_dependency_set(&mut self, nets: &mut HashSet<String>) -> Result<()>;
     fn get_dependency(&mut self) -> Result<Vec<String>> {
-        let noop = Arc::new(NotImplementedNet);
-        let mut tmp_map = NetMap::new();
-        loop {
-            match self.resolve(&tmp_map) {
-                Ok(_) => break,
-                Err(Error::NotFound(key)) => {
-                    tmp_map.insert(key, noop.clone());
-                }
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(tmp_map.into_iter().map(|i| i.0).collect())
+        let mut nets = HashSet::new();
+        self.get_dependency_set(&mut nets)?;
+        Ok(nets.into_iter().collect())
     }
 }
 
@@ -158,11 +147,23 @@ impl ResolveNetRef for NetRef {
         self.net = Some(net);
         Ok(())
     }
+    fn get_dependency_set(&mut self, nets: &mut HashSet<String>) -> Result<()> {
+        nets.insert(self.name.clone());
+        Ok(())
+    }
 }
 
-macro_rules! impl_empty_resolve {
+#[macro_export]
+macro_rules! impl_empty_net_resolve {
     ($($x:ident),+ $(,)?) => ($(
-        impl ResolveNetRef for $x {}
+        impl rd_interface::registry::ResolveNetRef for $x {
+            fn resolve(&mut self, _nets: &rd_interface::registry::NetMap) -> rd_interface::Result<()> {
+                Ok(())
+            }
+            fn get_dependency_set(&mut self, _nets: &mut std::collections::HashSet<String>) -> rd_interface::Result<()> {
+                Ok(())
+            }
+        }
     )*)
 }
 macro_rules! impl_container_resolve {
@@ -174,6 +175,12 @@ macro_rules! impl_container_resolve {
 				}
 				Ok(())
 			}
+            fn get_dependency_set(&mut self, nets: &mut HashSet<String>) -> Result<()> {
+				for i in self.iter_mut() {
+					i.get_dependency_set(nets)?;
+				}
+                Ok(())
+            }
 		}
     )*)
 }
@@ -186,11 +193,18 @@ macro_rules! impl_key_container_resolve {
 				}
 				Ok(())
 			}
+            fn get_dependency_set(&mut self, nets: &mut HashSet<String>) -> Result<()> {
+				for (_, i) in self.iter_mut() {
+					i.get_dependency_set(nets)?;
+				}
+                Ok(())
+            }
 		}
     )*)
 }
 
-impl_empty_resolve! { String, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, bool, f32, f64 }
+use crate as rd_interface;
+impl_empty_net_resolve! { String, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, bool, f32, f64 }
 impl_container_resolve! { Vec, Option, VecDeque, Result, LinkedList }
 impl_key_container_resolve! { HashMap, BTreeMap }
 

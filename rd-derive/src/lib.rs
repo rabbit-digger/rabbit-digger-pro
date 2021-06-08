@@ -8,6 +8,7 @@ pub fn config(input: TokenStream) -> TokenStream {
 
     let ident = input.ident;
     let mut resolve_body = quote! {};
+    let mut get_dependency_set_body = quote! {};
 
     match input.data {
         Data::Struct(s) => {
@@ -15,10 +16,12 @@ pub fn config(input: TokenStream) -> TokenStream {
 
             for field in fields {
                 let field_name = field.ident.unwrap();
-                let line = quote! {
+                resolve_body.extend(quote! {
                     rd_interface::registry::ResolveNetRef::resolve(&mut self.#field_name, nets)?;
-                };
-                resolve_body.extend(line);
+                });
+                get_dependency_set_body.extend(quote! {
+                    rd_interface::registry::ResolveNetRef::get_dependency_set(&mut self.#field_name, nets)?;
+                });
             }
         }
         Data::Enum(_e) => {
@@ -31,6 +34,10 @@ pub fn config(input: TokenStream) -> TokenStream {
         impl rd_interface::registry::ResolveNetRef for #ident {
             fn resolve(&mut self, nets: &rd_interface::registry::NetMap) -> rd_interface::Result<()> {
                 #resolve_body
+                Ok(())
+            }
+            fn get_dependency_set(&mut self, nets: &mut std::collections::HashSet<String>) -> rd_interface::Result<()> {
+                #get_dependency_set_body
                 Ok(())
             }
         }

@@ -1,4 +1,7 @@
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 pub use self::net_ref::{NetRef, ResolveNetRef};
 use crate::{INet, IServer, IntoDyn, Net, Result, Server};
@@ -141,6 +144,9 @@ pub struct EmptyConfig(Value);
 
 impl ResolveNetRef for EmptyConfig {
     fn resolve(&mut self, _nets: &NetMap) -> Result<()> {
+        Ok(())
+    }
+    fn get_dependency_set(&mut self, _nets: &mut HashSet<String>) -> Result<()> {
         Ok(())
     }
 }

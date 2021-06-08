@@ -2,7 +2,8 @@ use std::{fmt, str::FromStr};
 
 use super::matcher;
 use rd_interface::{
-    registry::{NetRef, ResolveNetRef},
+    impl_empty_net_resolve,
+    registry::NetRef,
     schemars::{
         self,
         schema::{InstanceType, SchemaObject},
@@ -105,7 +106,7 @@ pub struct RuleConfig {
     pub rule: Vec<RuleItem>,
 }
 
-impl ResolveNetRef for Matcher {}
+impl_empty_net_resolve! { Matcher }
 
 impl matcher::Matcher for Matcher {
     fn match_rule(
