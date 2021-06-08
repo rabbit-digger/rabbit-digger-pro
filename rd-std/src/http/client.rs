@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 use hyper::{client::conn as client_conn, Body, Error, Request};
 
 use rd_interface::{
-    async_trait, impl_async_read_write, INet, ITcpStream, IntoAddress, IntoDyn, Net,
-    Result, TcpStream, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, INet, ITcpStream, IntoAddress, IntoDyn, Net, Result,
+    TcpStream, NOT_IMPLEMENTED,
 };
 
 pub fn map_err(e: Error) -> rd_interface::Error {
@@ -42,7 +42,8 @@ impl INet for HttpClient {
         addr: rd_interface::Address,
     ) -> Result<TcpStream> {
         let socket = self.net.tcp_connect(ctx, self.server()?).await?;
-        let (mut request_sender, connection) = client_conn::handshake(socket).await.map_err(map_err)?;
+        let (mut request_sender, connection) =
+            client_conn::handshake(socket).await.map_err(map_err)?;
         let connect_req = Request::builder()
             .method("CONNECT")
             .uri(addr.to_string())
