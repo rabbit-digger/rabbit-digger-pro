@@ -1,8 +1,7 @@
 use crate::udp::{decrypt_payload, encrypt_payload};
 use bytes::BytesMut;
 use rd_interface::{
-    async_trait, impl_async_read_write,
-    registry::ResolveNetRef,
+    async_trait, impl_async_read_write, impl_empty_net_resolve,
     schemars::{self, JsonSchema},
     Address as RDAddress, AsyncRead, AsyncWrite, ITcpStream, IUdpSocket, ReadBuf, TcpStream,
     UdpSocket, NOT_IMPLEMENTED,
@@ -128,7 +127,7 @@ pub enum Cipher {
     SM4_CCM,
 }
 
-impl ResolveNetRef for Cipher {}
+impl_empty_net_resolve! { Cipher }
 
 impl Into<CipherKind> for Cipher {
     fn into(self) -> CipherKind {
