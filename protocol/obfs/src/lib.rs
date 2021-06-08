@@ -1,7 +1,14 @@
-use bytes::{Bytes, BytesMut};
-use obfs_net::{ObfsNet, ObfsNetConfig};
-use rd_interface::{registry::NetFactory, Registry, Result};
+use std::net::SocketAddr;
 
+use obfs_net::{ObfsNet, ObfsNetConfig};
+use rd_interface::{
+    registry::NetFactory,
+    schemars::{self, JsonSchema},
+    Address, Config, Context, Registry, Result, TcpStream,
+};
+use serde_derive::{Deserialize, Serialize};
+
+mod http_simple;
 mod obfs_net;
 
 impl NetFactory for ObfsNet {
@@ -24,8 +31,28 @@ pub fn init(registry: &mut Registry) -> Result<()> {
 
 /// An obfs protocol used in front of a `TcpStream`
 pub trait Obfs {
-    /// Return the prefix of the stream.
-    fn encode(&mut self) -> Result<Bytes>;
-    /// Strip the prefix of the stream. Return true if get all the prefix.
-    fn decode(&mut self, src: &mut BytesMut) -> Result<bool>;
+    /// Wrap the `TcpStream` with obfs request and response. Used by client.
+    fn tcp_connect(&self, tcp: TcpStream, ctx: &mut Context, addr: Address) -> Result<TcpStream>;
+    /// Wrap the `TcpStream` with obfs request and response. Used by server.
+    fn tcp_accept(&self, tcp: TcpStream, addr: SocketAddr) -> Result<TcpStream>;
+}
+
+#[derive(Debug, Serialize, Deserialize, Config, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ObfsType {
+    HttpSimple(http_simple::HttpSimple),
+}
+
+impl Obfs for ObfsType {
+    fn tcp_connect(&self, tcp: TcpStream, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
+        match self {
+            ObfsType::HttpSimple(i) => i.tcp_connect(tcp, ctx, addr),
+        }
+    }
+
+    fn tcp_accept(&self, tcp: TcpStream, addr: SocketAddr) -> Result<TcpStream> {
+        match self {
+            ObfsType::HttpSimple(i) => i.tcp_accept(tcp, addr),
+        }
+    }
 }
