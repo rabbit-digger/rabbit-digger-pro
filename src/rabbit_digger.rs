@@ -165,7 +165,7 @@ fn build_net(
         AllNet::Root(
             server
                 .values()
-                .flat_map(|i| [i.net.clone(), i.listen.clone()])
+                .flat_map(|i| vec![i.net.clone(), i.listen.clone()])
                 .collect(),
         ),
     );
