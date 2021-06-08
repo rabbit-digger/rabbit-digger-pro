@@ -16,6 +16,7 @@ type BoxObfs = Arc<dyn Obfs + Send + Sync + 'static>;
 pub struct ObfsNetConfig {
     #[serde(default)]
     pub net: NetRef,
+    #[serde(default)]
     pub obfs_type: ObfsType,
 }
 
