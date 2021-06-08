@@ -184,13 +184,20 @@ impl Controller {
                 registry,
                 servers,
                 ..
-            } = self.inner.read().await.builder.build(self, config)?;
+            } = self
+                .inner
+                .read()
+                .await
+                .builder
+                .build(self, config)
+                .context("Failed to build rabbit-digger")?;
 
             self.change_state(State::Running(Running {
                 config: rd_config,
                 registry: get_registry_schema(&registry)?,
             }))
-            .await?;
+            .await
+            .context("Failed to change state")?;
 
             let run_fut = RabbitDigger::run(servers);
             pin_mut!(run_fut);

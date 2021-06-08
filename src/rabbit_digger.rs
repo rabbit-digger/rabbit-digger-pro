@@ -74,8 +74,8 @@ impl RabbitDiggerBuilder {
         };
         let mut registry = Registry::new();
 
-        load_builtin(&mut registry)?;
-        (self.plugin_loader)(&config, &mut registry)?;
+        load_builtin(&mut registry).context("Failed to load builtin")?;
+        (self.plugin_loader)(&config, &mut registry).context("Failed to load plugin")?;
         tracing::debug!("Registry:\n{}", registry);
 
         let all_net = config
@@ -83,8 +83,10 @@ impl RabbitDiggerBuilder {
             .iter()
             .map(|(k, v)| (k.to_string(), AllNet::Net(v.clone())))
             .collect();
-        let nets = build_net(&registry, all_net, &config.server, wrap_net)?;
-        let servers = build_server(&registry, &nets, &config.server, wrap_server_net)?;
+        let nets = build_net(&registry, all_net, &config.server, wrap_net)
+            .context("Failed to build net")?;
+        let servers = build_server(&registry, &nets, &config.server, wrap_server_net)
+            .context("Failed to build server")?;
         tracing::debug!(
             "net and server are built. net count: {}, server count: {}",
             nets.len(),
@@ -170,8 +172,12 @@ fn build_net(
         ),
     );
 
-    let all_net = topological_sort(all_net, |n| n.get_dependency(registry))?
-        .ok_or(anyhow!("There is cyclic dependencies in net",))?;
+    let all_net = topological_sort(all_net, |n| {
+        n.get_dependency(registry)
+            .context("Failed to get_dependency")
+    })
+    .context("Failed to do topological_sort")?
+    .ok_or(anyhow!("There is cyclic dependencies in net",))?;
 
     for (name, i) in all_net {
         match i {
@@ -187,7 +193,7 @@ fn build_net(
                     net_map.insert(name.to_string(), net);
                     Ok(())
                 };
-                load_net().map_err(|e| e.context(format!("Loading net {}", name)))?;
+                load_net().context(format!("Loading net {}", name))?;
             }
             AllNet::Root(_) => {}
         }
@@ -235,7 +241,7 @@ fn build_server(
             });
             Ok(())
         };
-        load_server().map_err(|e| e.context(format!("Loading server {}", name)))?;
+        load_server().context(format!("Loading server {}", name))?;
     }
 
     Ok(servers)
