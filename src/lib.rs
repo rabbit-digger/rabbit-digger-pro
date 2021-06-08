@@ -34,6 +34,8 @@ pub fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> R
     registry.init_with_registry("remote", remote::init)?;
     #[cfg(feature = "raw")]
     registry.init_with_registry("raw", raw::init)?;
+    #[cfg(feature = "obfs")]
+    registry.init_with_registry("obfs", obfs::init)?;
 
     registry.init_with_registry("rabbit-digger-pro", select::init)?;
 
