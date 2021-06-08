@@ -39,7 +39,7 @@ pub trait Obfs {
 }
 
 #[derive(Debug, Serialize, Deserialize, Config, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", tag = "obfs_type")]
 pub enum ObfsType {
     HttpSimple(http_simple::HttpSimple),
     Plain(plain::Plain),
