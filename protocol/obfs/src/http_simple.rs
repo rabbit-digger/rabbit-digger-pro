@@ -1,13 +1,13 @@
 use core::fmt;
 use std::{
     io::{self, Cursor, Write},
-    mem::replace,
     pin::Pin,
     task::{Context, Poll},
 };
 
 use crate::Obfs;
 use futures::ready;
+use pin_project_lite::pin_project;
 use rand::prelude::*;
 use rd_interface::{
     async_trait,
@@ -49,11 +49,13 @@ enum ReadState {
     Done,
 }
 
-struct Connect {
-    inner: TcpStream,
-    write: WriteState,
-    read: ReadState,
-    obfs_param: String,
+pin_project! {
+    struct Connect {
+        inner: TcpStream,
+        write: WriteState,
+        read: ReadState,
+        obfs_param: String,
+    }
 }
 
 impl Connect {
@@ -69,38 +71,41 @@ impl Connect {
 
 impl AsyncRead for Connect {
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
+        let mut this = self.project();
         loop {
-            let read = replace(&mut self.read, ReadState::Done);
-            self.read = match read {
-                ReadState::Read(mut read_buf, pos) => {
-                    let mut tmp_buf = ReadBuf::new(&mut read_buf[pos..]);
-                    ready!(Pin::new(&mut self.inner).poll_read(cx, &mut tmp_buf))?;
-                    let new_pos = pos + tmp_buf.filled().len();
+            match this.read {
+                ReadState::Read(ref mut read_buf, pos) => {
+                    let mut tmp_buf = ReadBuf::new(&mut read_buf[*pos..]);
+                    ready!(Pin::new(&mut this.inner).poll_read(cx, &mut tmp_buf))?;
+                    let new_pos = *pos + tmp_buf.filled().len();
 
                     if let Some(at) = find_subsequence(&read_buf, b"\r\n\r\n") {
-                        ReadState::Write(read_buf.split_off(at), 0)
+                        read_buf.truncate(new_pos);
+                        *this.read = ReadState::Write(read_buf.split_off(at + 4), 0);
                     } else {
-                        ReadState::Read(read_buf, new_pos)
+                        *pos = new_pos
                     }
                 }
                 ReadState::Write(write_buf, pos) => {
-                    let remaining = &write_buf[pos..];
+                    let remaining = &write_buf[*pos..];
                     let unfilled = buf.initialize_unfilled();
-                    let to_read = remaining.len().min(unfilled.len());
-                    unfilled.copy_from_slice(&write_buf[pos..pos + to_read]);
-                    let new_pos = pos + to_read;
 
-                    if write_buf.len() == new_pos {
-                        ReadState::Done
-                    } else {
-                        ReadState::Write(write_buf, new_pos)
+                    let to_read = remaining.len().min(unfilled.len());
+                    unfilled[..to_read].copy_from_slice(&remaining[..to_read]);
+
+                    buf.advance(to_read);
+                    *pos += to_read;
+
+                    if write_buf.len() == *pos {
+                        *this.read = ReadState::Done;
                     }
+                    return Poll::Ready(Ok(()));
                 }
-                ReadState::Done => return Pin::new(&mut self.inner).poll_read(cx, buf),
+                ReadState::Done => return Pin::new(&mut this.inner).poll_read(cx, buf),
             }
         }
     }
@@ -119,13 +124,13 @@ impl<'a> fmt::Display for UrlEncode<'a> {
 
 impl AsyncWrite for Connect {
     fn poll_write(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
+        let mut this = self.project();
         loop {
-            let write = replace(&mut self.write, WriteState::Done);
-            self.write = match write {
+            match this.write {
                 WriteState::Wait => {
                     let head_len = thread_rng().gen_range(0..64usize).max(buf.len());
                     let head = &buf[..head_len];
@@ -135,25 +140,25 @@ impl AsyncWrite for Connect {
                     cursor.write_fmt(format_args!(
                         "GET /{path} HTTP/1.1\r\nHost: {host}\r\n\r\n",
                         path = UrlEncode(head),
-                        host = self.obfs_param
+                        host = this.obfs_param
                     ))?;
                     cursor.write_all(body)?;
 
                     let buf = cursor.into_inner();
 
-                    WriteState::Write(buf, 0)
+                    *this.write = WriteState::Write(buf, 0);
                 }
-                WriteState::Write(buf, pos) => {
-                    let wrote = ready!(Pin::new(&mut self.inner).poll_write(cx, &buf[pos..]))?;
-                    let new_pos = pos + wrote;
+                WriteState::Write(ref mut buf, pos) => {
+                    let wrote = ready!(Pin::new(&mut this.inner).poll_write(cx, &buf[*pos..]))?;
+                    let new_pos = *pos + wrote;
 
                     if buf.len() == new_pos {
-                        WriteState::Done
+                        *this.write = WriteState::Done;
                     } else {
-                        WriteState::Write(buf, new_pos)
+                        *pos = new_pos;
                     }
                 }
-                WriteState::Done => return Pin::new(&mut self.inner).poll_write(cx, buf),
+                WriteState::Done => return Pin::new(&mut this.inner).poll_write(cx, buf),
             };
         }
     }
