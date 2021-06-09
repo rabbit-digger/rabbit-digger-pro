@@ -17,6 +17,7 @@ pub enum Connection {
 }
 
 #[derive(Deserialize, JsonSchema, Config)]
+#[schemars(rename = "RemoteProtocolConfig")]
 pub struct Config {
     #[serde(flatten)]
     conn: Connection,
