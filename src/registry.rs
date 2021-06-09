@@ -5,7 +5,7 @@ use rd_interface::{
     registry::{NetMap, NetResolver, ServerResolver},
     Net, Server, Value,
 };
-use std::{collections::HashMap, fmt};
+use std::{collections::BTreeMap, fmt};
 
 pub struct NetItem {
     id: String,
@@ -39,8 +39,8 @@ impl ServerItem {
 
 #[derive(Debug)]
 pub struct Registry {
-    pub net: HashMap<String, NetItem>,
-    pub server: HashMap<String, ServerItem>,
+    pub net: BTreeMap<String, NetItem>,
+    pub server: BTreeMap<String, ServerItem>,
 }
 
 impl fmt::Debug for NetItem {
@@ -76,8 +76,8 @@ impl fmt::Display for Registry {
 impl Registry {
     pub fn new() -> Registry {
         Registry {
-            net: HashMap::new(),
-            server: HashMap::new(),
+            net: BTreeMap::new(),
+            server: BTreeMap::new(),
         }
     }
     pub fn init_with_registry(

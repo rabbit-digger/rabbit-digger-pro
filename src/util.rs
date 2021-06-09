@@ -1,13 +1,13 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::BTreeMap, hash::Hash};
 
 use topological_sort::TopologicalSort;
 
 pub fn topological_sort<K, V, D, E>(
-    mut map: HashMap<K, V>,
+    mut map: BTreeMap<K, V>,
     get_deps: D,
 ) -> Result<Option<Vec<(K, V)>>, E>
 where
-    K: Hash + Eq + Clone,
+    K: Hash + Ord + Eq + Clone,
     D: Fn(&V) -> Result<Vec<K>, E>,
 {
     let mut ts = TopologicalSort::<K>::new();

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::BTreeMap, fmt};
 
 pub use self::net_ref::{NetRef, ResolveNetRef};
 use crate as rd_interface;
@@ -12,13 +12,13 @@ use schemars::{
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-pub type NetMap = HashMap<String, Net>;
+pub type NetMap = BTreeMap<String, Net>;
 
 mod net_ref;
 
 pub struct Registry {
-    pub net: HashMap<String, NetResolver>,
-    pub server: HashMap<String, ServerResolver>,
+    pub net: BTreeMap<String, NetResolver>,
+    pub server: BTreeMap<String, ServerResolver>,
 }
 
 impl fmt::Debug for Registry {
@@ -33,8 +33,8 @@ impl fmt::Debug for Registry {
 impl Registry {
     pub fn new() -> Registry {
         Registry {
-            net: HashMap::new(),
-            server: HashMap::new(),
+            net: BTreeMap::new(),
+            server: BTreeMap::new(),
         }
     }
     pub fn add_net<N: NetFactory>(&mut self) {

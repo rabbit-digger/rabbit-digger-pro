@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::BTreeMap, fmt};
 
 use crate::builtin::load_builtin;
 use crate::config;
@@ -22,7 +22,7 @@ pub struct RabbitDiggerBuilder {
 pub struct RabbitDigger {
     pub config: config::Config,
     pub registry: Registry,
-    pub nets: HashMap<String, Net>,
+    pub nets: BTreeMap<String, Net>,
     pub servers: Vec<ServerInfo>,
 }
 
@@ -138,11 +138,11 @@ impl<'a> fmt::Display for ServerList<'a> {
 
 fn build_net(
     registry: &Registry,
-    mut all_net: HashMap<String, config::AllNet>,
+    mut all_net: BTreeMap<String, config::AllNet>,
     server: &config::ConfigServer,
     wrapper: impl Fn(String, Net) -> Net,
-) -> Result<HashMap<String, Net>> {
-    let mut net_map: HashMap<String, Net> = HashMap::new();
+) -> Result<BTreeMap<String, Net>> {
+    let mut net_map: BTreeMap<String, Net> = BTreeMap::new();
 
     if !all_net.contains_key("noop") {
         all_net.insert(
@@ -204,7 +204,7 @@ fn build_net(
 
 fn build_server(
     registry: &Registry,
-    net: &HashMap<String, Net>,
+    net: &BTreeMap<String, Net>,
     config: &config::ConfigServer,
     wrapper: impl Fn(Net) -> Net,
 ) -> Result<Vec<ServerInfo>> {

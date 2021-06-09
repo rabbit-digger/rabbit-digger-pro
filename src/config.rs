@@ -1,6 +1,6 @@
 pub mod default;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 use rd_interface::Value;
@@ -8,8 +8,8 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::Registry;
 
-pub type ConfigNet = HashMap<String, Net>;
-pub type ConfigServer = HashMap<String, Server>;
+pub type ConfigNet = BTreeMap<String, Net>;
+pub type ConfigServer = BTreeMap<String, Server>;
 
 #[derive(Debug)]
 pub enum AllNet {

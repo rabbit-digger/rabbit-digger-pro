@@ -19,7 +19,7 @@ use futures::{
 };
 use rd_interface::{schemars::schema::RootSchema, IntoDyn, Net};
 use serde_derive::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{sync::broadcast, time::timeout};
 use tokio::{
     sync::mpsc,
@@ -49,8 +49,8 @@ impl OnceConfigStopper {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegistrySchema {
-    net: HashMap<String, RootSchema>,
-    server: HashMap<String, RootSchema>,
+    net: BTreeMap<String, RootSchema>,
+    server: BTreeMap<String, RootSchema>,
 }
 
 pub struct Inner {
@@ -271,8 +271,8 @@ impl Inner {
 
 fn get_registry_schema(registry: &Registry) -> Result<RegistrySchema> {
     let mut r = RegistrySchema {
-        net: HashMap::new(),
-        server: HashMap::new(),
+        net: BTreeMap::new(),
+        server: BTreeMap::new(),
     };
 
     for (key, value) in &registry.net {

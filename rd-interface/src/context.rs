@@ -1,6 +1,6 @@
 use crate::Value;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, fmt::Debug, net::SocketAddr};
+use std::{collections::BTreeMap, fmt::Debug, net::SocketAddr};
 use thiserror::Error;
 
 /// Context error
@@ -22,7 +22,7 @@ pub trait CommonField: DeserializeOwned + Serialize + 'static {
 /// during connecting.
 #[derive(Debug, Clone)]
 pub struct Context {
-    data: HashMap<String, Value>,
+    data: BTreeMap<String, Value>,
     net_list: Vec<String>,
 }
 
@@ -30,7 +30,7 @@ impl Context {
     /// new a empty context
     pub fn new() -> Context {
         Context {
-            data: HashMap::new(),
+            data: BTreeMap::new(),
             net_list: Vec::new(),
         }
     }
