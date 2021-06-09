@@ -1,12 +1,13 @@
-use serde_derive::{Deserialize, Serialize};
+use serde::{de, ser};
 use std::{
     fmt,
     io::{Error, ErrorKind, Result},
     net::{IpAddr, SocketAddr},
+    str::FromStr,
 };
 
 /// Address can be IPv4, IPv6 address or a domain with port.
-#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord)]
 pub enum Address {
     SocketAddr(SocketAddr),
     Domain(String, u16),
@@ -54,6 +55,14 @@ impl IntoAddress for &str {
             .map_err(|_| no_addr())?;
         let host = parts.next().ok_or_else(no_addr)?;
         Ok(host_to_address(host, port))
+    }
+}
+
+impl FromStr for Address {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        IntoAddress::into_address(s)
     }
 }
 
@@ -147,6 +156,25 @@ impl fmt::Display for Address {
             Address::Domain(domain, port) => write!(f, "{}:{}", domain, port),
             Address::SocketAddr(s) => write!(f, "{}", s),
         }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for Address {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        FromStr::from_str(&s).map_err(de::Error::custom)
+    }
+}
+
+impl ser::Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_str(self)
     }
 }
 
