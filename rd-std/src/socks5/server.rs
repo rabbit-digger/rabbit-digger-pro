@@ -97,6 +97,7 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
+                // TODO: don't bind on 0.0.0.0
                 let udp = listen_net
                     .udp_bind(
                         &mut Context::from_socketaddr(addr),
@@ -177,7 +178,7 @@ impl IUdpChannel for Socks5UdpSocket {
 pub struct Socks5 {
     server: Socks5Server,
     listen_net: Net,
-    bind: String,
+    bind: Address,
 }
 
 #[async_trait]
@@ -185,7 +186,7 @@ impl IServer for Socks5 {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), self.bind.into_address()?)
+            .tcp_bind(&mut Context::new(), self.bind.clone())
             .await?;
 
         loop {
@@ -201,7 +202,7 @@ impl IServer for Socks5 {
 }
 
 impl Socks5 {
-    pub fn new(listen_net: Net, net: Net, bind: String) -> Self {
+    pub fn new(listen_net: Net, net: Net, bind: Address) -> Self {
         Socks5 {
             server: Socks5Server::new(listen_net.clone(), net),
             listen_net,

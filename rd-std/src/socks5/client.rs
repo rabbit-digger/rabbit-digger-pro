@@ -6,15 +6,14 @@ use crate::socks5::common::map_err;
 
 use super::common::{pack_udp, parse_udp, ra2sa};
 use rd_interface::{
-    async_trait, impl_async_read_write, INet, ITcpStream, IUdpSocket, IntoAddress, IntoDyn, Net,
-    Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, Address, INet, ITcpStream, IUdpSocket, IntoAddress,
+    IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use std::net::SocketAddr;
 use tokio::io::{split, AsyncWriteExt, BufWriter};
 
 pub struct Socks5Client {
-    address: String,
-    port: u16,
+    server: Address,
     net: Net,
 }
 
@@ -74,7 +73,7 @@ impl INet for Socks5Client {
         ctx: &mut rd_interface::Context,
         addr: rd_interface::Address,
     ) -> Result<UdpSocket> {
-        let mut socket = self.net.tcp_connect(ctx, self.server()?).await?;
+        let mut socket = self.net.tcp_connect(ctx, self.server.clone()).await?;
 
         let req = CommandRequest::udp_associate(ra2sa(addr.clone().into_address()?));
         let resp = self.send_command(&mut socket, req).await?;
@@ -89,7 +88,7 @@ impl INet for Socks5Client {
         ctx: &mut rd_interface::Context,
         addr: rd_interface::Address,
     ) -> Result<TcpStream> {
-        let mut socket = self.net.tcp_connect(ctx, self.server()?).await?;
+        let mut socket = self.net.tcp_connect(ctx, self.server.clone()).await?;
 
         let req = CommandRequest::connect(ra2sa(addr.into_address()?));
         let _resp = self.send_command(&mut socket, req).await?;
@@ -107,13 +106,8 @@ impl INet for Socks5Client {
 }
 
 impl Socks5Client {
-    pub fn new(net: Net, address: String, port: u16) -> Self {
-        Self { address, port, net }
-    }
-    fn server(&self) -> Result<rd_interface::Address> {
-        (self.address.as_str(), self.port)
-            .into_address()
-            .map_err(Into::into)
+    pub fn new(net: Net, server: Address) -> Self {
+        Self { server, net }
     }
     async fn send_command(
         &self,

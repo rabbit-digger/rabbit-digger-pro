@@ -15,14 +15,14 @@ mod linux {
         registry::ServerFactory,
         schemars::{self, JsonSchema},
         util::connect_tcp,
-        Context, IServer, IntoAddress, IntoDyn, Net, Result,
+        Address, Context, IServer, IntoAddress, IntoDyn, Net, Result,
     };
     use serde_derive::Deserialize;
     use tokio::net::{TcpListener, TcpStream};
 
     #[derive(Debug, Deserialize, JsonSchema)]
     pub struct RedirServerConfig {
-        bind: String,
+        bind: Address,
     }
 
     pub struct RedirServer {
@@ -33,7 +33,7 @@ mod linux {
     #[async_trait]
     impl IServer for RedirServer {
         async fn start(&self) -> Result<()> {
-            let listener = TcpListener::bind(&self.cfg.bind).await?;
+            let listener = TcpListener::bind(&self.cfg.bind.to_string()).await?;
             self.serve_listener(listener).await
         }
     }

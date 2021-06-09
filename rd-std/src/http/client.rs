@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 use hyper::{client::conn as client_conn, Body, Error, Request};
 
 use rd_interface::{
-    async_trait, impl_async_read_write, INet, ITcpStream, IntoAddress, IntoDyn, Net, Result,
-    TcpStream, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, Address, INet, ITcpStream, IntoDyn, Net, Result, TcpStream,
+    NOT_IMPLEMENTED,
 };
 
 pub fn map_err(e: Error) -> rd_interface::Error {
@@ -14,8 +14,7 @@ pub fn map_err(e: Error) -> rd_interface::Error {
 }
 
 pub struct HttpClient {
-    address: String,
-    port: u16,
+    server: Address,
     net: Net,
 }
 
@@ -41,7 +40,7 @@ impl INet for HttpClient {
         ctx: &mut rd_interface::Context,
         addr: rd_interface::Address,
     ) -> Result<TcpStream> {
-        let socket = self.net.tcp_connect(ctx, self.server()?).await?;
+        let socket = self.net.tcp_connect(ctx, self.server.clone()).await?;
         let (mut request_sender, connection) =
             client_conn::handshake(socket).await.map_err(map_err)?;
         let connect_req = Request::builder()
@@ -74,12 +73,7 @@ impl INet for HttpClient {
 }
 
 impl HttpClient {
-    pub fn new(net: Net, address: String, port: u16) -> Self {
-        Self { address, port, net }
-    }
-    fn server(&self) -> Result<rd_interface::Address> {
-        (self.address.as_str(), self.port)
-            .into_address()
-            .map_err(Into::into)
+    pub fn new(net: Net, server: Address) -> Self {
+        Self { server, net }
     }
 }

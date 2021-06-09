@@ -14,8 +14,7 @@ mod tests;
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ClientConfig {
-    address: String,
-    port: u16,
+    server: Address,
 
     #[serde(default)]
     net: NetRef,
@@ -34,8 +33,7 @@ impl NetFactory for HttpClient {
     fn new(config: Self::Config) -> Result<Self> {
         Ok(HttpClient::new(
             config.net.net(),
-            config.address,
-            config.port,
+            config.server,
         ))
     }
 }

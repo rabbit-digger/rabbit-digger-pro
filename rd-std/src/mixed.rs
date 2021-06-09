@@ -5,7 +5,7 @@ use rd_interface::{
     registry::ServerFactory,
     schemars::{self, JsonSchema},
     util::PeekableTcpStream,
-    Config, Context, IServer, IntoAddress, IntoDyn, Net, Registry, Result, TcpStream,
+    Address, Config, Context, IServer, IntoDyn, Net, Registry, Result, TcpStream,
 };
 use serde_derive::Deserialize;
 
@@ -39,7 +39,7 @@ impl HttpSocks5Server {
 
 pub struct HttpSocks5 {
     listen_net: Net,
-    bind: String,
+    bind: Address,
 
     server: HttpSocks5Server,
 }
@@ -49,7 +49,7 @@ impl IServer for HttpSocks5 {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), self.bind.into_address()?)
+            .tcp_bind(&mut Context::new(), self.bind.clone())
             .await?;
 
         loop {
@@ -66,7 +66,7 @@ impl IServer for HttpSocks5 {
 }
 
 impl HttpSocks5 {
-    fn new(listen_net: Net, net: Net, bind: String) -> Self {
+    fn new(listen_net: Net, net: Net, bind: Address) -> Self {
         HttpSocks5 {
             server: HttpSocks5Server::new(listen_net.clone(), net),
             listen_net,
@@ -77,7 +77,7 @@ impl HttpSocks5 {
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ServerConfig {
-    bind: String,
+    bind: Address,
 }
 
 impl ServerFactory for HttpSocks5 {

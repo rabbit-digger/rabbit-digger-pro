@@ -5,14 +5,14 @@ use rd_interface::{
     registry::ServerFactory,
     schemars::{self, JsonSchema},
     util::connect_tcp,
-    Arc, Context, IServer, IntoAddress, Net, Result, TcpListener, TcpStream,
+    Address, Arc, Context, IServer, Net, Result, TcpListener, TcpStream,
 };
 use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ForwardConfig {
-    bind: String,
-    target: String,
+    bind: Address,
+    target: Address,
 }
 
 pub struct ForwardNet {
@@ -35,7 +35,7 @@ impl IServer for ForwardNet {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), self.cfg.bind.into_address()?)
+            .tcp_bind(&mut Context::new(), self.cfg.bind.clone())
             .await?;
         self.serve_listener(listener).await
     }
@@ -49,10 +49,7 @@ impl ForwardNet {
         addr: SocketAddr,
     ) -> Result<()> {
         let target = net
-            .tcp_connect(
-                &mut Context::from_socketaddr(addr),
-                cfg.target.into_address()?,
-            )
+            .tcp_connect(&mut Context::from_socketaddr(addr), cfg.target.clone())
             .await?;
         connect_tcp(socket, target).await?;
         Ok(())

@@ -123,6 +123,22 @@ impl Address {
             },
         }
     }
+
+    /// Get host part of the Address
+    pub fn host(&self) -> String {
+        match self {
+            Address::SocketAddr(s) => s.ip().to_string(),
+            Address::Domain(d, _) => return d.to_string(),
+        }
+    }
+
+    /// Get port of the Address
+    pub fn port(&self) -> u16 {
+        match self {
+            Address::SocketAddr(s) => s.port(),
+            Address::Domain(_, p) => *p,
+        }
+    }
 }
 
 impl fmt::Display for Address {

@@ -3,7 +3,7 @@ pub use self::{client::Socks5Client, server::Socks5Server};
 use rd_interface::{
     registry::{NetFactory, NetRef, ServerFactory},
     schemars::{self, JsonSchema},
-    Config, Net, Registry, Result,
+    Address, Config, Net, Registry, Result,
 };
 use serde_derive::Deserialize;
 
@@ -15,8 +15,7 @@ mod tests;
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ClientConfig {
-    address: String,
-    port: u16,
+    server: Address,
 
     #[serde(default)]
     net: NetRef,
@@ -24,7 +23,7 @@ pub struct ClientConfig {
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
 pub struct ServerConfig {
-    bind: String,
+    bind: Address,
 }
 
 impl NetFactory for Socks5Client {
@@ -33,11 +32,7 @@ impl NetFactory for Socks5Client {
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        Ok(Socks5Client::new(
-            config.net.net(),
-            config.address,
-            config.port,
-        ))
+        Ok(Socks5Client::new(config.net.net(), config.server))
     }
 }
 
