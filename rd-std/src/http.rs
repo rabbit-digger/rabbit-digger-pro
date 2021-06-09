@@ -3,7 +3,7 @@ pub use self::{client::HttpClient, server::HttpServer};
 use rd_interface::{
     registry::{NetFactory, NetRef, ServerFactory},
     schemars::{self, JsonSchema},
-    Config, Net, Registry, Result,
+    Address, Config, Net, Registry, Result,
 };
 use serde_derive::Deserialize;
 
@@ -22,8 +22,8 @@ pub struct ClientConfig {
 }
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
-pub struct ServerConfig {
-    bind: String,
+pub struct HttpServerConfig {
+    bind: Address,
 }
 
 impl NetFactory for HttpClient {
@@ -42,7 +42,7 @@ impl NetFactory for HttpClient {
 
 impl ServerFactory for server::Http {
     const NAME: &'static str = "http";
-    type Config = ServerConfig;
+    type Config = HttpServerConfig;
     type Server = Self;
 
     fn new(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {

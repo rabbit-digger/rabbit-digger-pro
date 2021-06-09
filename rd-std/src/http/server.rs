@@ -2,7 +2,7 @@ use hyper::{
     client::conn as client_conn, http, server::conn as server_conn, service::service_fn,
     upgrade::Upgraded, Body, Method, Request, Response,
 };
-use rd_interface::{async_trait, Context, IServer, IntoAddress, Net, Result, TcpStream};
+use rd_interface::{async_trait, Address, Context, IServer, IntoAddress, Net, Result, TcpStream};
 use std::net::SocketAddr;
 
 #[derive(Clone)]
@@ -30,7 +30,7 @@ impl HttpServer {
 pub struct Http {
     server: HttpServer,
     listen_net: Net,
-    bind: String,
+    bind: Address,
 }
 
 #[async_trait]
@@ -38,7 +38,7 @@ impl IServer for Http {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), self.bind.into_address()?)
+            .tcp_bind(&mut Context::new(), self.bind.clone())
             .await?;
 
         loop {
@@ -54,7 +54,7 @@ impl IServer for Http {
 }
 
 impl Http {
-    pub fn new(listen_net: Net, net: Net, bind: String) -> Self {
+    pub fn new(listen_net: Net, net: Net, bind: Address) -> Self {
         Http {
             server: HttpServer::new(net),
             listen_net,

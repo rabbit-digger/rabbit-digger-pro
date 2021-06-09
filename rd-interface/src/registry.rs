@@ -1,10 +1,9 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt,
-};
+use std::{collections::HashMap, fmt};
 
 pub use self::net_ref::{NetRef, ResolveNetRef};
-use crate::{INet, IServer, IntoDyn, Net, Result, Server};
+use crate as rd_interface;
+use crate::{Address, INet, IServer, IntoDyn, Net, Result, Server};
+use schemars::schema::Metadata;
 pub use schemars::JsonSchema;
 use schemars::{
     schema::{InstanceType, RootSchema, SchemaObject},
@@ -142,15 +141,6 @@ impl ServerResolver {
 #[derive(Debug, Default, serde_derive::Deserialize)]
 pub struct EmptyConfig(Value);
 
-impl ResolveNetRef for EmptyConfig {
-    fn resolve(&mut self, _nets: &NetMap) -> Result<()> {
-        Ok(())
-    }
-    fn get_dependency_set(&mut self, _nets: &mut HashSet<String>) -> Result<()> {
-        Ok(())
-    }
-}
-
 impl JsonSchema for EmptyConfig {
     fn schema_name() -> String {
         "EmptyConfig".to_string()
@@ -160,6 +150,34 @@ impl JsonSchema for EmptyConfig {
         SchemaObject {
             instance_type: Some(InstanceType::Null.into()),
             format: None,
+            ..Default::default()
+        }
+        .into()
+    }
+}
+
+crate::impl_empty_net_resolve! { EmptyConfig, Address }
+
+impl JsonSchema for Address {
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn schema_name() -> String {
+        "Address".to_string()
+    }
+
+    fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        SchemaObject {
+            instance_type: Some(InstanceType::String.into()),
+            format: None,
+            metadata: Some(
+                Metadata {
+                    description: Some("An address contains host and port.\nFor example: example.com:80, 1.1.1.1:53, [::1]:443".to_string()),
+                    ..Default::default()
+                }
+                .into(),
+            ),
             ..Default::default()
         }
         .into()
