@@ -1,23 +1,18 @@
-plugin_path: target/debug
-net:
-  socks5:
-    type: socks5
-    address: 127.0.0.1
-    port: 10800
-    net: local
 server:
   socks5:
     type: socks5
     bind: 127.0.0.1:10888
     net: rule
-composite:
+net:
+  socks5:
+    type: socks5
+    server: 127.0.0.1:1080
+    net: local
   global:
-    name: 全局连接
-    rule:
-      - type: any
-        target: socks5
+    type: alias
+    net: socks5
   rule:
-    name: 规则判断
+    type: rule
     rule:
       - type: domain
         method: keyword
@@ -36,7 +31,5 @@ composite:
       - type: any
         target: socks5
   direct:
-    name: 直接连接
-    rule:
-      - type: any
-        target: local
+    type: alias
+    net: local
