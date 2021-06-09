@@ -2,21 +2,27 @@ use rd_interface::{
     async_trait,
     registry::{NetFactory, NetRef},
     schemars::{self, JsonSchema},
-    Address, Config, Context, INet, Net, Registry, Result, TcpListener, TcpStream, UdpSocket,
+    Address, Config, Context, Error, INet, Net, Registry, Result, TcpListener, TcpStream,
+    UdpSocket,
 };
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
 pub struct SelectNetConfig {
-    selected: NetRef,
-    list: Vec<String>,
+    selected: usize,
+    list: Vec<NetRef>,
 }
 
 pub struct SelectNet(Net);
 
 impl SelectNet {
     pub fn new(config: SelectNetConfig) -> Result<Self> {
-        Ok(SelectNet(config.selected.net()))
+        if config.list.len() == 0 {
+            return Err(Error::Other("select list is empty".into()));
+        }
+        let index = config.selected.max(config.list.len() - 1);
+        let net = config.list[index].net();
+        Ok(SelectNet(net))
     }
 }
 

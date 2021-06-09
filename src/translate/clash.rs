@@ -83,8 +83,7 @@ impl Clash {
                 Net {
                     net_type: "shadowsocks".to_string(),
                     opt: json!({
-                        "server": params.server,
-                        "port": params.port,
+                        "server": format!("{}:{}", params.server, params.port),
                         "cipher": params.cipher,
                         "password": params.password,
                         "udp": params.udp.unwrap_or_default(),
@@ -121,7 +120,8 @@ impl Clash {
             "select" => Net {
                 net_type: "select".to_string(),
                 opt: json!({
-                    "net_list": net_list,
+                    "selected": 0,
+                    "list": net_list,
                 }),
             },
             _ => {
