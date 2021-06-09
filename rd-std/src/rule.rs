@@ -1,7 +1,8 @@
 mod any;
 pub mod config;
 mod domain;
-mod ip_cidr;
+mod geoip;
+mod ipcidr;
 mod matcher;
 mod rule_net;
 mod udp;

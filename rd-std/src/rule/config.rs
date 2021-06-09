@@ -60,12 +60,17 @@ impl FromStr for IpCidr {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
-pub struct IPMatcher {
+pub struct IpCidrMatcher {
     #[serde(
         serialize_with = "display_fromstr::serialize",
         deserialize_with = "display_fromstr::deserialize"
     )]
     pub ipcidr: IpCidr,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+pub struct GeoIpMatcher {
+    pub region: String,
 }
 
 impl JsonSchema for IpCidr {
@@ -90,7 +95,8 @@ pub struct AnyMatcher {}
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Matcher {
     Domain(DomainMatcher),
-    IpCidr(IPMatcher),
+    IpCidr(IpCidrMatcher),
+    GeoIp(GeoIpMatcher),
     Any(AnyMatcher),
 }
 
@@ -117,6 +123,7 @@ impl matcher::Matcher for Matcher {
         match self {
             Matcher::Domain(i) => i.match_rule(ctx, addr),
             Matcher::IpCidr(i) => i.match_rule(ctx, addr),
+            Matcher::GeoIp(i) => i.match_rule(ctx, addr),
             Matcher::Any(i) => i.match_rule(ctx, addr),
         }
     }
