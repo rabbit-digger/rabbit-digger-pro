@@ -217,6 +217,7 @@ mod tests {
     use super::*;
     use crate::{IntoDyn, NotImplementedNet};
     use serde_derive::Deserialize;
+    use std::sync::Arc;
 
     #[test]
     fn test_net_ref() {

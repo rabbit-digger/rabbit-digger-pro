@@ -2,7 +2,8 @@ use super::common::{pack_udp, parse_udp, sa2ra};
 use rd_interface::{
     async_trait,
     util::{connect_tcp, connect_udp},
-    Context, IServer, IUdpChannel, IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket,
+    Address as RdAddr, Context, IServer, IUdpChannel, IntoAddress, IntoDyn, Net, Result, TcpStream,
+    UdpSocket,
 };
 use socks5_protocol::{
     Address, AuthMethod, AuthRequest, AuthResponse, Command, CommandReply, CommandRequest,
@@ -178,7 +179,7 @@ impl IUdpChannel for Socks5UdpSocket {
 pub struct Socks5 {
     server: Socks5Server,
     listen_net: Net,
-    bind: Address,
+    bind: RdAddr,
 }
 
 #[async_trait]
@@ -202,7 +203,7 @@ impl IServer for Socks5 {
 }
 
 impl Socks5 {
-    pub fn new(listen_net: Net, net: Net, bind: Address) -> Self {
+    pub fn new(listen_net: Net, net: Net, bind: RdAddr) -> Self {
         Socks5 {
             server: Socks5Server::new(listen_net.clone(), net),
             listen_net,
