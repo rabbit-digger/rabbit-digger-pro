@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::{
     future::ready,
     stream::{self, StreamExt, TryStreamExt},
@@ -34,6 +34,8 @@ pub fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> R
     registry.init_with_registry("remote", remote::init)?;
     #[cfg(feature = "raw")]
     registry.init_with_registry("raw", raw::init)?;
+    #[cfg(feature = "obfs")]
+    registry.init_with_registry("obfs", obfs::init)?;
 
     registry.init_with_registry("rabbit-digger-pro", select::init)?;
 
@@ -47,8 +49,11 @@ pub fn deserialize_config(_path: &Path, s: &str) -> Result<config::ConfigExt> {
 }
 
 pub async fn read_config(path: PathBuf) -> Result<rabbit_digger::Config> {
-    let s = read_to_string(&path).await?;
-    let config = deserialize_config(path.as_path(), &s)?;
+    let s = read_to_string(&path)
+        .await
+        .context("Failed to read config file")?;
+    let config =
+        deserialize_config(path.as_path(), &s).context("Failed to deserialize config file")?;
     config.post_process().await
 }
 

@@ -34,12 +34,13 @@ ss = { path = "./protocol/ss", optional = true }
 trojan = { path = "./protocol/trojan", optional = true }
 remote = { path = "./protocol/remote", optional = true }
 raw = { path = "./protocol/raw", optional = true }
+obfs = { path = "./protocol/obfs", optional = true }
 
 [dev-dependencies]
 rusty-hook = "0.11.0"
 
 [features]
-default = [ "api_server", "translate", "ss", "trojan", "remote" ]
+default = [ "api_server", "translate", "ss", "trojan", "remote", "obfs" ]
 translate = []
 api_server = [ "warp", "dirs" ]
 local_log = [ "rabbit-digger/local_log" ]
@@ -50,6 +51,7 @@ members = [
     "protocol/trojan",
     "protocol/remote",
     "protocol/raw",
+    "protocol/obfs",
 ]
 exclude = ["rabbit-digger"]
 

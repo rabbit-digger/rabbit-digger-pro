@@ -7,7 +7,7 @@ use rd_interface::{
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
-pub struct SelectConfig {
+pub struct SelectNetConfig {
     selected: NetRef,
     list: Vec<String>,
 }
@@ -15,7 +15,7 @@ pub struct SelectConfig {
 pub struct SelectNet(Net);
 
 impl SelectNet {
-    pub fn new(config: SelectConfig) -> Result<Self> {
+    pub fn new(config: SelectNetConfig) -> Result<Self> {
         Ok(SelectNet(config.selected.net()))
     }
 }
@@ -37,7 +37,7 @@ impl INet for SelectNet {
 
 impl NetFactory for SelectNet {
     const NAME: &'static str = "select";
-    type Config = SelectConfig;
+    type Config = SelectNetConfig;
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {

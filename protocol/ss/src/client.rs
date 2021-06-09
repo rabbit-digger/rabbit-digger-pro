@@ -15,8 +15,7 @@ use shadowsocks::{
 
 #[derive(Debug, Deserialize, Clone, Config, JsonSchema)]
 pub struct SSNetConfig {
-    server: String,
-    port: u16,
+    server: Address,
     password: String,
     #[serde(default)]
     udp: bool,
@@ -47,12 +46,12 @@ impl INet for SSNet {
         addr: Address,
     ) -> Result<TcpStream> {
         let cfg = self.config.clone();
-        let stream = self
-            .config
-            .net
-            .tcp_connect(ctx, (cfg.server.as_ref(), cfg.port).into_address()?)
-            .await?;
-        let svr_cfg = ServerConfig::new((cfg.server, cfg.port), cfg.password, cfg.cipher.into());
+        let stream = self.config.net.tcp_connect(ctx, cfg.server.clone()).await?;
+        let svr_cfg = ServerConfig::new(
+            (cfg.server.host(), cfg.server.port()),
+            cfg.password,
+            cfg.cipher.into(),
+        );
         let client = ProxyClientStream::from_stream(
             self.context.clone(),
             stream,
@@ -78,9 +77,14 @@ impl INet for SSNet {
         let socket = self
             .config
             .net
+            // TODO: don't bind 0.0.0.0
             .udp_bind(ctx, "0.0.0.0:0".into_address()?)
             .await?;
-        let svr_cfg = ServerConfig::new((cfg.server, cfg.port), cfg.password, cfg.cipher.into());
+        let svr_cfg = ServerConfig::new(
+            (cfg.server.host(), cfg.server.port()),
+            cfg.password,
+            cfg.cipher.into(),
+        );
         let udp = WrapSSUdp::new(self.context.clone(), socket, &svr_cfg);
         Ok(udp.into_dyn())
     }

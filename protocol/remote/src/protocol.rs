@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use rd_interface::{
     async_trait,
     schemars::{self, JsonSchema},
-    Address, Arc, Config, Context, Error, IntoAddress, Net, Result, TcpListener, TcpStream,
+    Address, Arc, Config, Context, Error, Net, Result, TcpListener, TcpStream,
 };
 use serde_derive::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -12,11 +12,12 @@ use tokio::sync::RwLock;
 #[derive(Deserialize, JsonSchema, Config)]
 #[serde(tag = "mode", rename_all = "lowercase")]
 pub enum Connection {
-    Active { remote: String },
-    Passive { bind: String },
+    Active { remote: Address },
+    Passive { bind: Address },
 }
 
 #[derive(Deserialize, JsonSchema, Config)]
+#[schemars(rename = "RemoteProtocolConfig")]
 pub struct Config {
     #[serde(flatten)]
     conn: Connection,
@@ -27,13 +28,13 @@ pub struct Config {
 
 pub struct ActiveProtocol {
     net: Net,
-    remote: String,
+    remote: Address,
     token: String,
 }
 
 pub struct PassiveProtocol {
     net: Net,
-    bind: String,
+    bind: Address,
     listener: RwLock<Option<TcpListener>>,
     token: String,
 }
@@ -48,7 +49,7 @@ impl Protocol for ActiveProtocol {
     async fn channel(&self) -> Result<Channel> {
         let mut conn = self
             .net
-            .tcp_connect(&mut Context::new(), self.remote.into_address()?)
+            .tcp_connect(&mut Context::new(), self.remote.clone())
             .await?;
 
         handshake(&mut conn, &self.token).await?;
@@ -79,7 +80,7 @@ impl PassiveProtocol {
             None => {
                 let listener = self
                     .net
-                    .tcp_bind(&mut Context::new(), self.bind.into_address()?)
+                    .tcp_bind(&mut Context::new(), self.bind.clone())
                     .await?;
                 listener
             }

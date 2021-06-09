@@ -5,7 +5,7 @@ use rd_interface::{
     async_trait,
     registry::NetRef,
     schemars::{self, JsonSchema},
-    Address as RdAddress, Config, INet, IntoAddress, IntoDyn, Net, Result, TcpListener, TcpStream,
+    Address as RdAddress, Address, Config, INet, IntoDyn, Net, Result, TcpListener, TcpStream,
     UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
 };
 use serde_derive::Deserialize;
@@ -29,7 +29,7 @@ impl TrojanNet {
             skip_cert_verify: config.skip_cert_verify,
             sni: config.sni,
         })?;
-        let server = config.server.into_address()?;
+        let server = config.server.clone();
 
         let password = hex::encode(Sha224::digest(config.password.as_bytes()));
         Ok(TrojanNet {
@@ -48,7 +48,7 @@ pub struct TrojanNetConfig {
     net: NetRef,
 
     /// hostname:port
-    server: String,
+    server: Address,
     /// password in plain text
     password: String,
 
