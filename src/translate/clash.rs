@@ -4,8 +4,8 @@ use anyhow::{anyhow, Result};
 use rabbit_digger::{
     config::{Config, Net, Server},
     rd_std::rule::config::{
-        self as rule_config, AnyMatcher, DomainMatcher, DomainMatcherMethod, IPMatcher, IpCidr,
-        Matcher,
+        self as rule_config, AnyMatcher, DomainMatcher, DomainMatcherMethod, GeoIpMatcher, IpCidr,
+        IpCidrMatcher, Matcher,
     },
     util::topological_sort,
 };
@@ -158,7 +158,7 @@ impl Clash {
                 let target = self.get_target(ps_next()?)?.into();
                 rule_config::RuleItem {
                     target,
-                    matcher: Matcher::IpCidr(IPMatcher {
+                    matcher: Matcher::IpCidr(IpCidrMatcher {
                         ipcidr: IpCidr::from_str(&ip_cidr)?,
                     }),
                 }
@@ -168,6 +168,14 @@ impl Clash {
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::Any(AnyMatcher {}),
+                }
+            }
+            "GEOIP" => {
+                let region = ps_next()?.to_string();
+                let target = self.get_target(ps_next()?)?.into();
+                rule_config::RuleItem {
+                    target,
+                    matcher: Matcher::GeoIp(GeoIpMatcher { region }),
                 }
             }
             _ => return Err(anyhow!("Rule prefix {} is not supported", rule_type)),
