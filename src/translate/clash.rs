@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::BTreeMap, str::FromStr};
 
 use anyhow::{anyhow, Result};
 use rabbit_digger::{
@@ -25,7 +25,7 @@ pub struct Clash {
     disable_rule: bool,
     // reverse map from clash name to net name
     #[serde(skip)]
-    name_map: HashMap<String, String>,
+    name_map: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
