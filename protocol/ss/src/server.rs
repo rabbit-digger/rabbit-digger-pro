@@ -5,7 +5,7 @@ use rd_interface::{
     async_trait,
     schemars::{self, JsonSchema},
     util::connect_tcp,
-    Address, Arc, Config, IServer, IntoAddress, Net, Result, TcpStream,
+    Address, Arc, Config, IServer, Net, Result, TcpStream,
 };
 use serde_derive::Deserialize;
 use shadowsocks::{config::ServerType, context::Context, ServerConfig};
@@ -13,7 +13,7 @@ use socks5_protocol::Address as S5Addr;
 
 #[derive(Debug, Deserialize, Clone, Config, JsonSchema)]
 pub struct SSServerConfig {
-    bind: String,
+    bind: Address,
     password: String,
     #[serde(default)]
     udp: bool,
@@ -33,10 +33,7 @@ impl IServer for SSServer {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen
-            .tcp_bind(
-                &mut rd_interface::Context::new(),
-                self.cfg.bind.into_address()?,
-            )
+            .tcp_bind(&mut rd_interface::Context::new(), self.cfg.bind.clone())
             .await?;
         loop {
             let (socket, addr) = listener.accept().await?;
