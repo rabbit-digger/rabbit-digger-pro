@@ -81,21 +81,20 @@ impl AsyncRead for Connect {
                 ReadState::Read(ref mut read_buf, pos) => {
                     let mut tmp_buf = ReadBuf::new(&mut read_buf[*pos..]);
                     ready!(Pin::new(&mut this.inner).poll_read(cx, &mut tmp_buf))?;
-                    let new_pos = *pos + tmp_buf.filled().len();
 
-                    if let Some(at) = find_subsequence(&read_buf, b"\r\n\r\n") {
-                        read_buf.truncate(new_pos);
-                        *this.read = ReadState::Write(read_buf.split_off(at + 4), 0);
-                    } else {
-                        *pos = new_pos
+                    *pos += tmp_buf.filled().len();
+
+                    if let Some(at) = find_subsequence_end(&read_buf, b"\r\n\r\n") {
+                        read_buf.truncate(*pos);
+                        *this.read = ReadState::Write(read_buf.split_off(at), 0);
                     }
                 }
-                ReadState::Write(write_buf, pos) => {
+                ReadState::Write(ref write_buf, pos) => {
                     let remaining = &write_buf[*pos..];
-                    let unfilled = buf.initialize_unfilled();
 
-                    let to_read = remaining.len().min(unfilled.len());
-                    unfilled[..to_read].copy_from_slice(&remaining[..to_read]);
+                    let to_read = remaining.len().min(buf.remaining());
+                    buf.initialize_unfilled_to(to_read)
+                        .copy_from_slice(&remaining[..to_read]);
 
                     buf.advance(to_read);
                     *pos += to_read;
@@ -105,7 +104,9 @@ impl AsyncRead for Connect {
                     }
                     return Poll::Ready(Ok(()));
                 }
-                ReadState::Done => return Pin::new(&mut this.inner).poll_read(cx, buf),
+                ReadState::Done => {
+                    return Pin::new(&mut this.inner).poll_read(cx, buf);
+                }
             }
         }
     }
@@ -132,7 +133,7 @@ impl AsyncWrite for Connect {
         loop {
             match this.write {
                 WriteState::Wait => {
-                    let head_len = thread_rng().gen_range(0..64usize).max(buf.len());
+                    let head_len = thread_rng().gen_range(0..64usize).min(buf.len());
                     let head = &buf[..head_len];
                     let body = &buf[head_len..];
 
@@ -148,17 +149,17 @@ impl AsyncWrite for Connect {
 
                     *this.write = WriteState::Write(buf, 0);
                 }
-                WriteState::Write(ref mut buf, pos) => {
+                WriteState::Write(ref buf, pos) => {
                     let wrote = ready!(Pin::new(&mut this.inner).poll_write(cx, &buf[*pos..]))?;
-                    let new_pos = *pos + wrote;
+                    *pos += wrote;
 
-                    if buf.len() == new_pos {
+                    if buf.len() == *pos {
                         *this.write = WriteState::Done;
-                    } else {
-                        *pos = new_pos;
                     }
                 }
-                WriteState::Done => return Pin::new(&mut this.inner).poll_write(cx, buf),
+                WriteState::Done => {
+                    return Pin::new(&mut this.inner).poll_write(cx, buf);
+                }
             };
         }
     }
@@ -186,8 +187,9 @@ impl ITcpStream for Connect {
     }
 }
 
-fn find_subsequence(array: &[u8], pattern: &[u8]) -> Option<usize> {
+fn find_subsequence_end(array: &[u8], pattern: &[u8]) -> Option<usize> {
     array
         .windows(pattern.len())
         .position(|window| window == pattern)
+        .map(|at| at + pattern.len())
 }
