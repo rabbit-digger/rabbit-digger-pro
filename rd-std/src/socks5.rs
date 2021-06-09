@@ -14,7 +14,7 @@ mod server;
 mod tests;
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
-pub struct ClientConfig {
+pub struct Socks5NetConfig {
     server: Address,
 
     #[serde(default)]
@@ -22,13 +22,13 @@ pub struct ClientConfig {
 }
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
-pub struct ServerConfig {
+pub struct Socks5ServerConfig {
     bind: Address,
 }
 
 impl NetFactory for Socks5Client {
     const NAME: &'static str = "socks5";
-    type Config = ClientConfig;
+    type Config = Socks5NetConfig;
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
@@ -38,7 +38,7 @@ impl NetFactory for Socks5Client {
 
 impl ServerFactory for server::Socks5 {
     const NAME: &'static str = "socks5";
-    type Config = ServerConfig;
+    type Config = Socks5ServerConfig;
     type Server = Self;
 
     fn new(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {

@@ -76,13 +76,13 @@ impl HttpSocks5 {
 }
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
-pub struct ServerConfig {
+pub struct MixedServerConfig {
     bind: Address,
 }
 
 impl ServerFactory for HttpSocks5 {
     const NAME: &'static str = "http+socks5";
-    type Config = ServerConfig;
+    type Config = MixedServerConfig;
     type Server = Self;
 
     fn new(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {

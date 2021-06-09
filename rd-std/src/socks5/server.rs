@@ -15,20 +15,20 @@ use std::{
 };
 use tokio::io::{split, AsyncWriteExt, BufWriter};
 
-struct Config {
+struct Socks5ServerConfig {
     net: Net,
     listen_net: Net,
 }
 
 #[derive(Clone)]
 pub struct Socks5Server {
-    cfg: Arc<Config>,
+    cfg: Arc<Socks5ServerConfig>,
 }
 
 impl Socks5Server {
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
-        let Config { net, listen_net } = &*self.cfg;
+        let Socks5ServerConfig { net, listen_net } = &*self.cfg;
         let local_ip = socket.local_addr().await?.ip();
         let (mut rx, tx) = split(socket);
         let mut tx = BufWriter::with_capacity(512, tx);
@@ -135,7 +135,7 @@ impl Socks5Server {
     }
     pub fn new(listen_net: Net, net: Net) -> Self {
         Self {
-            cfg: Arc::new(Config { net, listen_net }),
+            cfg: Arc::new(Socks5ServerConfig { net, listen_net }),
         }
     }
 }

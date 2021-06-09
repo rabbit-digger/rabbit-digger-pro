@@ -20,7 +20,7 @@ pub struct Rule {
 }
 
 impl Rule {
-    fn new(config: config::RuleConfig) -> Result<Rule> {
+    fn new(config: config::RuleNetConfig) -> Result<Rule> {
         let rule = config
             .rule
             .into_iter()
@@ -71,7 +71,7 @@ pub struct RuleNet {
 }
 
 impl RuleNet {
-    pub fn new(config: config::RuleConfig) -> Result<RuleNet> {
+    pub fn new(config: config::RuleNetConfig) -> Result<RuleNet> {
         Ok(RuleNet {
             rule: Rule::new(config)?,
         })

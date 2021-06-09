@@ -10,7 +10,7 @@ use rd_interface::{
 use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct ForwardConfig {
+pub struct ForwardNetConfig {
     bind: Address,
     target: Address,
 }
@@ -18,11 +18,11 @@ pub struct ForwardConfig {
 pub struct ForwardNet {
     listen_net: Net,
     net: Net,
-    cfg: Arc<ForwardConfig>,
+    cfg: Arc<ForwardNetConfig>,
 }
 
 impl ForwardNet {
-    fn new(listen_net: Net, net: Net, cfg: ForwardConfig) -> ForwardNet {
+    fn new(listen_net: Net, net: Net, cfg: ForwardNetConfig) -> ForwardNet {
         ForwardNet {
             listen_net,
             net,
@@ -43,7 +43,7 @@ impl IServer for ForwardNet {
 
 impl ForwardNet {
     async fn serve_connection(
-        cfg: Arc<ForwardConfig>,
+        cfg: Arc<ForwardNetConfig>,
         socket: TcpStream,
         net: Net,
         addr: SocketAddr,
@@ -70,7 +70,7 @@ impl ForwardNet {
 
 impl ServerFactory for ForwardNet {
     const NAME: &'static str = "forward";
-    type Config = ForwardConfig;
+    type Config = ForwardNetConfig;
     type Server = Self;
 
     fn new(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {

@@ -53,13 +53,13 @@ impl INet for AliasNet {
 }
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
-pub struct Config {
+pub struct AliasNetConfig {
     net: NetRef,
 }
 
 impl NetFactory for AliasNet {
     const NAME: &'static str = "alias";
-    type Config = Config;
+    type Config = AliasNetConfig;
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {

@@ -13,7 +13,7 @@ use serde_derive::Deserialize;
 use tokio::net;
 
 #[derive(Debug, Deserialize, Config, JsonSchema, Clone, Default)]
-pub struct LocalConfig {
+pub struct LocalNetConfig {
     /// set ttl
     #[serde(default)]
     pub ttl: Option<u32>,
@@ -23,13 +23,13 @@ pub struct LocalConfig {
     pub nodelay: Option<bool>,
 }
 
-pub struct LocalNet(LocalConfig);
+pub struct LocalNet(LocalNetConfig);
 pub struct CompatTcp(pub(crate) net::TcpStream);
-pub struct Listener(net::TcpListener, LocalConfig);
+pub struct Listener(net::TcpListener, LocalNetConfig);
 pub struct Udp(net::UdpSocket);
 
 impl LocalNet {
-    pub fn new(config: LocalConfig) -> LocalNet {
+    pub fn new(config: LocalNetConfig) -> LocalNet {
         LocalNet(config)
     }
 }
@@ -144,7 +144,7 @@ impl INet for LocalNet {
 
 impl NetFactory for LocalNet {
     const NAME: &'static str = "local";
-    type Config = LocalConfig;
+    type Config = LocalNetConfig;
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {

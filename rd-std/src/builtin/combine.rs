@@ -51,7 +51,7 @@ impl INet for CombineNet {
 }
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
-pub struct Config {
+pub struct CombineNetConfig {
     tcp_connect: NetRef,
     tcp_bind: NetRef,
     udp_bind: NetRef,
@@ -59,11 +59,11 @@ pub struct Config {
 
 impl NetFactory for CombineNet {
     const NAME: &'static str = "combine";
-    type Config = Config;
+    type Config = CombineNetConfig;
     type Net = Self;
 
     fn new(
-        Config {
+        CombineNetConfig {
             tcp_connect,
             tcp_bind,
             udp_bind,

@@ -102,7 +102,7 @@ pub struct RuleItem {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
-pub struct RuleConfig {
+pub struct RuleNetConfig {
     pub rule: Vec<RuleItem>,
 }
 

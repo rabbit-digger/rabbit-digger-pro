@@ -1,5 +1,5 @@
 use super::*;
-use crate::builtin::local::{LocalConfig, LocalNet};
+use crate::builtin::local::{LocalNet, LocalNetConfig};
 use crate::tests::{assert_echo, get_registry, spawn_echo_server};
 use rd_interface::IntoAddress;
 use rd_interface::{IServer, IntoDyn};
@@ -14,7 +14,7 @@ fn test_socks5_smoke() {
 
 #[tokio::test]
 async fn test_socks5_server_client() {
-    let local = LocalNet::new(LocalConfig::default()).into_dyn();
+    let local = LocalNet::new(LocalNetConfig::default()).into_dyn();
     spawn_echo_server(&local, "127.0.0.1:26666").await;
 
     let server = server::Socks5::new(

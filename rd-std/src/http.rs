@@ -13,7 +13,7 @@ mod server;
 mod tests;
 
 #[derive(Debug, Deserialize, Config, JsonSchema)]
-pub struct ClientConfig {
+pub struct HttpNetConfig {
     server: Address,
 
     #[serde(default)]
@@ -27,14 +27,11 @@ pub struct HttpServerConfig {
 
 impl NetFactory for HttpClient {
     const NAME: &'static str = "http";
-    type Config = ClientConfig;
+    type Config = HttpNetConfig;
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        Ok(HttpClient::new(
-            config.net.net(),
-            config.server,
-        ))
+        Ok(HttpClient::new(config.net.net(), config.server))
     }
 }
 

@@ -10,7 +10,7 @@ use rd_interface::{registry::NetFactory, Registry, Result};
 
 impl NetFactory for rule_net::RuleNet {
     const NAME: &'static str = "rule";
-    type Config = config::RuleConfig;
+    type Config = config::RuleNetConfig;
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
