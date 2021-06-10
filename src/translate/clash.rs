@@ -218,7 +218,7 @@ impl Clash {
                     .into_iter()
                     .map(|i| (i.name.clone(), i))
                     .collect(),
-                |i: &ProxyGroup| Ok(i.proxies.clone()) as Result<_>,
+                |_, i: &ProxyGroup| Ok(i.proxies.clone()) as Result<_>,
             )?
             .ok_or(anyhow!("There is cyclic dependencies in proxy_groups"))?;
 
