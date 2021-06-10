@@ -8,12 +8,12 @@ pub fn topological_sort<K, V, D, E>(
 ) -> Result<Option<Vec<(K, V)>>, E>
 where
     K: Hash + Ord + Eq + Clone,
-    D: Fn(&V) -> Result<Vec<K>, E>,
+    D: Fn(&K, &V) -> Result<Vec<K>, E>,
 {
     let mut ts = TopologicalSort::<K>::new();
 
     for (k, v) in map.iter() {
-        for d in get_deps(v)?.into_iter() {
+        for d in get_deps(k, v)?.into_iter() {
             ts.add_dependency(d, k.clone());
         }
     }

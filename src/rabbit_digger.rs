@@ -172,9 +172,9 @@ fn build_net(
         ),
     );
 
-    let all_net = topological_sort(all_net, |n| {
+    let all_net = topological_sort(all_net, |k, n| {
         n.get_dependency(registry)
-            .context("Failed to get_dependency")
+            .context(format!("Failed to get_dependency for net/server: {}", k))
     })
     .context("Failed to do topological_sort")?
     .ok_or(anyhow!("There is cyclic dependencies in net",))?;
