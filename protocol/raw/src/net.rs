@@ -5,13 +5,15 @@ use rd_interface::{
     async_trait, impl_async_read_write,
     registry::NetFactory,
     schemars::{self, JsonSchema},
-    Address, Config, Context, Error, INet, ITcpListener, ITcpStream, IntoDyn, Result,
+    Address, Config, Context, Error, INet, ITcpListener, ITcpStream, IUdpSocket, IntoDyn, Result,
     NOT_IMPLEMENTED,
 };
 use serde_derive::{Deserialize, Serialize};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use tokio::sync::Mutex;
-use tokio_smoltcp::{device::FutureDevice, BufferSize, Net, NetConfig, TcpListener, TcpSocket};
+use tokio_smoltcp::{
+    device::FutureDevice, BufferSize, Net, NetConfig, TcpListener, TcpSocket, UdpSocket,
+};
 
 #[derive(Serialize, Deserialize, JsonSchema, Config)]
 pub struct RawNetConfig {
@@ -123,5 +125,22 @@ impl ITcpListener for TcpListenerWrap {
 
     async fn local_addr(&self) -> Result<SocketAddr> {
         Ok(self.1)
+    }
+}
+
+pub struct UdpSocketWrap(UdpSocket);
+
+#[async_trait]
+impl IUdpSocket for UdpSocketWrap {
+    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        Ok(self.0.recv_from(buf).await?)
+    }
+
+    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
+        Ok(self.0.send_to(buf, addr.to_socket_addr()?).await?)
+    }
+
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        Ok(self.0.local_addr()?)
     }
 }
