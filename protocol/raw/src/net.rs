@@ -43,7 +43,7 @@ impl RawNet {
             buffer_size: BufferSize {
                 tcp_rx_size: 65536,
                 tcp_tx_size: 65536,
-                raw_size: 1024,
+                ..Default::default()
             },
         };
         let mut device = FutureDevice::new(device::get_by_device(device)?, config.mtu);

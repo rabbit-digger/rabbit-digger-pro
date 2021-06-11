@@ -11,11 +11,11 @@ use structopt::StructOpt;
 
 #[derive(StructOpt)]
 struct ApiServer {
-    /// HTTP endpoint bind address
+    /// HTTP endpoint bind address.
     #[structopt(short, long, env = "RD_BIND")]
     bind: Option<String>,
 
-    /// Access token
+    /// Access token.
     #[structopt(long, env = "RD_ACCESS_TOKEN")]
     _access_token: Option<String>,
 
