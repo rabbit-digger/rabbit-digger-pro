@@ -16,13 +16,16 @@ See also: [rabbit-digger/rabbit-digger](https://github.com/rabbit-digger/rabbit-
 * Trojan
 * HTTP
 * Socks5
+* obfs(http_simple)
 
 ### Supported Server Protocol
 
 * Socks5
 * HTTP
 * http+socks5 on the same port
+* Shadowsocks
 
 ## Credits
 
 * [shadowsocks-rust](https://github1s.com/shadowsocks/shadowsocks-rust)
+* [smoltcp](https://github.com/smoltcp-rs/smoltcp)
