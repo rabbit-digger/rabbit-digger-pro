@@ -6,7 +6,6 @@ use rd_interface::{
     registry::NetFactory,
     schemars::{self, JsonSchema},
     Address, Config, Context, Error, INet, ITcpListener, ITcpStream, IUdpSocket, IntoDyn, Result,
-    NOT_IMPLEMENTED,
 };
 use serde_derive::{Deserialize, Serialize};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
@@ -91,12 +90,9 @@ impl INet for RawNet {
         Ok(listener.into_dyn())
     }
 
-    async fn udp_bind(
-        &self,
-        _ctx: &mut Context,
-        _addr: Address,
-    ) -> Result<rd_interface::UdpSocket> {
-        Err(NOT_IMPLEMENTED)
+    async fn udp_bind(&self, _ctx: &mut Context, addr: Address) -> Result<rd_interface::UdpSocket> {
+        let udp = UdpSocketWrap(self.net.udp_bind(addr.to_socket_addr()?).await?);
+        Ok(udp.into_dyn())
     }
 }
 
