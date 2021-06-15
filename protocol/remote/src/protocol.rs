@@ -122,12 +122,12 @@ async fn handshake(channel: &mut TcpStream, token: &str) -> Result<()> {
 pub enum CommandRequest {
     TcpConnect { address: Address },
     TcpBind { address: Address },
-    TcpAccept { id: u64 },
+    TcpAccept { id: u32 },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CommandResponse {
-    Accept { id: u64, addr: SocketAddr },
+    Accept { id: u32, addr: SocketAddr },
     BindAddr { addr: SocketAddr },
 }
 

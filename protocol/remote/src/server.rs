@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::protocol::{Channel, CommandRequest, CommandResponse, Protocol};
 use dashmap::DashMap;
@@ -7,18 +7,18 @@ use rd_interface::{
 };
 
 #[derive(Clone)]
-struct Map(Arc<(DashMap<u64, TcpStream>, AtomicU64)>);
+struct Map(Arc<(DashMap<u32, TcpStream>, AtomicU32)>);
 
 impl Map {
     fn new() -> Map {
-        Map(Arc::new((DashMap::new(), AtomicU64::new(0))))
+        Map(Arc::new((DashMap::new(), AtomicU32::new(0))))
     }
-    fn insert(&self, tcp: TcpStream) -> u64 {
-        let id = self.0 .1.fetch_add(10, Ordering::SeqCst);
+    fn insert(&self, tcp: TcpStream) -> u32 {
+        let id = self.0 .1.fetch_add(1, Ordering::SeqCst);
         self.0 .0.insert(id, tcp);
         id
     }
-    fn get(&self, id: u64) -> Option<TcpStream> {
+    fn get(&self, id: u32) -> Option<TcpStream> {
         self.0 .0.remove(&id).map(|i| i.1)
     }
 }
