@@ -20,8 +20,10 @@ impl SelectNet {
         if config.list.len() == 0 {
             return Err(Error::Other("select list is empty".into()));
         }
-        let index = config.selected.max(config.list.len() - 1);
-        let net = config.list[index].net();
+        let index = config.selected.min(config.list.len() - 1);
+        let net = &config.list[index];
+        tracing::trace!("selected net: {}", net.name());
+        let net = net.net();
         Ok(SelectNet(net))
     }
 }
