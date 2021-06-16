@@ -6,7 +6,7 @@ use rabbit_digger::controller::{Controller, OnceConfigStopper};
 use rd_interface::Arc;
 use serde_json::json;
 use tokio::{
-    fs::{create_dir_all, read_to_string, File},
+    fs::{create_dir_all, read_to_string, remove_file, File},
     sync::Mutex,
 };
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
@@ -87,6 +87,19 @@ pub async fn put_userdata(
             .map_err(custom_reject)?;
     }
     Ok(warp::reply::json(&json!({ "copied": size })))
+}
+
+pub async fn delete_userdata(
+    mut userdata: PathBuf,
+    tail: Tail,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    create_dir_all(&userdata).await.map_err(custom_reject)?;
+    // TOOD prevent ".." attack
+    userdata.push(tail.as_str());
+
+    remove_file(&userdata).await.map_err(custom_reject)?;
+
+    Ok(warp::reply::json(&json!({ "ok": true })))
 }
 
 async fn forward(

@@ -46,6 +46,11 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and(warp::path::tail())
         .and(warp::body::stream())
         .and_then(handlers::put_userdata);
+    let delete_userdata = warp::path("userdata")
+        .and(warp::delete())
+        .and(with_userdata(userdata))
+        .and(warp::path::tail())
+        .and_then(handlers::delete_userdata);
 
     prefix.and(
         ws_event(&server.controller)
@@ -55,7 +60,8 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
                     .or(get_registry)
                     .or(get_state)
                     .or(get_userdata)
-                    .or(put_userdata),
+                    .or(put_userdata)
+                    .or(delete_userdata),
             ))
             .recover(handle_rejection),
     )
@@ -78,7 +84,7 @@ pub fn routes(
     let cors = warp::cors()
         .allow_any_origin()
         .allow_headers(["authorization", "content-type"])
-        .allow_methods(["GET", "POST", "PUT"]);
+        .allow_methods(["GET", "POST", "PUT", "DELETE"]);
 
     return api(server).or(forward).with(cors);
 }
