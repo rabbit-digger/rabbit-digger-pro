@@ -6,13 +6,12 @@ use rabbit_digger::controller::{Controller, OnceConfigStopper};
 use rd_interface::Arc;
 use serde_json::json;
 use tokio::{
-    fs::{create_dir_all, File},
+    fs::{create_dir_all, read_to_string, File},
     sync::Mutex,
 };
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
-use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
+use tokio_util::codec::{BytesCodec, FramedWrite};
 use warp::{
-    hyper::Response,
     path::Tail,
     ws::{Message, WebSocket},
     Buf,
@@ -61,14 +60,10 @@ pub async fn get_userdata(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     // TOOD prevent ".." attack
     userdata.push(tail.as_str());
-    let file = File::open(userdata)
+    let body = read_to_string(userdata)
         .await
         .map_err(|_| warp::reject::custom(ApiError::NotFound))?;
-    let stream = FramedRead::new(file, BytesCodec::new());
-    let resp = Response::builder()
-        .body(warp::hyper::body::Body::wrap_stream(stream))
-        .map_err(custom_reject)?;
-    Ok(resp)
+    Ok(warp::reply::json(&json!({ "body": body })))
 }
 
 pub async fn put_userdata(
@@ -91,7 +86,7 @@ pub async fn put_userdata(
             .await
             .map_err(custom_reject)?;
     }
-    Ok(warp::reply::json(&json!({"ok": true, "copied": size})))
+    Ok(warp::reply::json(&json!({ "copied": size })))
 }
 
 async fn forward(
