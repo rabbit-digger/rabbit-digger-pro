@@ -78,7 +78,7 @@ pub fn routes(
     let cors = warp::cors()
         .allow_any_origin()
         .allow_headers(["authorization", "content-type"])
-        .allow_methods(["GET", "POST"]);
+        .allow_methods(["GET", "POST", "PUT"]);
 
     return api(server).or(forward).with(cors);
 }
