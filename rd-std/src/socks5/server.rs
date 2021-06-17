@@ -1,4 +1,5 @@
 use super::common::{pack_udp, parse_udp, sa2ra};
+use parking_lot::RwLock;
 use rd_interface::{
     async_trait,
     util::{connect_tcp, connect_udp},
@@ -11,7 +12,7 @@ use socks5_protocol::{
 };
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 use tokio::io::{split, AsyncWriteExt, BufWriter};
 
@@ -149,9 +150,9 @@ impl IUdpChannel for Socks5UdpSocket {
         let bytes_size = 259 + buf.len();
         let mut bytes = vec![0u8; bytes_size];
         let (recv_len, from_addr) = self.0.recv_from(&mut bytes).await?;
-        let saved_addr = { *self.2.read().unwrap() };
+        let saved_addr = { *self.2.read() };
         if let None = saved_addr {
-            *self.2.write().unwrap() = Some(from_addr);
+            *self.2.write() = Some(from_addr);
         }
         bytes.truncate(recv_len);
 
@@ -167,7 +168,7 @@ impl IUdpChannel for Socks5UdpSocket {
 
         let bytes = pack_udp(saddr, buf).await?;
 
-        let addr = { *self.2.read().unwrap() };
+        let addr = { *self.2.read() };
         Ok(if let Some(addr) = addr {
             self.0.send_to(&bytes, addr.into()).await?
         } else {
