@@ -34,6 +34,12 @@ pub struct RawServerConfig {
     mtu: usize,
     ip_addr: String,
     ethernet_addr: String,
+    #[serde(default = "default_lru")]
+    lru_size: usize,
+}
+
+fn default_lru() -> usize {
+    128
 }
 
 pub struct RawServer {
@@ -88,6 +94,7 @@ impl RawServer {
         let device = GatewayInterface::new(
             device::get_by_device(device)?
                 .filter(move |p: &Packet| ready(filter_packet(p, ethernet_addr, ip_addr))),
+            config.lru_size,
             SocketAddrV4::new(addr.into(), 20000),
         );
         let map = device.get_map();

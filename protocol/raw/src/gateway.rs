@@ -5,8 +5,9 @@ use std::{
     task::{Context, Poll},
 };
 
-use dashmap::DashMap;
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
+use lru::LruCache;
+use parking_lot::Mutex;
 use rd_interface::Result;
 use smoltcp::wire::{
     EthernetFrame, EthernetProtocol, IpProtocol, Ipv4Packet, TcpPacket, UdpPacket,
@@ -15,20 +16,20 @@ use tokio_smoltcp::device::{Interface, Packet};
 
 #[derive(Clone)]
 pub struct MapTable {
-    map: Arc<DashMap<SocketAddrV4, SocketAddrV4>>,
+    map: Arc<Mutex<LruCache<SocketAddrV4, SocketAddrV4>>>,
 }
 
 impl MapTable {
-    fn new() -> MapTable {
+    fn new(cap: usize) -> MapTable {
         MapTable {
-            map: Arc::new(DashMap::new()),
+            map: Arc::new(Mutex::new(LruCache::new(cap))),
         }
     }
     fn insert(&self, key: SocketAddrV4, value: SocketAddrV4) {
-        self.map.insert(key, value);
+        self.map.lock().put(key, value);
     }
     pub fn get(&self, key: &SocketAddrV4) -> Option<SocketAddrV4> {
-        self.map.get(key).map(|i| *i)
+        self.map.lock().get(key).map(|i| *i)
     }
 }
 
@@ -118,10 +119,10 @@ fn set_src_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
 }
 
 impl<I> GatewayInterface<I> {
-    pub fn new(inner: I, override_v4: SocketAddrV4) -> GatewayInterface<I> {
+    pub fn new(inner: I, lru_size: usize, override_v4: SocketAddrV4) -> GatewayInterface<I> {
         GatewayInterface {
             inner,
-            map: MapTable::new(),
+            map: MapTable::new(lru_size),
 
             override_v4,
         }
