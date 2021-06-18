@@ -6,7 +6,7 @@ use std::{
 };
 
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
-use lru::LruCache;
+use lru_time_cache::LruCache;
 use parking_lot::Mutex;
 use rd_interface::Result;
 use smoltcp::wire::{
@@ -22,11 +22,11 @@ pub struct MapTable {
 impl MapTable {
     fn new(cap: usize) -> MapTable {
         MapTable {
-            map: Arc::new(Mutex::new(LruCache::new(cap))),
+            map: Arc::new(Mutex::new(LruCache::with_capacity(cap))),
         }
     }
     fn insert(&self, key: SocketAddrV4, value: SocketAddrV4) {
-        self.map.lock().put(key, value);
+        self.map.lock().insert(key, value);
     }
     pub fn get(&self, key: &SocketAddrV4) -> Option<SocketAddrV4> {
         self.map.lock().get(key).map(|i| *i)
