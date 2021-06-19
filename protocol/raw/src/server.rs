@@ -31,7 +31,7 @@ use smoltcp::{
 };
 use tokio::{
     select, spawn,
-    sync::mpsc::{channel, Sender},
+    sync::mpsc::{channel, error::TrySendError, Sender},
     time::timeout,
 };
 use tokio_smoltcp::{
@@ -152,7 +152,7 @@ impl RawServer {
         }
     }
     async fn serve_udp(&self, raw: RawSocket) -> Result<()> {
-        let (send_raw, mut send_rx) = channel::<(SocketAddr, SocketAddr, Vec<u8>)>(128);
+        let (send_raw, mut send_rx) = channel::<(SocketAddr, SocketAddr, Vec<u8>)>(64);
 
         let mut buf = [0u8; 2048];
         let mut nat = LruCache::<SocketAddr, UdpTunnel>::with_expiry_duration_and_capacity(
@@ -296,7 +296,7 @@ impl UdpTunnel {
         src: SocketAddr,
         send_raw: Sender<(SocketAddr, SocketAddr, Vec<u8>)>,
     ) -> UdpTunnel {
-        let (tx, mut rx) = channel::<(SocketAddr, Vec<u8>)>(8);
+        let (tx, mut rx) = channel::<(SocketAddr, Vec<u8>)>(64);
         tokio::spawn(async move {
             let udp = timeout(
                 Duration::from_secs(5),
@@ -324,6 +324,7 @@ impl UdpTunnel {
                         break;
                     }
                 }
+                tracing::trace!("send_raw return error");
                 Ok(()) as Result<()>
             };
 
@@ -340,6 +341,12 @@ impl UdpTunnel {
         UdpTunnel { tx }
     }
     fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
-        self.tx.try_send((addr, buf.to_vec())).map_err(map_other)
+        match self.tx.try_send((addr, buf.to_vec())) {
+            Err(TrySendError::Full(p)) => {
+                tracing::trace!("send_to queue full, dropped {:x?}", p);
+            }
+            _ => {}
+        };
+        Ok(())
     }
 }

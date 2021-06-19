@@ -45,6 +45,14 @@ impl RawNet {
             buffer_size: BufferSize {
                 tcp_rx_size: 65536,
                 tcp_tx_size: 65536,
+                udp_rx_size: 65536,
+                udp_tx_size: 65536,
+                udp_rx_meta_size: 256,
+                udp_tx_meta_size: 256,
+                raw_rx_size: 65536,
+                raw_tx_size: 65536,
+                raw_rx_meta_size: 256,
+                raw_tx_meta_size: 256,
                 ..Default::default()
             },
         };
