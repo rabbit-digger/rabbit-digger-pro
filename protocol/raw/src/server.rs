@@ -141,7 +141,7 @@ impl RawServer {
                 spawn(async move {
                     let target = net
                         .tcp_connect(
-                            &mut Context::new(),
+                            &mut Context::from_socketaddr(addr),
                             SocketAddr::from(orig_addr).into_address()?,
                         )
                         .await?;
@@ -300,7 +300,10 @@ impl UdpTunnel {
         tokio::spawn(async move {
             let udp = timeout(
                 Duration::from_secs(5),
-                net.udp_bind(&mut Context::new(), "0.0.0.0:0".into_address()?),
+                net.udp_bind(
+                    &mut Context::from_socketaddr(src),
+                    "0.0.0.0:0".into_address()?,
+                ),
             )
             .await
             .map_err(map_other)??;
