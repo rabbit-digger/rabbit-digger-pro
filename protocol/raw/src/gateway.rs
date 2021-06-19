@@ -57,15 +57,6 @@ fn set_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
 
             (tcp.src_port(), dst_port)
         }
-        IpProtocol::Udp => {
-            ip.set_dst_addr(dst_addr.ip().to_owned().into());
-
-            let mut udp = UdpPacket::new_unchecked(ip.payload_mut());
-            let dst_port = udp.dst_port();
-            udp.set_dst_port(dst_addr.port());
-
-            (udp.src_port(), dst_port)
-        }
         _ => return Ok(None),
     };
 
@@ -102,14 +93,6 @@ fn set_src_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
             tcp.set_src_port(port);
 
             tcp.fill_checksum(&src_addr.into(), &dst_addr.into());
-        }
-        IpProtocol::Udp => {
-            ip.set_src_addr(src_addr);
-
-            let mut udp = UdpPacket::new_checked(ip.payload_mut())?;
-            udp.set_src_port(port);
-
-            udp.fill_checksum(&src_addr.into(), &dst_addr.into());
         }
         _ => {}
     };

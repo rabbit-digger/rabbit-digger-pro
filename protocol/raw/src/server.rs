@@ -1,26 +1,42 @@
 use std::{
     net::{SocketAddr, SocketAddrV4},
     str::FromStr,
+    time::Duration,
 };
 
-use futures::{future::ready, StreamExt};
+use futures::{
+    future::{ready, try_select},
+    pin_mut, StreamExt,
+};
+use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
+    error::map_other,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
     util::connect_tcp,
     Config, Context, Error, IServer, IntoAddress, Net, Result,
 };
 use serde_derive::{Deserialize, Serialize};
-use smoltcp::wire::{EthernetFrame, EthernetProtocol, Ipv4Packet};
+use smoltcp::{
+    phy::Checksum,
+    wire::{
+        EthernetFrame, EthernetProtocol, IpProtocol, IpVersion, Ipv4Address, Ipv4Packet, Ipv4Repr,
+        UdpPacket, UdpRepr,
+    },
+};
 use smoltcp::{
     phy::ChecksumCapabilities,
     wire::{EthernetAddress, IpCidr},
 };
-use tokio::{select, spawn};
+use tokio::{
+    select, spawn,
+    sync::mpsc::{channel, Sender},
+    time::timeout,
+};
 use tokio_smoltcp::{
     device::{FutureDevice, Packet},
-    BufferSize, NetConfig, TcpListener, UdpSocket,
+    BufferSize, NetConfig, RawSocket, TcpListener,
 };
 
 use crate::{
@@ -78,7 +94,7 @@ impl RawServer {
         let net_config = NetConfig {
             ethernet_addr,
             ip_addr,
-            gateway,
+            gateway: vec![gateway],
             buffer_size: BufferSize {
                 tcp_rx_size: 65536,
                 tcp_tx_size: 65536,
@@ -102,6 +118,7 @@ impl RawServer {
         device.caps.max_burst_size = Some(100);
         // ignored checksum since we modify the packets
         device.caps.checksum = ChecksumCapabilities::ignored();
+        device.caps.checksum.ipv4 = Checksum::Tx;
 
         let (smoltcp_net, fut) = tokio_smoltcp::Net::new(device, net_config);
         tokio::spawn(fut);
@@ -134,33 +151,103 @@ impl RawServer {
             }
         }
     }
-    async fn serve_udp(&self, udp: UdpSocket) -> Result<()> {
-        let mut buf = [0u8; 2048];
-        let nudp = self
-            .net
-            .udp_bind(&mut Context::new(), "0.0.0.0:0".into_address()?)
-            .await?;
-        loop {
-            let (size, addr) = udp.recv_from(&mut buf).await?;
-            let orig_addr = self.map.get(&match addr {
-                SocketAddr::V4(v4) => v4,
-                _ => continue,
-            });
-            if let Some(orig_addr) = orig_addr {
-                tracing::trace!(
-                    "recv from {} size {}, orig_addr {:?}",
-                    addr,
-                    size,
-                    orig_addr
-                );
-                nudp.send_to(&buf[..size], SocketAddr::from(orig_addr).into_address()?)
-                    .await?;
+    async fn serve_udp(&self, raw: RawSocket) -> Result<()> {
+        let (send_raw, mut send_rx) = channel::<(SocketAddr, SocketAddr, Vec<u8>)>(128);
 
-                let (size, recv_addr) = nudp.recv_from(&mut buf).await?;
-                tracing::trace!("recv_from other side {}", recv_addr);
-                udp.send_to(&buf[..size], addr).await?;
+        let mut buf = [0u8; 2048];
+        let mut nat = LruCache::<SocketAddr, UdpTunnel>::with_expiry_duration_and_capacity(
+            Duration::from_secs(30),
+            128,
+        );
+        let net = self.net.clone();
+
+        let recv = async {
+            loop {
+                let size = raw.recv(&mut buf).await?;
+                let (src, dst, payload) = match parse_udp(&buf[..size]) {
+                    Ok(v) => v,
+                    _ => break,
+                };
+
+                let udp = nat
+                    .entry(src)
+                    .or_insert_with(|| UdpTunnel::new(net.clone(), src, send_raw.clone()));
+                if let Err(e) = udp.send_to(payload, dst.into()) {
+                    tracing::error!("Udp send_to {:?}", e);
+                    nat.remove(&src);
+                }
             }
+
+            Ok(()) as Result<()>
+        };
+
+        let send = async {
+            while let Some((src, dst, payload)) = send_rx.recv().await {
+                if let Some(ip_packet) = pack_udp(src, dst, &payload) {
+                    raw.send(&ip_packet).await?;
+                } else {
+                    tracing::debug!("Unsupported src/dst");
+                }
+            }
+            Ok(()) as Result<()>
+        };
+
+        pin_mut!(recv);
+        pin_mut!(send);
+
+        match try_select(send, recv).await {
+            Ok(_) => {}
+            Err(e) => return Err(e.factor_first().0),
         }
+
+        Ok(())
+    }
+}
+
+/// buf is a ip packet
+fn parse_udp(buf: &[u8]) -> smoltcp::Result<(SocketAddr, SocketAddr, &[u8])> {
+    let ipv4 = Ipv4Packet::new_checked(buf)?;
+    let udp = UdpPacket::new_checked(ipv4.payload())?;
+
+    let src = SocketAddrV4::new(ipv4.src_addr().into(), udp.src_port());
+    let dst = SocketAddrV4::new(ipv4.dst_addr().into(), udp.dst_port());
+
+    Ok((src.into(), dst.into(), udp.payload()))
+}
+
+fn pack_udp(src: SocketAddr, dst: SocketAddr, payload: &[u8]) -> Option<Vec<u8>> {
+    match (src, dst) {
+        (SocketAddr::V4(src_v4), SocketAddr::V4(dst_v4)) => {
+            let checksum = &ChecksumCapabilities::default();
+            let udp_repr = UdpRepr {
+                src_port: src.port(),
+                dst_port: dst.port(),
+                payload,
+            };
+            let ipv4_repr = Ipv4Repr {
+                src_addr: Ipv4Address::from(*src_v4.ip()),
+                dst_addr: Ipv4Address::from(*dst_v4.ip()),
+                protocol: IpProtocol::Udp,
+                payload_len: udp_repr.buffer_len(),
+                hop_limit: 64,
+            };
+
+            let mut buffer = vec![0u8; ipv4_repr.buffer_len() + udp_repr.buffer_len()];
+
+            let mut udp_packet = UdpPacket::new_unchecked(&mut buffer[ipv4_repr.buffer_len()..]);
+            udp_repr.emit(
+                &mut udp_packet,
+                &src.ip().into(),
+                &dst.ip().into(),
+                checksum,
+            );
+
+            let mut ipv4_packet = Ipv4Packet::new_unchecked(&mut buffer);
+            ipv4_repr.emit(&mut ipv4_packet, checksum);
+
+            Some(buffer)
+        }
+        _ => None,
     }
 }
 
@@ -171,13 +258,13 @@ impl IServer for RawServer {
             .smoltcp_net
             .tcp_bind("0.0.0.0:20000".parse().unwrap())
             .await?;
-        let udp_listener = self
+        let raw_socket = self
             .smoltcp_net
-            .udp_bind("0.0.0.0:20000".parse().unwrap())
+            .raw_socket(IpVersion::Ipv4, IpProtocol::Udp)
             .await?;
 
         let tcp_task = self.serve_tcp(tcp_listener);
-        let udp_task = self.serve_udp(udp_listener);
+        let udp_task = self.serve_udp(raw_socket);
 
         select! {
             r = tcp_task => r?,
@@ -196,5 +283,63 @@ impl ServerFactory for RawServer {
 
     fn new(_listen: Net, net: Net, config: Self::Config) -> Result<Self::Server> {
         RawServer::new(net, config)
+    }
+}
+
+struct UdpTunnel {
+    tx: Sender<(SocketAddr, Vec<u8>)>,
+}
+
+impl UdpTunnel {
+    fn new(
+        net: Net,
+        src: SocketAddr,
+        send_raw: Sender<(SocketAddr, SocketAddr, Vec<u8>)>,
+    ) -> UdpTunnel {
+        let (tx, mut rx) = channel::<(SocketAddr, Vec<u8>)>(8);
+        tokio::spawn(async move {
+            let udp = timeout(
+                Duration::from_secs(5),
+                net.udp_bind(&mut Context::new(), "0.0.0.0:0".into_address()?),
+            )
+            .await
+            .map_err(map_other)??;
+
+            let send = async {
+                while let Some((addr, packet)) = rx.recv().await {
+                    udp.send_to(&packet, addr.into()).await?;
+                }
+                Ok(()) as Result<()>
+            };
+            let recv = async {
+                let mut buf = [0u8; 2048];
+                loop {
+                    let (size, addr) = udp.recv_from(&mut buf).await?;
+
+                    if send_raw
+                        .send((addr, src, buf[..size].to_vec()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Ok(()) as Result<()>
+            };
+
+            pin_mut!(send);
+            pin_mut!(recv);
+
+            match try_select(send, recv).await {
+                Ok(_) => {}
+                Err(e) => return Err(e.factor_first().0),
+            };
+
+            Ok(()) as Result<()>
+        });
+        UdpTunnel { tx }
+    }
+    fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
+        self.tx.try_send((addr, buf.to_vec())).map_err(map_other)
     }
 }

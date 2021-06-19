@@ -41,7 +41,7 @@ impl RawNet {
         let net_config = NetConfig {
             ethernet_addr,
             ip_addr,
-            gateway,
+            gateway: vec![gateway],
             buffer_size: BufferSize {
                 tcp_rx_size: 65536,
                 tcp_tx_size: 65536,
