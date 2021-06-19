@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rabbit_digger::rd_interface::schemars::{
     schema::{
-        InstanceType, Metadata, ObjectValidation, RootSchema, Schema, SchemaObject, SingleOrVec,
+        InstanceType, Metadata, ObjectValidation, RootSchema, Schema, SchemaObject,
         SubschemaValidation,
     },
     visit::{visit_root_schema, visit_schema_object, Visitor},
@@ -38,7 +38,7 @@ fn append_type(schema: &RootSchema, type_name: &str) -> RootSchema {
     schema.schema.object().properties.insert(
         "type".to_string(),
         SchemaObject {
-            instance_type: Some(SingleOrVec::Single(InstanceType::String.into())),
+            instance_type: Some(InstanceType::String.into()),
             const_value: Some(Value::String(type_name.to_string())),
             ..Default::default()
         }
@@ -116,11 +116,16 @@ pub async fn generate_schema() -> Result<RootSchema> {
         root.definitions.extend(schema.definitions);
     }
 
+    let string_schema = {
+        let mut schema = SchemaObject::default();
+        schema.instance_type = Some(InstanceType::String.into());
+        schema.into()
+    };
     let net_schema = anyof_schema(nets);
     let server_schema = anyof_schema(servers);
 
     root.schema = SchemaObject {
-        instance_type: Some(SingleOrVec::Single(InstanceType::Object.into())),
+        instance_type: Some(InstanceType::Object.into()),
         metadata: Some(
             Metadata {
                 title: Some("Config".to_string()),
@@ -131,6 +136,7 @@ pub async fn generate_schema() -> Result<RootSchema> {
         object: Some(
             ObjectValidation {
                 properties: BTreeMap::from_iter([
+                    ("id".to_string(), string_schema),
                     ("net".to_string(), net_schema),
                     ("server".to_string(), server_schema),
                 ]),
