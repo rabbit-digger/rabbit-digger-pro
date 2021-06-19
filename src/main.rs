@@ -119,7 +119,7 @@ async fn main(args: Args) -> Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace",
+            "rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace,raw=trace",
         )
     }
     tracing_subscriber::fmt::init();
