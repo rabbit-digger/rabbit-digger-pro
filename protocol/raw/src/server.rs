@@ -11,6 +11,7 @@ use futures::{
 use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
+    constant::UDP_BUFFER_SIZE,
     error::map_other,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
@@ -154,7 +155,7 @@ impl RawServer {
     async fn serve_udp(&self, raw: RawSocket) -> Result<()> {
         let (send_raw, mut send_rx) = channel::<(SocketAddr, SocketAddr, Vec<u8>)>(64);
 
-        let mut buf = [0u8; 2048];
+        let mut buf = [0u8; UDP_BUFFER_SIZE];
         let mut nat = LruCache::<SocketAddr, UdpTunnel>::with_expiry_duration_and_capacity(
             Duration::from_secs(30),
             128,
@@ -315,7 +316,7 @@ impl UdpTunnel {
                 Ok(()) as Result<()>
             };
             let recv = async {
-                let mut buf = [0u8; 2048];
+                let mut buf = [0u8; UDP_BUFFER_SIZE];
                 loop {
                     let (size, addr) = udp.recv_from(&mut buf).await?;
 
@@ -345,11 +346,12 @@ impl UdpTunnel {
     }
     fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
         match self.tx.try_send((addr, buf.to_vec())) {
+            Ok(_) => Ok(()),
             Err(TrySendError::Full(p)) => {
                 tracing::trace!("send_to queue full, dropped {:x?}", p);
+                Ok(())
             }
-            _ => {}
-        };
-        Ok(())
+            Err(TrySendError::Closed(_)) => Err(Error::Other("Other side closed".into())),
+        }
     }
 }
