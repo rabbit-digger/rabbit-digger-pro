@@ -92,6 +92,12 @@ impl Net {
             _reserved: Default::default(),
         }
     }
+    pub fn new_opt(
+        net_type: impl Into<String>,
+        opt: impl serde::Serialize,
+    ) -> rd_interface::Result<Net> {
+        Ok(Net::new(net_type, serde_json::to_value(opt)?))
+    }
 }
 
 impl Server {
@@ -108,5 +114,18 @@ impl Server {
             opt,
             _reserved: Default::default(),
         }
+    }
+    pub fn new_opt(
+        server_type: impl Into<String>,
+        listen: impl Into<String>,
+        net: impl Into<String>,
+        opt: impl serde::Serialize,
+    ) -> rd_interface::Result<Server> {
+        Ok(Server::new(
+            server_type,
+            listen,
+            net,
+            serde_json::to_value(opt)?,
+        ))
     }
 }
