@@ -59,12 +59,12 @@ pub fn from_config(value: Value) -> Result<Clash> {
 }
 
 fn ghost_net() -> Net {
-    Net {
-        net_type: "alias".to_string(),
-        opt: json!({
+    Net::new(
+        "alias",
+        json!({
             "net": "noop"
         }),
-    }
+    )
 }
 
 impl Clash {
@@ -80,15 +80,15 @@ impl Clash {
                     udp: Option<bool>,
                 }
                 let params: Param = serde_json::from_value(p.opt)?;
-                Net {
-                    net_type: "shadowsocks".to_string(),
-                    opt: json!({
+                Net::new(
+                    "shadowsocks",
+                    json!({
                         "server": format!("{}:{}", params.server, params.port),
                         "cipher": params.cipher,
                         "password": params.password,
                         "udp": params.udp.unwrap_or_default(),
                     }),
-                }
+                )
             }
             _ => return Err(anyhow!("Unsupported proxy type: {}", p.proxy_type)),
         };
@@ -117,13 +117,13 @@ impl Clash {
             .collect::<Result<Vec<String>>>()?;
 
         Ok(match p.proxy_group_type.as_ref() {
-            "select" => Net {
-                net_type: "select".to_string(),
-                opt: json!({
+            "select" => Net::new(
+                "select",
+                json!({
                     "selected": 0,
                     "list": net_list,
                 }),
-            },
+            ),
             _ => {
                 return Err(anyhow!(
                     "Unsupported proxy group type: {}",
@@ -248,22 +248,19 @@ impl Clash {
             }
             config.net.insert(
                 self.prefix("clash_rule"),
-                Net {
-                    net_type: "rule".to_string(),
-                    opt: json!({ "rule": rule }),
-                },
+                Net::new("rule", json!({ "rule": rule })),
             );
         }
 
         if !self.disable_socks5 {
             config.server.insert(
                 self.prefix("socks_port"),
-                Server {
-                    server_type: "socks5".to_string(),
-                    listen: "local".to_string(),
-                    net: self.target.clone().unwrap_or(self.prefix("clash_rule")),
-                    opt: json!({ "bind": format!("0.0.0.0:{}", clash_config.socks_port) }),
-                },
+                Server::new(
+                    "socks5",
+                    "local",
+                    self.target.clone().unwrap_or(self.prefix("clash_rule")),
+                    json!({ "bind": format!("0.0.0.0:{}", clash_config.socks_port) }),
+                ),
             );
         }
 
