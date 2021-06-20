@@ -147,19 +147,13 @@ fn build_net(
     if !all_net.contains_key("noop") {
         all_net.insert(
             "noop".to_string(),
-            AllNet::Net(config::Net {
-                net_type: "noop".to_string(),
-                opt: Value::Object(Map::new()),
-            }),
+            AllNet::Net(config::Net::new("noop", Value::Object(Map::new()))),
         );
     }
     if !all_net.contains_key("local") {
         all_net.insert(
             "local".to_string(),
-            AllNet::Net(config::Net {
-                net_type: "local".to_string(),
-                opt: Value::Object(Map::new()),
-            }),
+            AllNet::Net(config::Net::new("local", Value::Object(Map::new()))),
         );
     }
     all_net.insert(

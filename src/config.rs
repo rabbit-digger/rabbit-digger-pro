@@ -20,7 +20,7 @@ pub enum AllNet {
 impl AllNet {
     pub fn get_dependency(&self, registry: &Registry) -> Result<Vec<String>> {
         Ok(match self {
-            AllNet::Net(Net { net_type, opt }) => registry
+            AllNet::Net(Net { net_type, opt, .. }) => registry
                 .get_net(net_type)?
                 .resolver
                 .get_dependency(opt.clone())?,
@@ -41,6 +41,8 @@ pub struct Config {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Net {
+    #[serde(flatten)]
+    pub _reserved: Reserved,
     #[serde(rename = "type")]
     pub net_type: String,
     #[serde(flatten)]
@@ -49,6 +51,8 @@ pub struct Net {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Server {
+    #[serde(flatten)]
+    pub _reserved: Reserved,
     #[serde(rename = "type")]
     pub server_type: String,
     #[serde(default = "default::local_string")]
@@ -63,5 +67,46 @@ impl Config {
     pub fn merge(&mut self, other: Config) {
         self.net.extend(other.net);
         self.server.extend(other.server);
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct Reserved {
+    #[serde(default)]
+    r#async: bool,
+    #[serde(default)]
+    r#await: bool,
+    #[serde(default)]
+    r#as: bool,
+    #[serde(default)]
+    r#break: bool,
+    #[serde(default)]
+    r#const: bool,
+}
+
+impl Net {
+    pub fn new(net_type: impl Into<String>, opt: Value) -> Net {
+        Net {
+            net_type: net_type.into(),
+            opt,
+            _reserved: Default::default(),
+        }
+    }
+}
+
+impl Server {
+    pub fn new(
+        server_type: impl Into<String>,
+        listen: impl Into<String>,
+        net: impl Into<String>,
+        opt: Value,
+    ) -> Server {
+        Server {
+            server_type: server_type.into(),
+            listen: listen.into(),
+            net: net.into(),
+            opt,
+            _reserved: Default::default(),
+        }
     }
 }
