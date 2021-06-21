@@ -9,7 +9,7 @@ use schemars::{
     schema::{InstanceType, RootSchema, SchemaObject},
     schema_for,
 };
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
 
 pub type NetMap = BTreeMap<String, Net>;
@@ -138,7 +138,7 @@ impl ServerResolver {
     }
 }
 
-#[derive(Debug, Default, serde_derive::Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct EmptyConfig(Value);
 
 impl JsonSchema for EmptyConfig {

@@ -4,15 +4,13 @@ use std::{
 };
 
 use rd_interface::{
-    async_trait, impl_async_read_write,
-    registry::NetFactory,
-    schemars::{self, JsonSchema},
-    Address, Config, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, INet, IntoDyn,
+    Result, TcpListener, TcpStream, UdpSocket,
 };
-use serde_derive::Deserialize;
 use tokio::net;
 
-#[derive(Debug, Deserialize, Config, JsonSchema, Clone, Default)]
+#[rd_config]
+#[derive(Debug, Clone, Default)]
 pub struct LocalNetConfig {
     /// set ttl
     #[serde(default)]

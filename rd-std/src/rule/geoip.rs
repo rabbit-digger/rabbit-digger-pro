@@ -2,10 +2,8 @@ use std::net::SocketAddr;
 
 use super::config::GeoIpMatcher;
 use super::matcher::{Matcher, MaybeAsync};
-use rd_interface::{impl_empty_net_resolve, Address};
+use rd_interface::Address;
 use smoltcp::wire::IpAddress;
-
-impl_empty_net_resolve! {GeoIpMatcher}
 
 impl GeoIpMatcher {
     fn test(&self, _address: impl Into<IpAddress>) -> bool {

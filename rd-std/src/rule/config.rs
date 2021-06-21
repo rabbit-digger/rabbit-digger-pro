@@ -3,19 +3,18 @@ use std::{fmt, str::FromStr};
 use super::matcher;
 use rd_interface::{
     impl_empty_net_resolve,
+    prelude::*,
     registry::NetRef,
     schemars::{
-        self,
         schema::{InstanceType, SchemaObject},
         JsonSchema,
     },
-    Config,
 };
-use serde_derive::{Deserialize, Serialize};
 use serde_with::rust::display_fromstr;
 use smoltcp::wire;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum DomainMatcherMethod {
     Keyword,
@@ -23,7 +22,8 @@ pub enum DomainMatcherMethod {
     Match,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct DomainMatcher {
     pub method: DomainMatcherMethod,
     pub domain: String,
@@ -59,7 +59,10 @@ impl FromStr for IpCidr {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+impl_empty_net_resolve! { IpCidr }
+
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct IpCidrMatcher {
     #[serde(
         serialize_with = "display_fromstr::serialize",
@@ -68,7 +71,8 @@ pub struct IpCidrMatcher {
     pub ipcidr: IpCidr,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct GeoIpMatcher {
     pub region: String,
 }
@@ -88,10 +92,12 @@ impl JsonSchema for IpCidr {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct AnyMatcher {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Matcher {
     Domain(DomainMatcher),
@@ -100,19 +106,19 @@ pub enum Matcher {
     Any(AnyMatcher),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct RuleItem {
     pub target: NetRef,
     #[serde(flatten)]
     pub matcher: Matcher,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct RuleNetConfig {
     pub rule: Vec<RuleItem>,
 }
-
-impl_empty_net_resolve! { Matcher }
 
 impl matcher::Matcher for Matcher {
     fn match_rule(

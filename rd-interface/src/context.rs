@@ -93,7 +93,7 @@ impl Context {
 /// Common context keys and types
 pub mod common_field {
     use super::CommonField;
-    use serde_derive::{Deserialize, Serialize};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct SourceAddress {

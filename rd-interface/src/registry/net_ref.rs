@@ -216,7 +216,7 @@ impl_key_container_resolve! { HashMap, BTreeMap }
 mod tests {
     use super::*;
     use crate::{IntoDyn, NotImplementedNet};
-    use serde_derive::Deserialize;
+    use serde::Deserialize;
     use std::sync::Arc;
 
     #[test]

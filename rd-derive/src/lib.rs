@@ -95,3 +95,16 @@ pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     expanded.into()
 }
+
+#[proc_macro_attribute]
+pub fn rd_config(
+    _metadata: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let input: TokenStream = input.into();
+    let output = quote! {
+        #[derive(serde::Serialize, serde::Deserialize, rd_interface::Config, rd_interface::schemars::JsonSchema)]
+        #input
+    };
+    output.into()
+}

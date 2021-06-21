@@ -17,7 +17,7 @@ mod linux {
         util::connect_tcp,
         Address, Context, IServer, IntoAddress, IntoDyn, Net, Result,
     };
-    use serde_derive::Deserialize;
+    use serde::Deserialize;
     use tokio::net::{TcpListener, TcpStream};
 
     #[derive(Debug, Deserialize, JsonSchema)]

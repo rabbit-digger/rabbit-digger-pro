@@ -18,7 +18,7 @@ use futures::{
     pin_mut, stream, FutureExt, Stream, StreamExt, TryStreamExt,
 };
 use rd_interface::{schemars::schema::RootSchema, IntoDyn, Net};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{sync::broadcast, time::timeout};
 use tokio::{

@@ -1,15 +1,12 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait,
-    registry::ServerFactory,
-    schemars::{self, JsonSchema},
-    util::connect_tcp,
-    Address, Arc, Context, IServer, Net, Result, TcpListener, TcpStream,
+    async_trait, prelude::*, registry::ServerFactory, util::connect_tcp, Address, Arc, Context,
+    IServer, Net, Result, TcpListener, TcpStream,
 };
-use serde_derive::Deserialize;
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct ForwardNetConfig {
     bind: Address,
     target: Address,

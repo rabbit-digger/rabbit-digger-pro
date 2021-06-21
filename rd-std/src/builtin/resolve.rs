@@ -6,17 +6,17 @@ use std::{
 use futures::{future::BoxFuture, FutureExt};
 use rd_interface::{
     async_trait,
+    prelude::*,
     registry::{NetFactory, NetRef},
-    schemars::{self, JsonSchema},
-    Address, Arc, Config, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    Address, Arc, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
-use serde_derive::Deserialize;
 
 type Resolver =
     Arc<dyn Fn(String, u16) -> BoxFuture<'static, io::Result<SocketAddr>> + Send + Sync>;
 pub struct Udp(UdpSocket, Resolver);
 
-#[derive(Debug, Deserialize, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct ResolveConfig {
     net: NetRef,
     #[serde(default = "bool_true")]

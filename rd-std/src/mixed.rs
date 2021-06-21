@@ -1,13 +1,9 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait,
-    registry::ServerFactory,
-    schemars::{self, JsonSchema},
-    util::PeekableTcpStream,
-    Address, Config, Context, IServer, IntoDyn, Net, Registry, Result, TcpStream,
+    async_trait, prelude::*, registry::ServerFactory, util::PeekableTcpStream, Address, Context,
+    IServer, IntoDyn, Net, Registry, Result, TcpStream,
 };
-use serde_derive::Deserialize;
 
 use crate::{http::HttpServer, socks5::Socks5Server};
 
@@ -75,7 +71,8 @@ impl HttpSocks5 {
     }
 }
 
-#[derive(Debug, Deserialize, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct MixedServerConfig {
     bind: Address,
 }

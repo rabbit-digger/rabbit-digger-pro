@@ -2,7 +2,7 @@ pub use address::{Address, IntoAddress};
 pub use context::Context;
 pub use error::{Error, ErrorContext, ErrorWithContext, Result, NOT_ENABLED, NOT_IMPLEMENTED};
 pub use interface::*;
-pub use rd_derive::Config;
+pub use rd_derive::{rd_config, Config};
 pub use registry::Registry;
 pub use schemars;
 pub use serde_json::Value;
@@ -18,4 +18,7 @@ pub mod registry;
 pub mod util;
 
 /// Prelude for easy defining `Config` struct.
-pub mod prelude {}
+pub mod prelude {
+    pub use rd_derive::rd_config;
+    pub use schemars;
+}

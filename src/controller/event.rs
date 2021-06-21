@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use rd_interface::{Address, Arc};
 use serde::ser::Serializer;
-use serde_derive::Serialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize)]

@@ -1,18 +1,18 @@
 pub use self::{client::HttpClient, server::HttpServer};
 
 use rd_interface::{
+    prelude::*,
     registry::{NetFactory, NetRef, ServerFactory},
-    schemars::{self, JsonSchema},
-    Address, Config, Net, Registry, Result,
+    Address, Net, Registry, Result,
 };
-use serde_derive::Deserialize;
 
 mod client;
 mod server;
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Deserialize, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct HttpNetConfig {
     server: Address,
 
@@ -20,7 +20,8 @@ pub struct HttpNetConfig {
     net: NetRef,
 }
 
-#[derive(Debug, Deserialize, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct HttpServerConfig {
     bind: Address,
 }

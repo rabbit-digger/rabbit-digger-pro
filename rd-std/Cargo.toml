@@ -12,7 +12,6 @@ rd-interface = { version = "0.4", path = "../rd-interface" }
 rd-derive = { version = "0.1", path = "../rd-derive" }
 futures = "0.3"
 serde = "1.0"
-serde_derive = "1.0"
 tracing = "0.1.26"
 thiserror = "1.0"
 anyhow = "1.0"

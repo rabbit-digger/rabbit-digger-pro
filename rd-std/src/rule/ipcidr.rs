@@ -2,10 +2,8 @@ use std::net::SocketAddr;
 
 use super::config::IpCidrMatcher;
 use super::matcher::{Matcher, MaybeAsync};
-use rd_interface::{impl_empty_net_resolve, Address};
+use rd_interface::Address;
 use smoltcp::wire::IpAddress;
-
-impl_empty_net_resolve! {IpCidrMatcher}
 
 impl IpCidrMatcher {
     fn test(&self, address: impl Into<IpAddress>) -> bool {
