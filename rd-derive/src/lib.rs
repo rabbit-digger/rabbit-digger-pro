@@ -1,34 +1,84 @@
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput};
+use proc_macro2::{Span, TokenStream};
+use quote::{quote, ToTokens};
+use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident};
 
-#[proc_macro_derive(Config)]
-pub fn config(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+fn call_all(input: &DeriveInput, method_path: TokenStream, args: TokenStream) -> TokenStream {
+    let ident = &input.ident;
+    let mut body = quote! {};
 
-    let ident = input.ident;
-    let mut resolve_body = quote! {};
-    let mut get_dependency_set_body = quote! {};
-
-    match input.data {
+    match &input.data {
         Data::Struct(s) => {
-            let fields = s.fields;
+            let fields = &s.fields;
 
             for field in fields {
-                let field_name = field.ident.unwrap();
-                resolve_body.extend(quote! {
-                    rd_interface::registry::ResolveNetRef::resolve(&mut self.#field_name, nets)?;
-                });
-                get_dependency_set_body.extend(quote! {
-                    rd_interface::registry::ResolveNetRef::get_dependency_set(&mut self.#field_name, nets)?;
+                let field_name = &field.ident;
+                body.extend(quote! {
+                    #method_path(&mut self.#field_name, #args)?;
                 });
             }
         }
-        Data::Enum(_e) => {
-            // TODO: support enum
+        Data::Enum(e) => {
+            for variant in &e.variants {
+                let variant_name = &variant.ident;
+                let mut inner = TokenStream::new();
+                let mut head = TokenStream::new();
+
+                match &variant.fields {
+                    Fields::Named(fields) => {
+                        for field in &fields.named {
+                            let field_name = &field.ident;
+                            head.extend(quote! { #field_name, });
+                            inner.extend(quote! { #method_path(#field_name, #args)?; });
+                        }
+                        head = quote! { { #head } };
+                    }
+                    Fields::Unnamed(fields) => {
+                        for (i, _) in fields.unnamed.iter().enumerate() {
+                            let field_name =
+                                Ident::new(&format!("i{}", i), Span::call_site()).to_token_stream();
+                            head.extend(quote! { #field_name, });
+                            inner.extend(quote! { #method_path(#field_name, #args)?; });
+                        }
+                        head = quote! { (#head) };
+                    }
+                    Fields::Unit => {}
+                }
+
+                body.extend(quote! {
+                    #ident::#variant_name #head => {
+                        #inner
+                    }
+                })
+            }
+
+            body = quote! {
+                match self {
+                    #body
+                }
+            };
         }
         _ => panic!("Config must be struct or enum"),
-    };
+    }
+
+    body
+}
+
+#[proc_macro_derive(Config)]
+pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let ident = &input.ident;
+
+    let resolve_body = call_all(
+        &input,
+        quote! { rd_interface::registry::ResolveNetRef::resolve },
+        quote! { nets },
+    );
+    let get_dependency_set_body = call_all(
+        &input,
+        quote! { rd_interface::registry::ResolveNetRef::get_dependency_set },
+        quote! { nets },
+    );
 
     let expanded = quote! {
         impl rd_interface::registry::ResolveNetRef for #ident {
@@ -43,5 +93,5 @@ pub fn config(input: TokenStream) -> TokenStream {
         }
     };
 
-    TokenStream::from(expanded)
+    expanded.into()
 }

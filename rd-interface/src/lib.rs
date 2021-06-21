@@ -16,3 +16,6 @@ mod interface;
 mod macros;
 pub mod registry;
 pub mod util;
+
+/// Prelude for easy defining `Config` struct.
+pub mod prelude {}

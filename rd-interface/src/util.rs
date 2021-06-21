@@ -14,8 +14,9 @@ use std::{
     pin::Pin,
     task::{self, Poll},
 };
-pub use tokio::io::copy_bidirectional;
 use tokio::io::{AsyncReadExt, ReadBuf};
+
+pub use tokio::io::copy_bidirectional;
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Connect two `TcpStream`
