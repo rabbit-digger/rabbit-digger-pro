@@ -1,13 +1,13 @@
 use std::{net::SocketAddr, time::Duration};
 
 use super::rule_net::Rule;
-use futures::{future::try_select, pin_mut};
 use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait, constant::UDP_BUFFER_SIZE, error::map_other, Address, Context, IUdpSocket, Net,
     Result, NOT_IMPLEMENTED,
 };
 use tokio::{
+    select,
     sync::{
         mpsc::{channel, error::TrySendError, Receiver, Sender},
         Mutex,
@@ -49,7 +49,9 @@ impl UdpTunnel {
 
             let send = async {
                 while let Some((packet, addr)) = rx.recv().await {
-                    udp.send_to(&packet, addr).await?;
+                    if let Err(e) = udp.send_to(&packet, addr).await {
+                        tracing::error!("drop packet: {:?}", e);
+                    }
                 }
 
                 anyhow::Result::<()>::Ok(())
@@ -67,13 +69,10 @@ impl UdpTunnel {
                 anyhow::Result::<()>::Ok(())
             };
 
-            pin_mut!(send);
-            pin_mut!(recv);
-
-            match try_select(send, recv).await {
-                Ok(_) => {}
-                Err(e) => return Err(e.factor_first().0),
-            };
+            select! {
+                r = send => r?,
+                r = recv => r?,
+            }
 
             anyhow::Result::<()>::Ok(())
         });
