@@ -185,7 +185,13 @@ impl RawServer {
         let send = async {
             while let Some((src, dst, payload)) = send_rx.recv().await {
                 if let Some(ip_packet) = pack_udp(src, dst, &payload) {
-                    raw.send(&ip_packet).await?;
+                    if let Err(e) = raw.send(&ip_packet).await {
+                        tracing::error!(
+                            "Raw send error: {:?}, dropping udp size: {}",
+                            e,
+                            ip_packet.len()
+                        );
+                    }
                 } else {
                     tracing::debug!("Unsupported src/dst");
                 }
