@@ -1,11 +1,8 @@
 use crate::Obfs;
-use rd_interface::{
-    schemars::{self, JsonSchema},
-    Address, Config, Result, TcpStream,
-};
-use serde_derive::{Deserialize, Serialize};
+use rd_interface::{prelude::*, Address, Result, TcpStream};
 
-#[derive(Debug, Serialize, Deserialize, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct Plain;
 
 impl Obfs for Plain {

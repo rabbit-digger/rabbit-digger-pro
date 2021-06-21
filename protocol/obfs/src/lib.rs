@@ -2,11 +2,8 @@ use std::net::SocketAddr;
 
 use obfs_net::{ObfsNet, ObfsNetConfig};
 use rd_interface::{
-    registry::NetFactory,
-    schemars::{self, JsonSchema},
-    Address, Config, Context, Registry, Result, TcpStream,
+    prelude::*, registry::NetFactory, Address, Context, Registry, Result, TcpStream,
 };
-use serde_derive::{Deserialize, Serialize};
 
 mod http_simple;
 mod obfs_net;
@@ -38,7 +35,8 @@ pub trait Obfs {
     fn tcp_accept(&self, tcp: TcpStream, addr: SocketAddr) -> Result<TcpStream>;
 }
 
-#[derive(Debug, Serialize, Deserialize, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 #[serde(rename_all = "snake_case", tag = "obfs_type")]
 pub enum ObfsType {
     HttpSimple(http_simple::HttpSimple),

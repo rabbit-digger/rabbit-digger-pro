@@ -7,15 +7,9 @@ use std::{
 use futures::{future::ready, StreamExt};
 use lru_time_cache::LruCache;
 use rd_interface::{
-    async_trait,
-    constant::UDP_BUFFER_SIZE,
-    error::map_other,
-    registry::ServerFactory,
-    schemars::{self, JsonSchema},
-    util::connect_tcp,
-    Config, Context, Error, IServer, IntoAddress, Net, Result,
+    async_trait, constant::UDP_BUFFER_SIZE, error::map_other, prelude::*, registry::ServerFactory,
+    util::connect_tcp, Context, Error, IServer, IntoAddress, Net, Result,
 };
-use serde_derive::{Deserialize, Serialize};
 use smoltcp::{
     phy::Checksum,
     wire::{
@@ -42,7 +36,7 @@ use crate::{
     gateway::{GatewayInterface, MapTable},
 };
 
-#[derive(Serialize, Deserialize, JsonSchema, Config)]
+#[rd_config]
 pub struct RawServerConfig {
     device: String,
     mtu: usize,

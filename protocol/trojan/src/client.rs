@@ -2,13 +2,9 @@ use std::io::{Cursor, Write};
 
 use crate::tls::{TlsConnector, TlsConnectorConfig};
 use rd_interface::{
-    async_trait,
-    registry::NetRef,
-    schemars::{self, JsonSchema},
-    Address as RdAddress, Address, Config, INet, IntoDyn, Net, Result, TcpListener, TcpStream,
-    UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
+    async_trait, prelude::*, registry::NetRef, Address as RdAddress, Address, INet, IntoDyn, Net,
+    Result, TcpListener, TcpStream, UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
 };
-use serde_derive::Deserialize;
 use sha2::{Digest, Sha224};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
 
@@ -42,7 +38,8 @@ impl TrojanNet {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct TrojanNetConfig {
     #[serde(default)]
     net: NetRef,

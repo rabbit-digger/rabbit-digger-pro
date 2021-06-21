@@ -9,7 +9,7 @@ use rabbit_digger::{
     },
     util::topological_sort,
 };
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::{from_value, json, Value};
 
 #[derive(Debug, Deserialize)]

@@ -2,17 +2,14 @@ use std::net::SocketAddr;
 
 use crate::{Obfs, ObfsType};
 use rd_interface::{
-    async_trait,
-    registry::NetRef,
-    schemars::{self, JsonSchema},
-    Address, Arc, Config, Context, INet, ITcpListener, IntoDyn, Net, Result, TcpListener,
-    TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, prelude::*, registry::NetRef, Address, Arc, Context, INet, ITcpListener, IntoDyn,
+    Net, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
-use serde_derive::{Deserialize, Serialize};
 
 type BoxObfs = Arc<dyn Obfs + Send + Sync + 'static>;
 
-#[derive(Debug, Serialize, Deserialize, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct ObfsNetConfig {
     #[serde(default)]
     pub net: NetRef,

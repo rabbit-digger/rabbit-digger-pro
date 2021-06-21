@@ -8,7 +8,6 @@ edition = "2018"
 rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.4" }
 # rd-interface = "0.3"
 shadowsocks = { version = "1.10.3", features = [ "stream-cipher", "aead-cipher-extra" ] }
-serde_derive = "1.0"
 serde = "1.0"
 bytes = "1.0"
 tracing = "0.1.26"

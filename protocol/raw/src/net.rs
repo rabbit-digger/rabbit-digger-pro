@@ -5,17 +5,13 @@ use crate::{
     wrap::{TcpListenerWrap, TcpStreamWrap, UdpSocketWrap},
 };
 use rd_interface::{
-    async_trait,
-    registry::NetFactory,
-    schemars::{self, JsonSchema},
-    Address, Config, Context, Error, INet, IntoDyn, Result,
+    async_trait, prelude::*, registry::NetFactory, Address, Context, Error, INet, IntoDyn, Result,
 };
-use serde_derive::{Deserialize, Serialize};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use tokio::sync::Mutex;
 use tokio_smoltcp::{device::FutureDevice, BufferSize, Net, NetConfig};
 
-#[derive(Serialize, Deserialize, JsonSchema, Config)]
+#[rd_config]
 pub struct RawNetConfig {
     device: String,
     mtu: usize,

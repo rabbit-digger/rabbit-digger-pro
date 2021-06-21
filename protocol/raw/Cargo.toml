@@ -7,7 +7,6 @@ edition = "2018"
 [dependencies]
 rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.4" }
 # rd-interface = "0.3"
-serde_derive = "1.0"
 serde = "1.0"
 tracing = "0.1.26"
 tokio-smoltcp = "0.1.13"

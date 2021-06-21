@@ -1,12 +1,9 @@
 use crate::udp::{decrypt_payload, encrypt_payload};
 use bytes::BytesMut;
 use rd_interface::{
-    async_trait, impl_async_read_write, impl_empty_net_resolve,
-    schemars::{self, JsonSchema},
-    Address as RDAddress, AsyncRead, AsyncWrite, ITcpStream, IUdpSocket, ReadBuf, TcpStream,
-    UdpSocket, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, prelude::*, Address as RDAddress, AsyncRead, AsyncWrite,
+    ITcpStream, IUdpSocket, ReadBuf, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
-use serde_derive::{Deserialize, Serialize};
 use shadowsocks::{
     context::SharedContext,
     crypto::v1::CipherKind,
@@ -32,8 +29,9 @@ impl From<WrapAddress> for SSAddress {
     }
 }
 
+#[rd_config]
 #[allow(non_camel_case_types)]
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Copy, Clone)]
 pub enum Cipher {
     #[serde(rename = "none")]
     NONE,
@@ -126,8 +124,6 @@ pub enum Cipher {
     #[serde(rename = "sm4-ccm")]
     SM4_CCM,
 }
-
-impl_empty_net_resolve! { Cipher }
 
 impl From<Cipher> for CipherKind {
     fn from(c: Cipher) -> Self {

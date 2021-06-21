@@ -1,19 +1,16 @@
 use super::wrapper::{Cipher, WrapAddress, WrapSSTcp, WrapSSUdp};
 use rd_interface::{
-    async_trait,
-    registry::NetRef,
-    schemars::{self, JsonSchema},
-    Address, Arc, Config, INet, IntoAddress, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
-    NOT_ENABLED, NOT_IMPLEMENTED,
+    async_trait, prelude::*, registry::NetRef, Address, Arc, INet, IntoAddress, IntoDyn, Result,
+    TcpListener, TcpStream, UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
 };
-use serde_derive::Deserialize;
 use shadowsocks::{
     config::{ServerConfig, ServerType},
     context::Context,
     ProxyClientStream,
 };
 
-#[derive(Debug, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct SSNetConfig {
     server: Address,
     password: String,

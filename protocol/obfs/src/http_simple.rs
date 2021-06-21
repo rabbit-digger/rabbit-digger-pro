@@ -10,14 +10,13 @@ use futures::ready;
 use pin_project_lite::pin_project;
 use rand::prelude::*;
 use rd_interface::{
-    async_trait,
-    schemars::{self, JsonSchema},
-    Address, AsyncWrite, Config, ITcpStream, IntoDyn, ReadBuf, Result, TcpStream, NOT_IMPLEMENTED,
+    async_trait, prelude::*, rd_config, Address, AsyncWrite, ITcpStream, IntoDyn, ReadBuf, Result,
+    TcpStream, NOT_IMPLEMENTED,
 };
-use serde_derive::{Deserialize, Serialize};
 use tokio::io::AsyncRead;
 
-#[derive(Debug, Serialize, Deserialize, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct HttpSimple {
     obfs_param: String,
 }

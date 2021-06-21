@@ -1,13 +1,12 @@
 use rd_interface::{
     async_trait,
+    prelude::*,
     registry::{NetFactory, NetRef},
-    schemars::{self, JsonSchema},
-    Address, Config, Context, Error, INet, Net, Registry, Result, TcpListener, TcpStream,
-    UdpSocket,
+    Address, Context, Error, INet, Net, Registry, Result, TcpListener, TcpStream, UdpSocket,
 };
-use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct SelectNetConfig {
     selected: usize,
     list: Vec<NetRef>,

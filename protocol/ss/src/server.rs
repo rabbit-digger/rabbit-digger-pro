@@ -2,16 +2,13 @@ use std::net::SocketAddr;
 
 use super::wrapper::{Cipher, CryptoStream};
 use rd_interface::{
-    async_trait,
-    schemars::{self, JsonSchema},
-    util::connect_tcp,
-    Address, Arc, Config, IServer, Net, Result, TcpStream,
+    async_trait, prelude::*, util::connect_tcp, Address, Arc, IServer, Net, Result, TcpStream,
 };
-use serde_derive::Deserialize;
 use shadowsocks::{config::ServerType, context::Context, ServerConfig};
 use socks5_protocol::Address as S5Addr;
 
-#[derive(Debug, Deserialize, Clone, Config, JsonSchema)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct SSServerConfig {
     bind: Address,
     password: String,

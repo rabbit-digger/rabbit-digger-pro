@@ -1,4 +1,4 @@
-use serde_derive::Serialize;
+use serde::Serialize;
 use warp::{hyper::StatusCode, Rejection, Reply};
 
 #[derive(Debug)]

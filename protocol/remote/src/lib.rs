@@ -1,18 +1,17 @@
 use net::RemoteNet;
 use protocol::get_protocol;
 use rd_interface::{
+    prelude::*,
     registry::{NetFactory, NetRef, ServerFactory},
-    schemars::{self, JsonSchema},
-    Config, Net, Registry, Result,
+    Net, Registry, Result,
 };
-use serde_derive::Deserialize;
 use server::RemoteServer;
 
 mod net;
 mod protocol;
 mod server;
 
-#[derive(Deserialize, JsonSchema, Config)]
+#[rd_config]
 pub struct RemoteNetConfig {
     #[serde(default)]
     net: NetRef,
