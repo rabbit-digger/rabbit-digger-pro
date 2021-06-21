@@ -4,10 +4,7 @@ use std::{
     time::Duration,
 };
 
-use futures::{
-    future::{ready, try_select},
-    pin_mut, StreamExt,
-};
+use futures::{future::ready, StreamExt};
 use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
@@ -99,6 +96,10 @@ impl RawServer {
             buffer_size: BufferSize {
                 tcp_rx_size: 65536,
                 tcp_tx_size: 65536,
+                raw_rx_size: 65536,
+                raw_tx_size: 65536,
+                raw_rx_meta_size: 256,
+                raw_tx_meta_size: 256,
                 ..Default::default()
             },
         };
@@ -199,12 +200,9 @@ impl RawServer {
             Ok(()) as Result<()>
         };
 
-        pin_mut!(recv);
-        pin_mut!(send);
-
-        match try_select(send, recv).await {
-            Ok(_) => {}
-            Err(e) => return Err(e.factor_first().0),
+        select! {
+            r = send => r?,
+            r = recv => r?,
         }
 
         Ok(())
@@ -338,13 +336,10 @@ impl UdpTunnel {
                 Ok(()) as Result<()>
             };
 
-            pin_mut!(send);
-            pin_mut!(recv);
-
-            match try_select(send, recv).await {
-                Ok(_) => {}
-                Err(e) => return Err(e.factor_first().0),
-            };
+            select! {
+                r = send => r?,
+                r = recv => r?,
+            }
 
             Ok(()) as Result<()>
         });
