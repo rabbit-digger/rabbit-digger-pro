@@ -116,13 +116,28 @@ async fn real_main(args: Args) -> Result<()> {
 #[paw::main]
 #[tokio::main]
 async fn main(args: Args) -> Result<()> {
+    use tracing_subscriber::{layer::SubscriberExt, prelude::*, EnvFilter};
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
             "rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace,raw=trace",
         )
     }
-    tracing_subscriber::fmt::init();
+    #[cfg(feature = "console")]
+    let (layer, server) = console_subscriber::TasksLayer::new();
+    let filter = EnvFilter::from_default_env();
+    #[cfg(feature = "console")]
+    let filter = filter.add_directive("tokio=trace".parse()?);
+
+    let t = tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter);
+    #[cfg(feature = "console")]
+    let t = t.with(layer);
+    t.init();
+
+    #[cfg(feature = "console")]
+    tokio::spawn(server.serve());
 
     match &args.cmd {
         Some(Command::GenerateSchema { path }) => {

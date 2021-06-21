@@ -36,6 +36,8 @@ remote = { path = "./protocol/remote", optional = true }
 raw = { path = "./protocol/raw", optional = true }
 obfs = { path = "./protocol/obfs", optional = true }
 
+console-subscriber = { git = "https://github.com/tokio-rs/console", rev = "b345084b203af2a4ceb4b9e6b3840cb7fe5667f9", optional = true }
+
 [dev-dependencies]
 rusty-hook = "0.11.0"
 
@@ -44,6 +46,7 @@ default = [ "api_server", "translate", "ss", "trojan", "remote", "obfs" ]
 translate = []
 api_server = [ "warp", "dirs" ]
 local_log = [ "rabbit-digger/local_log" ]
+console = ["console-subscriber"]
 
 [workspace]
 members = [
