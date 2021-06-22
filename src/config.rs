@@ -82,6 +82,8 @@ pub struct Reserved {
     r#break: bool,
     #[serde(default)]
     r#const: bool,
+    #[serde(default)]
+    name: bool,
 }
 
 impl Net {

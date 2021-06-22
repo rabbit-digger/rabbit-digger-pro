@@ -1,5 +1,4 @@
 use super::NetMap;
-use crate as rd_interface;
 use crate::{Net, Result};
 use schemars::{
     schema::{InstanceType, SchemaObject},
@@ -171,46 +170,56 @@ macro_rules! impl_empty_net_resolve {
         }
     )*)
 }
-macro_rules! impl_container_resolve {
-    ($($x:ident),+ $(,)?) => ($(
-        impl<T: ResolveNetRef> ResolveNetRef for $x<T> {
-			fn resolve(&mut self, nets: &NetMap) -> Result<()> {
-				for i in self.iter_mut() {
-					i.resolve(nets)?;
-				}
-				Ok(())
-			}
-            fn get_dependency_set(&mut self, nets: &mut HashSet<String>) -> Result<()> {
-				for i in self.iter_mut() {
-					i.get_dependency_set(nets)?;
-				}
-                Ok(())
-            }
-		}
-    )*)
-}
-macro_rules! impl_key_container_resolve {
-    ($($x:ident),+ $(,)?) => ($(
-        impl<K, T: ResolveNetRef> ResolveNetRef for $x<K, T> {
-			fn resolve(&mut self, nets: &NetMap) -> Result<()> {
-				for (_, i) in self.iter_mut() {
-					i.resolve(nets)?;
-				}
-				Ok(())
-			}
-            fn get_dependency_set(&mut self, nets: &mut HashSet<String>) -> Result<()> {
-				for (_, i) in self.iter_mut() {
-					i.get_dependency_set(nets)?;
-				}
-                Ok(())
-            }
-		}
-    )*)
-}
 
-impl_empty_net_resolve! { String, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, bool, f32, f64 }
-impl_container_resolve! { Vec, Option, VecDeque, Result, LinkedList }
-impl_key_container_resolve! { HashMap, BTreeMap }
+mod impl_std {
+    use super::{NetMap, ResolveNetRef};
+    use crate as rd_interface;
+    use crate::Result;
+    use std::collections::{BTreeMap, HashMap, HashSet, LinkedList, VecDeque};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+
+    macro_rules! impl_container_resolve {
+        ($($x:ident),+ $(,)?) => ($(
+            impl<T: ResolveNetRef> ResolveNetRef for $x<T> {
+                fn resolve(&mut self, nets: &NetMap) -> rd_interface::Result<()> {
+                    for i in self.iter_mut() {
+                        i.resolve(nets)?;
+                    }
+                    Ok(())
+                }
+                fn get_dependency_set(&mut self, nets: &mut HashSet<String>) -> rd_interface::Result<()> {
+                    for i in self.iter_mut() {
+                        i.get_dependency_set(nets)?;
+                    }
+                    Ok(())
+                }
+            }
+        )*)
+    }
+    macro_rules! impl_key_container_resolve {
+        ($($x:ident),+ $(,)?) => ($(
+            impl<K, T: ResolveNetRef> ResolveNetRef for $x<K, T> {
+                fn resolve(&mut self, nets: &NetMap) -> rd_interface::Result<()> {
+                    for (_, i) in self.iter_mut() {
+                        i.resolve(nets)?;
+                    }
+                    Ok(())
+                }
+                fn get_dependency_set(&mut self, nets: &mut HashSet<String>) -> rd_interface::Result<()> {
+                    for (_, i) in self.iter_mut() {
+                        i.get_dependency_set(nets)?;
+                    }
+                    Ok(())
+                }
+            }
+        )*)
+    }
+
+    impl_empty_net_resolve! { String, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, bool, f32, f64 }
+    impl_empty_net_resolve! { IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6 }
+    impl_container_resolve! { Vec, Option, VecDeque, Result, LinkedList }
+    impl_key_container_resolve! { HashMap, BTreeMap }
+}
 
 #[cfg(test)]
 mod tests {
