@@ -88,10 +88,7 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
-                let out = match net
-                    .udp_bind(&mut Context::from_socketaddr(addr), dst.into())
-                    .await
-                {
+                let out = match net.udp_bind(&mut Context::from_socketaddr(addr), dst).await {
                     Ok(socket) => socket,
                     Err(e) => {
                         CommandResponse::error(e).write(&mut tx).await?;
@@ -151,7 +148,7 @@ impl IUdpChannel for Socks5UdpSocket {
         let mut bytes = vec![0u8; bytes_size];
         let (recv_len, from_addr) = self.0.recv_from(&mut bytes).await?;
         let saved_addr = { *self.2.read() };
-        if let None = saved_addr {
+        if saved_addr.is_none() {
             *self.2.write() = Some(from_addr);
         }
         bytes.truncate(recv_len);

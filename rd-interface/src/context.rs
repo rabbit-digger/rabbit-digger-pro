@@ -26,6 +26,12 @@ pub struct Context {
     net_list: Vec<String>,
 }
 
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Context {
     /// new a empty context
     pub fn new() -> Context {

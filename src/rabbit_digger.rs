@@ -53,6 +53,12 @@ impl RabbitDigger {
     }
 }
 
+impl Default for RabbitDiggerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RabbitDiggerBuilder {
     pub fn new() -> RabbitDiggerBuilder {
         RabbitDiggerBuilder {
@@ -171,7 +177,7 @@ fn build_net(
             .context(format!("Failed to get_dependency for net/server: {}", k))
     })
     .context("Failed to do topological_sort")?
-    .ok_or(anyhow!("There is cyclic dependencies in net",))?;
+    .ok_or_else(|| anyhow!("There is cyclic dependencies in net",))?;
 
     for (name, i) in all_net {
         match i {
@@ -209,16 +215,16 @@ fn build_server(
         let name = &name;
         let load_server = || -> Result<()> {
             let server_item = registry.get_server(&i.server_type)?;
-            let listen = net.get(&i.listen).ok_or(anyhow!(
-                "Listen Net {} is not loaded. Required by {:?}",
-                &i.net,
-                &name
-            ))?;
-            let net = net.get(&i.net).ok_or(anyhow!(
-                "Net {} is not loaded. Required by {:?}",
-                &i.net,
-                &name
-            ))?;
+            let listen = net.get(&i.listen).ok_or_else(|| {
+                anyhow!(
+                    "Listen Net {} is not loaded. Required by {:?}",
+                    &i.net,
+                    &name
+                )
+            })?;
+            let net = net
+                .get(&i.net)
+                .ok_or_else(|| anyhow!("Net {} is not loaded. Required by {:?}", &i.net, &name))?;
 
             let server = server_item
                 .build(listen.clone(), wrapper(net.clone()), i.opt.clone())

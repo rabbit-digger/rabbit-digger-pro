@@ -8,7 +8,7 @@ use smoltcp::wire::IpAddress;
 impl IpCidrMatcher {
     fn test(&self, address: impl Into<IpAddress>) -> bool {
         let address: IpAddress = address.into();
-        return self.ipcidr.0.contains_addr(&address);
+        self.ipcidr.0.contains_addr(&address)
     }
 }
 

@@ -47,7 +47,7 @@ fn host_to_address(host: &str, port: u16) -> Address {
 
 impl IntoAddress for &str {
     fn into_address(self) -> Result<Address> {
-        let mut parts = self.rsplitn(2, ":");
+        let mut parts = self.rsplitn(2, ':');
         let port: u16 = parts
             .next()
             .ok_or_else(no_addr)?
@@ -112,9 +112,9 @@ impl From<(IpAddr, u16)> for Address {
 impl Address {
     /// Converts to SocketAddr if Address can be convert to.
     /// Otherwise [AddrNotAvailable](std::io::ErrorKind::AddrNotAvailable) is returned.
-    pub fn to_socket_addr(self) -> Result<SocketAddr> {
+    pub fn to_socket_addr(&self) -> Result<SocketAddr> {
         match self {
-            Address::SocketAddr(s) => Ok(s),
+            Address::SocketAddr(s) => Ok(*s),
             _ => Err(no_addr()),
         }
     }
@@ -137,7 +137,7 @@ impl Address {
     pub fn host(&self) -> String {
         match self {
             Address::SocketAddr(s) => s.ip().to_string(),
-            Address::Domain(d, _) => return d.to_string(),
+            Address::Domain(d, _) => d.to_string(),
         }
     }
 

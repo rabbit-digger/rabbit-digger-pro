@@ -23,7 +23,7 @@ where
         list.push(k.clone());
     }
 
-    if ts.len() > 0 {
+    if !ts.is_empty() {
         return Ok(None);
     }
 
@@ -33,7 +33,7 @@ where
                 let v = map.remove(&k);
                 v.map(|v| (k, v))
             })
-            .filter_map(|i| i)
+            .flatten()
             .collect(),
     ))
 }

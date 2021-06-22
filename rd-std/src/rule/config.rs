@@ -43,14 +43,12 @@ impl FromStr for IpCidr {
 
     /// Parse a string representation of an IP CIDR.
     fn from_str(s: &str) -> rd_interface::Result<IpCidr> {
-        match wire::Ipv4Cidr::from_str(s) {
-            Ok(cidr) => return Ok(IpCidr(wire::IpCidr::Ipv4(cidr))),
-            Err(_) => (),
+        if let Ok(cidr) = wire::Ipv4Cidr::from_str(s) {
+            return Ok(IpCidr(wire::IpCidr::Ipv4(cidr)));
         }
 
-        match wire::Ipv6Cidr::from_str(s) {
-            Ok(cidr) => return Ok(IpCidr(wire::IpCidr::Ipv6(cidr))),
-            Err(_) => (),
+        if let Ok(cidr) = wire::Ipv6Cidr::from_str(s) {
+            return Ok(IpCidr(wire::IpCidr::Ipv6(cidr)));
         }
 
         Err(rd_interface::Error::Other(

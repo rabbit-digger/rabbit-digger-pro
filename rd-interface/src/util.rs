@@ -42,7 +42,7 @@ impl AsyncRead for PeekableTcpStream {
         buf: &mut ReadBuf,
     ) -> Poll<io::Result<()>> {
         let (first, ..) = &self.buf.as_slices();
-        if first.len() > 0 {
+        if !first.is_empty() {
             let read = first.len().min(buf.remaining());
             let unfilled = buf.initialize_unfilled_to(read);
             unfilled[0..read].copy_from_slice(&first[0..read]);

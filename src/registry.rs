@@ -21,19 +21,17 @@ pub struct ServerItem {
 
 impl NetItem {
     pub fn build(&self, nets: &NetMap, config: Value) -> Result<Net> {
-        Ok(self
-            .resolver
+        self.resolver
             .build(nets, config)
-            .with_context(|| format!("Failed to build net: {}", self.id))?)
+            .with_context(|| format!("Failed to build net: {}", self.id))
     }
 }
 
 impl ServerItem {
     pub fn build(&self, listen: Net, net: Net, config: Value) -> Result<Server> {
-        Ok(self
-            .resolver
+        self.resolver
             .build(listen, net, config)
-            .with_context(|| format!("Failed to build server: {}", self.id))?)
+            .with_context(|| format!("Failed to build server: {}", self.id))
     }
 }
 
@@ -41,6 +39,12 @@ impl ServerItem {
 pub struct Registry {
     pub net: BTreeMap<String, NetItem>,
     pub server: BTreeMap<String, ServerItem>,
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl fmt::Debug for NetItem {
@@ -115,11 +119,11 @@ impl Registry {
     pub fn get_net(&self, net_type: &str) -> Result<&NetItem> {
         self.net
             .get(net_type)
-            .ok_or(anyhow!("Net type is not loaded: {}", net_type))
+            .ok_or_else(|| anyhow!("Net type is not loaded: {}", net_type))
     }
     pub fn get_server(&self, server_type: &str) -> Result<&ServerItem> {
         self.server
             .get(server_type)
-            .ok_or(anyhow!("Server type is not loaded: {}", server_type))
+            .ok_or_else(|| anyhow!("Server type is not loaded: {}", server_type))
     }
 }

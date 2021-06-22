@@ -39,7 +39,7 @@ async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
     lookup_host(domain)
         .await?
         .next()
-        .ok_or(ErrorKind::AddrNotAvailable.into())
+        .ok_or_else(|| ErrorKind::AddrNotAvailable.into())
 }
 
 impl_async_read_write!(CompatTcp, 0);

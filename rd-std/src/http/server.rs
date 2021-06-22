@@ -110,7 +110,7 @@ async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result
 }
 
 fn host_addr(uri: &http::Uri) -> Option<String> {
-    uri.authority().and_then(|auth| Some(auth.to_string()))
+    uri.authority().map(|auth| auth.to_string())
 }
 
 async fn tunnel(mut stream: TcpStream, mut upgraded: Upgraded) -> std::io::Result<()> {

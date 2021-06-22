@@ -113,7 +113,7 @@ impl UdpRuleSocket {
             bind_addr,
         }
     }
-    async fn get_net_name<'a>(&'a self, ctx: &Context, addr: &Address) -> Result<(Net, String)> {
+    async fn get_net_name(&self, ctx: &Context, addr: &Address) -> Result<(Net, String)> {
         let mut c = self.cache.lock().await;
         if let Some((net, name)) = c.get(addr) {
             Ok((net.clone(), name.clone()))
@@ -135,7 +135,7 @@ impl IUdpSocket for UdpRuleSocket {
             .await
             .recv()
             .await
-            .ok_or(rd_interface::Error::Other("Failed to receive UDP".into()))?;
+            .ok_or_else(|| rd_interface::Error::Other("Failed to receive UDP".into()))?;
 
         let to_copy = data.len().min(buf.len());
         buf[..to_copy].copy_from_slice(&data[..to_copy]);

@@ -123,6 +123,12 @@ async fn recv_event(mut rx: mpsc::UnboundedReceiver<Event>, sender: broadcast::S
     }
 }
 
+impl Default for Controller {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Controller {
     pub fn new() -> Controller {
         let (sender, _) = broadcast::channel(16);
@@ -170,7 +176,7 @@ impl Controller {
 
         let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
             Ok(Ok(Some(cfg))) => cfg,
-            Ok(Err(e)) => return Err(e.context(format!("Failed to get first config."))),
+            Ok(Err(e)) => return Err(e.context("Failed to get first config.")),
             Err(_) | Ok(Ok(None)) => {
                 return Err(anyhow!("The config_stream is empty, can not start."))
             }
@@ -246,7 +252,7 @@ impl Controller {
     ) {
         self.inner.write().await.builder.plugin_loader = Arc::new(plugin_loader);
     }
-    pub async fn lock<'a>(&'a self) -> RwLockReadGuard<'a, Inner> {
+    pub async fn lock(&self) -> RwLockReadGuard<'_, Inner> {
         self.inner.read().await
     }
     pub async fn get_subscriber(&self) -> broadcast::Receiver<BatchEvent> {

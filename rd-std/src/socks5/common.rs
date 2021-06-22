@@ -23,8 +23,7 @@ pub async fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {
                     "server response wrong RSV {} RSV {} FRAG {}",
                     header[0], header[1], header[2]
                 ),
-            )
-            .into())
+            ))
         }
     };
 
@@ -34,7 +33,6 @@ pub async fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {
 }
 
 pub async fn pack_udp(addr: Address, buf: &[u8]) -> Result<Vec<u8>> {
-    let addr: Address = addr.into();
     let mut cursor = std::io::Cursor::new(Vec::new());
     cursor.write_all(&[0x00, 0x00, 0x00]).await?;
     addr.write(&mut cursor).await.map_err(map_err)?;

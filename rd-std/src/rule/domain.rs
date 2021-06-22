@@ -22,7 +22,7 @@ impl DomainMatcher {
     fn test(&self, domain: &str) -> bool {
         match self.method {
             Method::Keyword => domain.contains(&self.domain),
-            Method::Match => domain == &self.domain,
+            Method::Match => domain == self.domain,
             Method::Suffix => domain.ends_with(&self.domain),
         }
     }

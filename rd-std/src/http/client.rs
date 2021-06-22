@@ -7,10 +7,8 @@ use rd_interface::{
     NOT_IMPLEMENTED,
 };
 
-pub fn map_err(e: Error) -> rd_interface::Error {
-    match e {
-        e => rd_interface::Error::Other(e.into()),
-    }
+fn map_err(e: Error) -> rd_interface::Error {
+    rd_interface::Error::Other(e.into())
 }
 
 pub struct HttpClient {

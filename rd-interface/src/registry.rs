@@ -30,6 +30,12 @@ impl fmt::Debug for Registry {
     }
 }
 
+impl Default for Registry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Registry {
     pub fn new() -> Registry {
         Registry {
@@ -71,7 +77,7 @@ impl NetResolver {
                         cfg.resolve(nets)?;
                         Ok(cfg)
                     })
-                    .and_then(|cfg| N::new(cfg))
+                    .and_then(N::new)
                     .map(|n| n.into_dyn())
             },
             get_dependency: |cfg| {

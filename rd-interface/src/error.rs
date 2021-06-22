@@ -69,10 +69,7 @@ impl From<Error> for io::Error {
 
 impl Error {
     pub fn is_aborted(&self) -> bool {
-        match self {
-            Error::AbortedByUser => true,
-            _ => false,
-        }
+        matches!(self, Error::AbortedByUser)
     }
     pub fn is_addr_in_use(&self) -> bool {
         match self {

@@ -45,9 +45,8 @@ impl ResolveNet {
                 let domain = (domain.as_ref(), port);
                 lookup_host(domain)
                     .await?
-                    .filter(|i| (ipv4 && i.is_ipv4()) || (ipv6 && i.is_ipv6()))
-                    .next()
-                    .ok_or(io::Error::from(ErrorKind::AddrNotAvailable))
+                    .find(|i| (ipv4 && i.is_ipv4()) || (ipv6 && i.is_ipv6()))
+                    .ok_or_else(|| io::Error::from(ErrorKind::AddrNotAvailable))
             }
             .boxed()
         });
