@@ -39,7 +39,7 @@ pub struct RawServerConfig {
     pub mtu: usize,
     /// ipcidr
     pub ip_addr: String,
-    pub ethernet_addr: String,
+    pub ethernet_addr: Option<String>,
     #[serde(default = "default_lru")]
     pub lru_size: usize,
 }
@@ -74,8 +74,15 @@ fn filter_packet(packet: &[u8], ethernet_addr: EthernetAddress, ip_addr: IpCidr)
 
 impl RawServer {
     pub fn new(net: Net, config: RawServerConfig) -> Result<RawServer> {
-        let ethernet_addr = EthernetAddress::from_str(&config.ethernet_addr)
-            .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?;
+        let ethernet_addr = match config.ethernet_addr {
+            Some(ethernet_addr) => EthernetAddress::from_str(&ethernet_addr)
+                .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?,
+            None => {
+                crate::interface_info::get_interface_info(&config.device)
+                    .map_err(map_other)?
+                    .ethernet_address
+            }
+        };
         let ip_addr = IpCidr::from_str(&config.ip_addr)
             .map_err(|_| Error::Other("Failed to parse ip_addr".into()))?;
         let gateway = ip_addr.address();

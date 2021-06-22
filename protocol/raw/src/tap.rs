@@ -12,12 +12,13 @@ use smoltcp::wire::{IpAddress, IpCidr};
 use tun_crate::{create_as_async, Configuration, Device, Layer};
 
 #[rd_config]
-pub struct TunNetConfig {
+pub struct TapNetConfig {
     name: Option<String>,
     /// tap address
     tap_addr: String,
     /// ipcidr
     server_addr: String,
+    ethernet_addr: Option<String>,
     mtu: usize,
 }
 
@@ -26,6 +27,7 @@ pub struct TapServer {
     name: Option<String>,
     tap_addr: Ipv4Addr,
     server_addr: IpCidr,
+    ethernet_addr: Option<String>,
     mtu: usize,
 }
 
@@ -64,7 +66,7 @@ impl IServer for TapServer {
                 device: inner_dev.name().into(),
                 mtu: self.mtu,
                 ip_addr: self.server_addr.to_string(),
-                ethernet_addr: "00:11:22:33:44:55".into(),
+                ethernet_addr: self.ethernet_addr.clone(),
                 lru_size: 128,
             },
         )?;
@@ -82,9 +84,9 @@ impl IServer for TapServer {
 }
 
 impl ServerFactory for TapServer {
-    const NAME: &'static str = "tun";
+    const NAME: &'static str = "tap";
 
-    type Config = TunNetConfig;
+    type Config = TapNetConfig;
 
     type Server = TapServer;
 
@@ -98,6 +100,7 @@ impl ServerFactory for TapServer {
             name: config.name,
             tap_addr,
             server_addr,
+            ethernet_addr: config.ethernet_addr,
             mtu: config.mtu,
         })
     }
