@@ -4,6 +4,7 @@ use server::RawServer;
 
 mod device;
 mod gateway;
+mod interface_info;
 mod net;
 mod server;
 mod tap;

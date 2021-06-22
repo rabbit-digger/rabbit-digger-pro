@@ -17,6 +17,7 @@ pcap = "0.8.1"
 futures = "0.3"
 lru_time_cache = "0.11"
 parking_lot = "0.11.1"
+thiserror = "1.0"
 
 [dependencies.tun-crate]
 version = "0.5.1"
@@ -24,3 +25,9 @@ git = "https://github.com/meh/rust-tun.git"
 rev = "19906c006512acf805f392e744e38aec8adc6618"
 package = "tun"
 features = ["async"]
+
+[target.'cfg(windows)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+nix = "0.18.0"
