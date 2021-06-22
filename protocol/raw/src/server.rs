@@ -35,15 +35,16 @@ use crate::{
 
 #[rd_config]
 pub struct RawServerConfig {
-    device: String,
-    mtu: usize,
-    ip_addr: String,
-    ethernet_addr: String,
+    pub device: String,
+    pub mtu: usize,
+    /// ipcidr
+    pub ip_addr: String,
+    pub ethernet_addr: String,
     #[serde(default = "default_lru")]
-    lru_size: usize,
+    pub lru_size: usize,
 }
 
-fn default_lru() -> usize {
+pub fn default_lru() -> usize {
     128
 }
 
@@ -72,7 +73,7 @@ fn filter_packet(packet: &[u8], ethernet_addr: EthernetAddress, ip_addr: IpCidr)
 }
 
 impl RawServer {
-    fn new(net: Net, config: RawServerConfig) -> Result<RawServer> {
+    pub fn new(net: Net, config: RawServerConfig) -> Result<RawServer> {
         let ethernet_addr = EthernetAddress::from_str(&config.ethernet_addr)
             .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?;
         let ip_addr = IpCidr::from_str(&config.ip_addr)
