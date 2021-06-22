@@ -24,7 +24,7 @@ use tokio::{
     time::timeout,
 };
 use tokio_smoltcp::{
-    device::{FutureDevice, Packet},
+    device::{FutureDevice, Interface, Packet},
     BufferSize, NetConfig, RawSocket, TcpListener,
 };
 
@@ -73,21 +73,24 @@ fn filter_packet(packet: &[u8], ethernet_addr: EthernetAddress, ip_addr: IpCidr)
 }
 
 impl RawServer {
-    pub fn new(net: Net, config: RawServerConfig) -> Result<RawServer> {
-        let ethernet_addr = match config.ethernet_addr {
-            Some(ethernet_addr) => EthernetAddress::from_str(&ethernet_addr)
-                .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?,
+    pub fn new_device(
+        net: Net,
+        dev_name: &str,
+        dev: impl Interface + 'static,
+        ethernet_addr: Option<EthernetAddress>,
+        ip_addr: IpCidr,
+        lru_size: usize,
+        mtu: usize,
+    ) -> Result<RawServer> {
+        let ethernet_addr = match ethernet_addr {
+            Some(ethernet_addr) => ethernet_addr,
             None => {
-                crate::interface_info::get_interface_info(&config.device)
+                crate::interface_info::get_interface_info(dev_name)
                     .map_err(map_other)?
                     .ethernet_address
             }
         };
-        let ip_addr = IpCidr::from_str(&config.ip_addr)
-            .map_err(|_| Error::Other("Failed to parse ip_addr".into()))?;
         let gateway = ip_addr.address();
-        let device = device::get_device(&config.device)?;
-
         let net_config = NetConfig {
             ethernet_addr,
             ip_addr,
@@ -109,13 +112,12 @@ impl RawServer {
         };
 
         let device = GatewayInterface::new(
-            device::get_by_device(device)?
-                .filter(move |p: &Packet| ready(filter_packet(p, ethernet_addr, ip_addr))),
-            config.lru_size,
+            dev.filter(move |p: &Packet| ready(filter_packet(p, ethernet_addr, ip_addr))),
+            lru_size,
             SocketAddrV4::new(addr.into(), 20000),
         );
         let map = device.get_map();
-        let mut device = FutureDevice::new(device, config.mtu);
+        let mut device = FutureDevice::new(device, mtu);
         device.caps.max_burst_size = Some(100);
         // ignored checksum since we modify the packets
         device.caps.checksum = ChecksumCapabilities::ignored();
@@ -129,6 +131,30 @@ impl RawServer {
             smoltcp_net,
             map,
         })
+    }
+    pub fn new(net: Net, config: RawServerConfig) -> Result<RawServer> {
+        let ethernet_addr = match config.ethernet_addr {
+            Some(ethernet_addr) => Some(
+                EthernetAddress::from_str(&ethernet_addr)
+                    .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?,
+            ),
+            None => None,
+        };
+        let ip_addr = IpCidr::from_str(&config.ip_addr)
+            .map_err(|_| Error::Other("Failed to parse ip_addr".into()))?;
+
+        let device = device::get_device_name(&config.device)?;
+        let device = device::get_by_device(device)?;
+
+        Self::new_device(
+            net,
+            &config.device,
+            device,
+            ethernet_addr,
+            ip_addr,
+            config.lru_size,
+            config.mtu,
+        )
     }
     async fn serve_tcp(&self, mut listener: TcpListener) -> Result<()> {
         loop {

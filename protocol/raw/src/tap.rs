@@ -1,15 +1,18 @@
 use std::{
+    future::ready,
+    io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
 
-use crate::server::{RawServer, RawServerConfig};
-use futures::StreamExt;
+use crate::server::RawServer;
+use futures::{SinkExt, StreamExt};
 use rd_interface::{
     async_trait, error::map_other, prelude::*, registry::ServerFactory, Error, IServer, Net, Result,
 };
-use smoltcp::wire::{IpAddress, IpCidr};
-use tun_crate::{create_as_async, Configuration, Device, Layer};
+use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
+use tokio_smoltcp::device::Packet;
+use tun_crate::{create_as_async, Configuration, Device, Layer, TunPacket};
 
 #[rd_config]
 pub struct TapNetConfig {
@@ -27,7 +30,7 @@ pub struct TapServer {
     name: Option<String>,
     tap_addr: Ipv4Addr,
     server_addr: IpCidr,
-    ethernet_addr: Option<String>,
+    ethernet_addr: Option<EthernetAddress>,
     mtu: usize,
 }
 
@@ -48,36 +51,31 @@ impl IServer for TapServer {
             .layer(Layer::L2)
             .up();
 
-        #[cfg(target_os = "linux")]
-        config.platform(|config| {
-            config.packet_information(true);
-        });
-
         if let Some(name) = &self.name {
             config.name(name);
         }
 
-        let mut dev = create_as_async(&config).map_err(map_other)?.into_framed();
-        let inner_dev = dev.get_ref().get_ref();
+        let dev = create_as_async(&config).map_err(map_other)?;
+        let device = dev.get_ref().name().to_string();
+        let dev = dev
+            .into_framed()
+            .take_while(|i| ready(i.is_ok()))
+            .map(|i| i.unwrap().get_bytes().to_vec())
+            .with(|p: Packet| ready(io::Result::Ok(TunPacket::new(p))));
 
-        let server = RawServer::new(
+        let server = RawServer::new_device(
             self.net.clone(),
-            RawServerConfig {
-                device: inner_dev.name().into(),
-                mtu: self.mtu,
-                ip_addr: self.server_addr.to_string(),
-                ethernet_addr: self.ethernet_addr.clone(),
-                lru_size: 128,
-            },
+            &device,
+            dev,
+            self.ethernet_addr,
+            self.server_addr,
+            128,
+            self.mtu,
         )?;
 
         server.start().await?;
 
         tracing::error!("Raw server stopped");
-
-        while let Some(p) = dev.next().await {
-            println!("{:?}", p)
-        }
 
         Ok(())
     }
@@ -95,12 +93,19 @@ impl ServerFactory for TapServer {
             .map_err(|_| Error::Other("Failed to parse tap_addr".into()))?;
         let server_addr = IpCidr::from_str(&config.server_addr)
             .map_err(|_| Error::Other("Failed to parse server_addr".into()))?;
+        let ethernet_addr = match config.ethernet_addr {
+            Some(ethernet_addr) => Some(
+                EthernetAddress::from_str(&ethernet_addr)
+                    .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?,
+            ),
+            None => None,
+        };
         Ok(TapServer {
             net,
             name: config.name,
             tap_addr,
             server_addr,
-            ethernet_addr: config.ethernet_addr,
+            ethernet_addr,
             mtu: config.mtu,
         })
     }
