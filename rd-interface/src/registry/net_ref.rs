@@ -5,11 +5,7 @@ use schemars::{
     JsonSchema,
 };
 use serde::{de, ser};
-use std::{
-    collections::{BTreeMap, HashMap, HashSet, LinkedList, VecDeque},
-    fmt,
-    ops::Deref,
-};
+use std::{collections::HashSet, fmt, ops::Deref};
 
 /// `NetRef` represents a reference to another `Net`. It is a string in the configuration file.
 /// The default value is `"local"`.
