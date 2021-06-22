@@ -2,11 +2,20 @@
 
 > A picture shows a rabbit digging a wall.
 
-Rule based async tun to proxy based on smoltcp written in Rust.
+Rule based proxy written in Rust.
 
-## Build using Cross
+See also: [rabbit-digger-pro](https://github.com/rabbit-digger/rabbit-digger-pro)
 
-```sh
-cargo install cross # run once
-cross build --release --features=tracing-subscriber --target mipsel-unknown-linux-musl
-```
+## crates
+
+* rd-derive
+
+Used to conveniently define the Config structure.
+
+* rd-std
+
+Some basic net and server, such as rule, HTTP and Socks5.
+
+* rd-interface
+
+Interface defines of rabbit-digger's plugin.
