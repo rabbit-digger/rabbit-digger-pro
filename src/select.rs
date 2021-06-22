@@ -17,7 +17,7 @@ pub struct SelectNet(Net);
 
 impl SelectNet {
     pub fn new(config: SelectNetConfig) -> Result<Self> {
-        if config.list.len() == 0 {
+        if config.list.is_empty() {
             return Err(Error::Other("select list is empty".into()));
         }
         let index = config.selected.min(config.list.len() - 1);

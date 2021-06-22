@@ -29,7 +29,7 @@ impl MapTable {
         self.map.lock().insert(key, value);
     }
     pub fn get(&self, key: &SocketAddrV4) -> Option<SocketAddrV4> {
-        self.map.lock().get(key).map(|i| *i)
+        self.map.lock().get(key).copied()
     }
 }
 
@@ -85,16 +85,13 @@ fn set_src_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
     let src_addr = src_addr_v4.ip().to_owned().into();
     let dst_addr = ip.dst_addr();
     let port = src_addr_v4.port();
-    match ip.protocol() {
-        IpProtocol::Tcp => {
-            ip.set_src_addr(src_addr);
+    if let IpProtocol::Tcp = ip.protocol() {
+        ip.set_src_addr(src_addr);
 
-            let mut tcp = TcpPacket::new_checked(ip.payload_mut())?;
-            tcp.set_src_port(port);
+        let mut tcp = TcpPacket::new_checked(ip.payload_mut())?;
+        tcp.set_src_port(port);
 
-            tcp.fill_checksum(&src_addr.into(), &dst_addr.into());
-        }
-        _ => {}
+        tcp.fill_checksum(&src_addr.into(), &dst_addr.into());
     };
     ip.fill_checksum();
 

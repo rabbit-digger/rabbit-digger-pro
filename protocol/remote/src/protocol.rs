@@ -87,7 +87,7 @@ impl PassiveProtocol {
         };
         let r = new_one.accept().await;
         *listener = Some(new_one);
-        return r;
+        r
     }
 }
 

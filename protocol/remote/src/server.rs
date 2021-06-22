@@ -63,7 +63,9 @@ async fn process_channel(mut channel: Channel, net: Net, map: Map) -> Result<()>
             }
         }
         CommandRequest::TcpAccept { id } => {
-            let target = map.get(id).ok_or(Error::Other("ID is not found".into()))?;
+            let target = map
+                .get(id)
+                .ok_or_else(|| Error::Other("ID is not found".into()))?;
             connect_tcp(target, channel.into_inner()).await?;
         }
     }

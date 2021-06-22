@@ -1,6 +1,6 @@
 use std::{
     io::{Cursor, Write},
-    mem::replace,
+    mem::take,
     net::SocketAddr,
     sync::RwLock,
 };
@@ -67,8 +67,7 @@ impl IUdpSocket for TrojanUdp {
         let buf = if self.head.read().unwrap().len() > 0 {
             let mut head = self.head.write().unwrap();
             if head.len() > 0 {
-                let buf = replace(&mut *head, Vec::new());
-                buf
+                take(&mut *head)
             } else {
                 Vec::new()
             }

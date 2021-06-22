@@ -62,7 +62,7 @@ pub struct RawServer {
     map: MapTable,
 }
 
-fn filter_packet(packet: &Packet, ethernet_addr: EthernetAddress, ip_addr: IpCidr) -> bool {
+fn filter_packet(packet: &[u8], ethernet_addr: EthernetAddress, ip_addr: IpCidr) -> bool {
     if let Ok(f) = EthernetFrame::new_checked(packet) {
         let ether_accept = f.dst_addr() == ethernet_addr || f.dst_addr().is_broadcast();
         ether_accept && {
@@ -174,7 +174,7 @@ impl RawServer {
                 let udp = nat
                     .entry(src)
                     .or_insert_with(|| UdpTunnel::new(net.clone(), src, send_raw.clone()));
-                if let Err(e) = udp.send_to(payload, dst.into()) {
+                if let Err(e) = udp.send_to(payload, dst) {
                     tracing::error!("Udp send_to {:?}", e);
                     nat.remove(&src);
                 }

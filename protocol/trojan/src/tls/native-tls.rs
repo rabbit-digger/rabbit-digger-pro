@@ -31,6 +31,6 @@ impl TlsConnector {
             .connect(self.sni.as_ref(), stream)
             .await
             .map_err(map_other)?;
-        Ok(stream.into())
+        Ok(stream)
     }
 }

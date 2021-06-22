@@ -116,11 +116,11 @@ pub async fn generate_schema() -> Result<RootSchema> {
         root.definitions.extend(schema.definitions);
     }
 
-    let string_schema = {
-        let mut schema = SchemaObject::default();
-        schema.instance_type = Some(InstanceType::String.into());
-        schema.into()
-    };
+    let string_schema = SchemaObject {
+        instance_type: Some(InstanceType::String.into()),
+        ..Default::default()
+    }
+    .into();
     let net_schema = anyof_schema(nets);
     let server_schema = anyof_schema(servers);
 

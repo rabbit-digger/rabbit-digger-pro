@@ -23,9 +23,9 @@ impl From<RDAddress> for WrapAddress {
     }
 }
 
-impl Into<SSAddress> for WrapAddress {
-    fn into(self) -> SSAddress {
-        match self.0 {
+impl From<WrapAddress> for SSAddress {
+    fn from(w: WrapAddress) -> Self {
+        match w.0 {
             RDAddress::Domain(domain, port) => SSAddress::DomainNameAddress(domain, port),
             RDAddress::SocketAddr(s) => SSAddress::SocketAddress(s),
         }
@@ -129,10 +129,10 @@ pub enum Cipher {
 
 impl_empty_net_resolve! { Cipher }
 
-impl Into<CipherKind> for Cipher {
-    fn into(self) -> CipherKind {
+impl From<Cipher> for CipherKind {
+    fn from(c: Cipher) -> Self {
         let s: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&self).unwrap()).unwrap();
+            serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         CipherKind::from_str(s.as_str().unwrap()).unwrap()
     }
 }

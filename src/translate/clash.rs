@@ -97,16 +97,16 @@ impl Clash {
 
     fn get_target(&self, target: &str) -> Result<String> {
         if target == "DIRECT" {
-            return Ok(self.direct.clone().unwrap_or("local".to_string()));
+            return Ok(self.direct.clone().unwrap_or_else(|| "local".to_string()));
         }
         // TODO: noop is not reject, add blackhole net
         if target == "REJECT" {
-            return Ok(self.direct.clone().unwrap_or("noop".to_string()));
+            return Ok(self.direct.clone().unwrap_or_else(|| "noop".to_string()));
         }
         let net_name = self.name_map.get(target);
         net_name
             .map(|i| i.to_string())
-            .ok_or(anyhow!("Name not found. clash name: {}", target))
+            .ok_or_else(|| anyhow!("Name not found. clash name: {}", target))
     }
 
     fn proxy_group_to_net(&self, p: ProxyGroup) -> Result<Net> {
@@ -135,7 +135,7 @@ impl Clash {
 
     fn rule_to_rule(&self, r: &str) -> Result<rule_config::RuleItem> {
         let bad_rule = || anyhow!("Bad rule.");
-        let mut ps = r.split(",");
+        let mut ps = r.split(',');
         let mut ps_next = || ps.next().ok_or_else(bad_rule);
         let rule_type = ps_next()?;
         let item = match rule_type {
@@ -220,7 +220,7 @@ impl Clash {
                     .collect(),
                 |_, i: &ProxyGroup| Ok(i.proxies.clone()) as Result<_>,
             )?
-            .ok_or(anyhow!("There is cyclic dependencies in proxy_groups"))?;
+            .ok_or_else(|| anyhow!("There is cyclic dependencies in proxy_groups"))?;
 
             for (old_name, pg) in proxy_groups {
                 let name = self.proxy_group_name(&old_name);
@@ -258,7 +258,9 @@ impl Clash {
                 Server::new(
                     "socks5",
                     "local",
-                    self.target.clone().unwrap_or(self.prefix("clash_rule")),
+                    self.target
+                        .clone()
+                        .unwrap_or_else(|| self.prefix("clash_rule")),
                     json!({ "bind": format!("0.0.0.0:{}", clash_config.socks_port) }),
                 ),
             );

@@ -12,7 +12,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     // TODO: read or write userdata by API
     let userdata = &server
         .userdata
-        .or(dirs::config_dir().map(|d| d.join("rabbit-digger")));
+        .or_else(|| dirs::config_dir().map(|d| d.join("rabbit-digger")));
     let ctl = &server.controller;
     let stopper: Arc<Mutex<Option<OnceConfigStopper>>> = Arc::new(Mutex::new(None));
 
@@ -86,7 +86,7 @@ pub fn routes(
         .allow_headers(["authorization", "content-type"])
         .allow_methods(["GET", "POST", "PUT", "DELETE"]);
 
-    return api(server).or(forward).with(cors);
+    api(server).or(forward).with(cors)
 }
 
 // Websocket /event
