@@ -1,0 +1,23 @@
+net:
+  raw:
+    type: raw
+    device: "eth0"
+    mtu: 1400
+    # must be the same with your adapter if you are using wireless adapter
+    ethernet_addr: 70:85:C2:71:43:1D
+    # pick a free ip in your subnet
+    ip_addr: 192.168.233.4/24
+    # your gateway
+    gateway: 192.168.233.1
+  # DNS resolving is not implemented in `raw` yet. So use local domain resolver here.
+  resolve_raw:
+    type: resolve
+    net: raw
+    ipv6: false
+server:
+  mixed:
+    # could also be `http` or `socks5`. This `type` supports both `http` and `socks5`.
+    type: http+socks5
+    # the proxy server is now on 11221. Then you can use smoltcp to browser the Internet by this proxy.
+    bind: 127.0.0.1:11221
+    net: resolve_raw

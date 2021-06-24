@@ -175,7 +175,7 @@ impl Clash {
                 let target = self.get_target(ps_next()?)?.into();
                 rule_config::RuleItem {
                     target,
-                    matcher: Matcher::GeoIp(GeoIpMatcher { region }),
+                    matcher: Matcher::GeoIp(GeoIpMatcher { country: region }),
                 }
             }
             _ => return Err(anyhow!("Rule prefix {} is not supported", rule_type)),

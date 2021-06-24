@@ -1,0 +1,15 @@
+# This rule only allows connection to CN.
+net:
+  rule_net:
+    type: rule
+    rule:
+      - type: geoip
+        country: CN
+        target: local
+      - type: any
+        target: noop
+server:
+  mixed:
+    type: http+socks5
+    bind: 127.0.0.1:10800
+    net: rule_net
