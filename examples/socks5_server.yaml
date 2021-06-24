@@ -1,0 +1,5 @@
+# A simple socks5 server
+server:
+  socks5:
+    type: socks5
+    bind: 0.0.0.0:1080
