@@ -1,5 +1,3 @@
-use std::net::SocketAddr;
-
 use super::config::IpCidrMatcher;
 use super::matcher::{Matcher, MaybeAsync};
 use rd_interface::Address;
@@ -17,7 +15,7 @@ impl Matcher for IpCidrMatcher {
         match addr {
             Address::SocketAddr(addr) => self.test(addr.ip()),
             // if it's a domain, try to parse it to SocketAddr.
-            Address::Domain(domain, _) => match str::parse::<SocketAddr>(domain) {
+            Address::Domain(_, _) => match addr.to_socket_addr() {
                 Ok(addr) => self.test(addr.ip()),
                 Err(_) => false,
             },

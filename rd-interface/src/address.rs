@@ -115,7 +115,10 @@ impl Address {
     pub fn to_socket_addr(&self) -> Result<SocketAddr> {
         match self {
             Address::SocketAddr(s) => Ok(*s),
-            _ => Err(no_addr()),
+            Address::Domain(d, p) => match strip_brackets(d).parse::<IpAddr>() {
+                Ok(ip) => Ok(SocketAddr::new(ip, *p)),
+                Err(_) => Err(no_addr()),
+            },
         }
     }
 

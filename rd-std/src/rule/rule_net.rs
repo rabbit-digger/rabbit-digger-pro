@@ -21,6 +21,15 @@ pub struct Rule {
 
 impl Rule {
     fn new(config: config::RuleNetConfig) -> Result<Rule> {
+        if config
+            .rule
+            .iter()
+            .find(|i| matches!(i.matcher, config::Matcher::GeoIp(_)))
+            .is_some()
+        {
+            // if used geoip, init reader first.
+            super::geoip::get_reader();
+        }
         let rule = config
             .rule
             .into_iter()

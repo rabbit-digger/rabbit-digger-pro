@@ -72,7 +72,7 @@ pub struct IpCidrMatcher {
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct GeoIpMatcher {
-    pub region: String,
+    pub country: String,
 }
 
 impl JsonSchema for IpCidr {
