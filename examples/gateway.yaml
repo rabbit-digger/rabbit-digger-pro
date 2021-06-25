@@ -1,0 +1,12 @@
+# raw server can be a gateway of a Switch
+
+server:
+  gateway:
+    type: raw
+    device: eth0
+    mtu: 1400
+    ip_addr: 10.13.37.1/16
+    # must be the same with your adapter if you are using wireless adapter
+    ethernet_addr: 70:85:C2:71:43:1D
+    # you can change net to any protocol that support UDP.
+    net: local
