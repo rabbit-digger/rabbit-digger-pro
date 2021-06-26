@@ -31,7 +31,7 @@ mod tests {
 
     pub async fn spawn_echo_server(net: &Net, addr: impl IntoAddress) {
         let listener = net
-            .tcp_bind(&mut Context::new(), addr.into_address().unwrap())
+            .tcp_bind(&mut Context::new(), &addr.into_address().unwrap())
             .await
             .unwrap();
         tokio::spawn(async move {
@@ -48,7 +48,7 @@ mod tests {
     pub async fn assert_echo(net: &Net, addr: impl IntoAddress) {
         const BUF: &'static [u8] = b"asdfasdfasdfasj12312313123";
         let mut tcp = net
-            .tcp_connect(&mut Context::new(), addr.into_address().unwrap())
+            .tcp_connect(&mut Context::new(), &addr.into_address().unwrap())
             .await
             .unwrap();
         tcp.write_all(&BUF).await.unwrap();
