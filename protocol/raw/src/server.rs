@@ -24,6 +24,7 @@ use smoltcp::{
 use tokio::{
     select, spawn,
     sync::mpsc::{channel, error::TrySendError, Sender},
+    task::yield_now,
     time::timeout,
 };
 use tokio_smoltcp::{
@@ -168,7 +169,7 @@ impl RawServer {
                 let udp = nat
                     .entry(src)
                     .or_insert_with(|| UdpTunnel::new(net.clone(), src, send_raw.clone()));
-                if let Err(e) = udp.send_to(payload, dst) {
+                if let Err(e) = udp.send_to(payload, dst).await {
                     tracing::error!("Udp send_to {:?}", e);
                     nat.remove(&src);
                 }
@@ -339,11 +340,13 @@ impl UdpTunnel {
         });
         UdpTunnel { tx }
     }
-    fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
+    /// return false if the send queue is full
+    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
         match self.tx.try_send((addr, buf.to_vec())) {
             Ok(_) => Ok(()),
             Err(TrySendError::Full(p)) => {
-                tracing::trace!("send_to queue full, dropped {:x?}", p);
+                tracing::trace!("send_to queue full, dropped {}", p.1.len());
+                yield_now().await;
                 Ok(())
             }
             Err(TrySendError::Closed(_)) => Err(Error::Other("Other side closed".into())),
