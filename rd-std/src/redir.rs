@@ -59,7 +59,7 @@ mod linux {
             let target = socket.origin_addr()?;
 
             let target_tcp = net
-                .tcp_connect(&mut Context::from_socketaddr(addr), target.into_address()?)
+                .tcp_connect(&mut Context::from_socketaddr(addr), &target.into_address()?)
                 .await?;
             let socket = CompatTcp(socket).into_dyn();
 
