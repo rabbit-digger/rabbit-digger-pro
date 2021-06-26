@@ -10,8 +10,8 @@ use super::{
     event::EventType,
 };
 use rd_interface::{
-    async_trait, context::common_field, Address, AsyncRead, AsyncWrite, INet, IntoDyn, Net,
-    ReadBuf, TcpListener, UdpSocket,
+    async_trait, Address, AsyncRead, AsyncWrite, INet, IntoDyn, Net, ReadBuf, TcpListener,
+    UdpSocket,
 };
 
 pub struct ControllerServerNet {
@@ -24,17 +24,17 @@ impl INet for ControllerServerNet {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: Address,
+        addr: &Address,
     ) -> rd_interface::Result<rd_interface::TcpStream> {
-        let tcp = self.net.tcp_connect(ctx, addr.clone()).await?;
         let src = ctx
-            .get_common::<common_field::SourceAddress>()
-            .map(|s| s.addr.to_string())
+            .get_source_addr()
+            .map(|s| s.to_string())
             .unwrap_or_default();
 
         tracing::info!("{:?} {} -> {}", &ctx.net_list(), &src, &addr,);
 
-        let tcp = TcpStream::new(tcp, self.config.clone(), addr);
+        let tcp = self.net.tcp_connect(ctx, &addr).await?;
+        let tcp = TcpStream::new(tcp, self.config.clone(), addr.clone());
         Ok(tcp.into_dyn())
     }
 
@@ -42,7 +42,7 @@ impl INet for ControllerServerNet {
     async fn tcp_bind(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: Address,
+        addr: &Address,
     ) -> rd_interface::Result<TcpListener> {
         self.net.tcp_bind(ctx, addr).await
     }
@@ -51,7 +51,7 @@ impl INet for ControllerServerNet {
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: Address,
+        addr: &Address,
     ) -> rd_interface::Result<UdpSocket> {
         self.net.udp_bind(ctx, addr).await
     }

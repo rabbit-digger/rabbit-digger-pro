@@ -42,7 +42,7 @@ impl UdpTunnel {
         spawn(async move {
             let udp = timeout(
                 Duration::from_secs(5),
-                net.udp_bind(&mut context, bind_addr),
+                net.udp_bind(&mut context, &bind_addr),
             )
             .await
             .map_err(map_other)??;

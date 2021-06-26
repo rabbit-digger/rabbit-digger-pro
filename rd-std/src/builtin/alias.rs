@@ -1,5 +1,5 @@
-use futures::future::BoxFuture;
 use rd_interface::{
+    async_trait,
     prelude::*,
     registry::{NetFactory, NetRef},
     Address, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
@@ -13,41 +13,18 @@ impl AliasNet {
     }
 }
 
+#[async_trait]
 impl INet for AliasNet {
-    #[inline(always)]
-    fn tcp_connect<'life0: 'a, 'life1: 'a, 'a>(
-        &'life0 self,
-        ctx: &'life1 mut Context,
-        addr: Address,
-    ) -> BoxFuture<'a, Result<TcpStream>>
-    where
-        Self: 'a,
-    {
-        self.0.tcp_connect(ctx, addr)
+    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
+        self.0.tcp_connect(ctx, addr).await
     }
 
-    #[inline(always)]
-    fn tcp_bind<'life0: 'a, 'life1: 'a, 'a>(
-        &'life0 self,
-        ctx: &'life1 mut Context,
-        addr: Address,
-    ) -> BoxFuture<'a, Result<TcpListener>>
-    where
-        Self: 'a,
-    {
-        self.0.tcp_bind(ctx, addr)
+    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
+        self.0.tcp_bind(ctx, addr).await
     }
 
-    #[inline(always)]
-    fn udp_bind<'life0: 'a, 'life1: 'a, 'a>(
-        &'life0 self,
-        ctx: &'life1 mut Context,
-        addr: Address,
-    ) -> BoxFuture<'a, Result<UdpSocket>>
-    where
-        Self: 'a,
-    {
-        self.0.udp_bind(ctx, addr)
+    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
+        self.0.udp_bind(ctx, addr).await
     }
 }
 

@@ -4,8 +4,8 @@ use super::udp::UdpRuleSocket;
 use std::io;
 
 use rd_interface::{
-    async_trait, context::common_field::SourceAddress, Address, Arc, Context, INet, IntoDyn, Net,
-    Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, Address, Arc, Context, INet, IntoDyn, Net, Result, TcpListener, TcpStream,
+    UdpSocket, NOT_IMPLEMENTED,
 };
 
 pub struct RuleItem {
@@ -47,8 +47,8 @@ impl Rule {
     }
     pub async fn get_rule(&self, ctx: &Context, target: &Address) -> Result<&RuleItem> {
         let src = ctx
-            .get_common::<SourceAddress>()
-            .map(|s| s.addr.to_string())
+            .get_source_addr()
+            .map(|s| s.to_string())
             .unwrap_or_default();
 
         for rule in self.rule.iter() {
@@ -89,10 +89,10 @@ impl RuleNet {
 
 #[async_trait]
 impl INet for RuleNet {
-    async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
+    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         let src = ctx
-            .get_common::<SourceAddress>()
-            .map(|s| s.addr.to_string())
+            .get_source_addr()
+            .map(|s| s.to_string())
             .unwrap_or_default();
 
         let r = self
@@ -100,21 +100,21 @@ impl INet for RuleNet {
             .get_rule_append(ctx, &addr)
             .await?
             .target
-            .tcp_connect(ctx, addr.clone())
+            .tcp_connect(ctx, addr)
             .await;
 
         if let Err(e) = &r {
-            tracing::error!("{} -> {} Failed to connect: {:?}", &src, &addr, e);
+            tracing::error!("{} -> {} Failed to connect: {:?}", &src, addr, e);
         }
 
         r
     }
 
-    async fn tcp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<TcpListener> {
+    async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn udp_bind(&self, ctx: &mut Context, addr: Address) -> Result<UdpSocket> {
-        Ok(UdpRuleSocket::new(self.rule.clone(), ctx.clone(), addr).into_dyn())
+    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
+        Ok(UdpRuleSocket::new(self.rule.clone(), ctx.clone(), addr.clone()).into_dyn())
     }
 }

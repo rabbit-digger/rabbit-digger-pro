@@ -75,24 +75,24 @@ impl INet for ResolveNet {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: Address,
+        addr: &Address,
     ) -> Result<TcpStream> {
         let addr = addr.resolve(&*self.resolver).await?;
-        let tcp = self.config.net.tcp_connect(ctx, addr.into()).await?;
+        let tcp = self.config.net.tcp_connect(ctx, &addr.into()).await?;
         Ok(tcp)
     }
 
     async fn tcp_bind(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: Address,
+        addr: &Address,
     ) -> Result<TcpListener> {
         self.config.net.tcp_bind(ctx, addr).await
     }
 
-    async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
         let addr = addr.resolve(&*self.resolver).await?;
-        let udp = self.config.net.udp_bind(ctx, addr.into()).await?;
+        let udp = self.config.net.udp_bind(ctx, &addr.into()).await?;
         Ok(Udp(udp, self.resolver.clone()).into_dyn())
     }
 }

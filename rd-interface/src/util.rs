@@ -120,15 +120,15 @@ pub struct NotImplementedNet;
 
 #[async_trait]
 impl INet for NotImplementedNet {
-    async fn tcp_connect(&self, _ctx: &mut Context, _addr: Address) -> Result<TcpStream> {
+    async fn tcp_connect(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpStream> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn tcp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<TcpListener> {
+    async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn udp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
 }
@@ -140,41 +140,18 @@ pub struct CombineNet {
     pub udp_bind: Net,
 }
 
+#[async_trait]
 impl INet for CombineNet {
-    #[inline(always)]
-    fn tcp_connect<'life0: 'a, 'life1: 'a, 'a>(
-        &'life0 self,
-        ctx: &'life1 mut Context,
-        addr: Address,
-    ) -> BoxFuture<'a, Result<TcpStream>>
-    where
-        Self: 'a,
-    {
-        self.tcp_connect.tcp_connect(ctx, addr)
+    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
+        self.tcp_connect.tcp_connect(ctx, addr).await
     }
 
-    #[inline(always)]
-    fn tcp_bind<'life0: 'a, 'life1: 'a, 'a>(
-        &'life0 self,
-        ctx: &'life1 mut Context,
-        addr: Address,
-    ) -> BoxFuture<'a, Result<TcpListener>>
-    where
-        Self: 'a,
-    {
-        self.tcp_bind.tcp_bind(ctx, addr)
+    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
+        self.tcp_bind.tcp_bind(ctx, addr).await
     }
 
-    #[inline(always)]
-    fn udp_bind<'life0: 'a, 'life1: 'a, 'a>(
-        &'life0 self,
-        ctx: &'life1 mut Context,
-        addr: Address,
-    ) -> BoxFuture<'a, Result<UdpSocket>>
-    where
-        Self: 'a,
-    {
-        self.udp_bind.udp_bind(ctx, addr)
+    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
+        self.udp_bind.udp_bind(ctx, addr).await
     }
 }
 

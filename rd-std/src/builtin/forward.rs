@@ -32,7 +32,7 @@ impl IServer for ForwardNet {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), self.cfg.bind.clone())
+            .tcp_bind(&mut Context::new(), &self.cfg.bind)
             .await?;
         self.serve_listener(listener).await
     }
@@ -46,7 +46,7 @@ impl ForwardNet {
         addr: SocketAddr,
     ) -> Result<()> {
         let target = net
-            .tcp_connect(&mut Context::from_socketaddr(addr), cfg.target.clone())
+            .tcp_connect(&mut Context::from_socketaddr(addr), &cfg.target)
             .await?;
         connect_tcp(socket, target).await?;
         Ok(())

@@ -51,7 +51,7 @@ impl Socks5Server {
             Command::Connect => {
                 let dst = sa2ra(cmd_req.address);
                 let out = match net
-                    .tcp_connect(&mut Context::from_socketaddr(addr), dst)
+                    .tcp_connect(&mut Context::from_socketaddr(addr), &dst)
                     .await
                 {
                     Ok(socket) => socket,
@@ -88,7 +88,10 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
-                let out = match net.udp_bind(&mut Context::from_socketaddr(addr), dst).await {
+                let out = match net
+                    .udp_bind(&mut Context::from_socketaddr(addr), &dst)
+                    .await
+                {
                     Ok(socket) => socket,
                     Err(e) => {
                         CommandResponse::error(e).write(&mut tx).await?;
@@ -100,7 +103,7 @@ impl Socks5Server {
                 let udp = listen_net
                     .udp_bind(
                         &mut Context::from_socketaddr(addr),
-                        "0.0.0.0:0".into_address()?,
+                        &"0.0.0.0:0".into_address()?,
                     )
                     .await?;
 
@@ -185,7 +188,7 @@ impl IServer for Socks5 {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), self.bind.clone())
+            .tcp_bind(&mut Context::new(), &self.bind)
             .await?;
 
         loop {

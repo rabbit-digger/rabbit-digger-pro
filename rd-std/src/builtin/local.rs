@@ -98,7 +98,7 @@ impl INet for LocalNet {
     async fn tcp_connect(
         &self,
         _ctx: &mut rd_interface::Context,
-        addr: Address,
+        addr: &Address,
     ) -> Result<TcpStream> {
         #[cfg(feature = "local_log")]
         tracing::trace!("local::tcp_connect {:?} {:?}", _ctx, addr);
@@ -116,7 +116,7 @@ impl INet for LocalNet {
     async fn tcp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
-        addr: Address,
+        addr: &Address,
     ) -> Result<TcpListener> {
         #[cfg(feature = "local_log")]
         tracing::trace!("local::tcp_bind {:?} {:?}", _ctx, addr);
@@ -128,7 +128,11 @@ impl INet for LocalNet {
         Ok(Listener(listener, self.0.clone()).into_dyn())
     }
 
-    async fn udp_bind(&self, _ctx: &mut rd_interface::Context, addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        addr: &Address,
+    ) -> Result<UdpSocket> {
         #[cfg(feature = "local_log")]
         tracing::trace!("local::udp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;

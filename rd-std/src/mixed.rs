@@ -45,7 +45,7 @@ impl IServer for HttpSocks5 {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), self.bind.clone())
+            .tcp_bind(&mut Context::new(), &self.bind)
             .await?;
 
         loop {

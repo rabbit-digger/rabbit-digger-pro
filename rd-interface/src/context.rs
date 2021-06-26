@@ -1,6 +1,6 @@
 use crate::Value;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::BTreeMap, fmt::Debug, net::SocketAddr};
+use std::{collections::HashMap, fmt::Debug, net::SocketAddr};
 use thiserror::Error;
 
 /// Context error
@@ -22,7 +22,9 @@ pub trait CommonField: DeserializeOwned + Serialize + 'static {
 /// during connecting.
 #[derive(Debug, Clone)]
 pub struct Context {
-    data: BTreeMap<String, Value>,
+    source_address: Option<SocketAddr>,
+
+    data: HashMap<String, Value>,
     net_list: Vec<String>,
 }
 
@@ -36,15 +38,18 @@ impl Context {
     /// new a empty context
     pub fn new() -> Context {
         Context {
-            data: BTreeMap::new(),
+            source_address: None,
+            data: HashMap::new(),
             net_list: Vec::new(),
         }
+    }
+    pub fn get_source_addr(&self) -> Option<SocketAddr> {
+        self.source_address
     }
     /// new a context from socket addr
     pub fn from_socketaddr(addr: SocketAddr) -> Context {
         let mut ctx = Context::new();
-        ctx.insert_common(common_field::SourceAddress { addr })
-            .unwrap();
+        ctx.source_address = Some(addr);
         ctx
     }
     /// Inserts a key-value pair into the context.
@@ -100,15 +105,6 @@ impl Context {
 pub mod common_field {
     use super::CommonField;
     use serde::{Deserialize, Serialize};
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct SourceAddress {
-        pub addr: std::net::SocketAddr,
-    }
-
-    impl CommonField for SourceAddress {
-        const KEY: &'static str = "source_address";
-    }
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct ProcessInfo {

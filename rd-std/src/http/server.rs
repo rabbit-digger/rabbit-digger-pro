@@ -38,7 +38,7 @@ impl IServer for Http {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), self.bind.clone())
+            .tcp_bind(&mut Context::new(), &self.bind)
             .await?;
 
         loop {
@@ -75,7 +75,7 @@ async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result
                 match hyper::upgrade::on(req).await {
                     Ok(upgraded) => {
                         let stream = net
-                            .tcp_connect(&mut Context::from_socketaddr(addr), dst)
+                            .tcp_connect(&mut Context::from_socketaddr(addr), &dst)
                             .await?;
                         if let Err(e) = tunnel(stream, upgraded).await {
                             tracing::debug!("tunnel io error: {}", e);
@@ -89,7 +89,7 @@ async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result
             Ok(Response::new(Body::empty()))
         } else {
             let stream = net
-                .tcp_connect(&mut Context::from_socketaddr(addr), dst)
+                .tcp_connect(&mut Context::from_socketaddr(addr), &dst)
                 .await?;
 
             let (mut request_sender, connection) = client_conn::handshake(stream).await?;

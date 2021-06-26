@@ -36,9 +36,9 @@ impl INet for HttpClient {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: rd_interface::Address,
+        addr: &rd_interface::Address,
     ) -> Result<TcpStream> {
-        let socket = self.net.tcp_connect(ctx, self.server.clone()).await?;
+        let socket = self.net.tcp_connect(ctx, &self.server).await?;
         let (mut request_sender, connection) =
             client_conn::handshake(socket).await.map_err(map_err)?;
         let connect_req = Request::builder()
@@ -56,7 +56,7 @@ impl INet for HttpClient {
     async fn tcp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
-        _addr: rd_interface::Address,
+        _addr: &rd_interface::Address,
     ) -> Result<rd_interface::TcpListener> {
         Err(NOT_IMPLEMENTED)
     }
@@ -64,7 +64,7 @@ impl INet for HttpClient {
     async fn udp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
-        _addr: rd_interface::Address,
+        _addr: &rd_interface::Address,
     ) -> Result<rd_interface::UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }

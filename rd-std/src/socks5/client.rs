@@ -71,13 +71,13 @@ impl INet for Socks5Client {
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: rd_interface::Address,
+        addr: &rd_interface::Address,
     ) -> Result<UdpSocket> {
-        let mut socket = self.net.tcp_connect(ctx, self.server.clone()).await?;
+        let mut socket = self.net.tcp_connect(ctx, &self.server).await?;
 
         let req = CommandRequest::udp_associate(ra2sa(addr.clone().into_address()?));
         let resp = self.send_command(&mut socket, req).await?;
-        let client = self.net.udp_bind(ctx, addr.clone()).await?;
+        let client = self.net.udp_bind(ctx, &addr).await?;
 
         let addr = resp.address.to_socket_addr().map_err(map_err)?;
 
@@ -86,11 +86,11 @@ impl INet for Socks5Client {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: rd_interface::Address,
+        addr: &rd_interface::Address,
     ) -> Result<TcpStream> {
-        let mut socket = self.net.tcp_connect(ctx, self.server.clone()).await?;
+        let mut socket = self.net.tcp_connect(ctx, &self.server).await?;
 
-        let req = CommandRequest::connect(ra2sa(addr.into_address()?));
+        let req = CommandRequest::connect(ra2sa(addr.clone().into_address()?));
         let _resp = self.send_command(&mut socket, req).await?;
 
         Ok(Socks5TcpStream(socket).into_dyn())
@@ -99,7 +99,7 @@ impl INet for Socks5Client {
     async fn tcp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
-        _addr: rd_interface::Address,
+        _addr: &rd_interface::Address,
     ) -> Result<rd_interface::TcpListener> {
         Err(rd_interface::Error::NotImplemented)
     }
