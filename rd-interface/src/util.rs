@@ -73,6 +73,18 @@ impl AsyncWrite for PeekableTcpStream {
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.tcp).poll_shutdown(cx)
     }
+
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        Pin::new(&mut self.tcp).poll_write_vectored(cx, bufs)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.tcp.is_write_vectored()
+    }
 }
 
 #[async_trait]

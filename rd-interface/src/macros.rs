@@ -46,6 +46,22 @@ macro_rules! impl_async_write {
             ) -> ::std::task::Poll<::std::io::Result<()>> {
                 ::rd_interface::AsyncWrite::poll_shutdown(::std::pin::Pin::new(&mut self.$f), cx)
             }
+
+            fn poll_write_vectored(
+                mut self: ::std::pin::Pin<&mut Self>,
+                cx: &mut ::std::task::Context<'_>,
+                bufs: &[::std::io::IoSlice<'_>],
+            ) -> ::std::task::Poll<::std::io::Result<usize>> {
+                ::rd_interface::AsyncWrite::poll_write_vectored(
+                    ::std::pin::Pin::new(&mut self.$f),
+                    cx,
+                    bufs,
+                )
+            }
+
+            fn is_write_vectored(&self) -> bool {
+                ::rd_interface::AsyncWrite::is_write_vectored(&self.$f)
+            }
         }
     };
 }
