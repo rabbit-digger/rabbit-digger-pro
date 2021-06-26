@@ -84,7 +84,7 @@ impl UdpTunnel {
                 Err(rd_interface::Error::Other("Other side closed".into()))
             }
             Err(TrySendError::Full(p)) => {
-                tracing::trace!("send_to queue full, dropped {:x?}", p);
+                tracing::trace!("send_to queue full, dropped {}", p.0.len());
                 Ok(0)
             }
             Ok(_) => Ok(buf.len()),
