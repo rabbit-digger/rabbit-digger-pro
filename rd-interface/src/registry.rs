@@ -1,15 +1,10 @@
 use std::{collections::BTreeMap, fmt};
 
-pub use self::net_ref::{NetRef, ResolveNetRef};
-use crate as rd_interface;
-use crate::{Address, INet, IServer, IntoDyn, Net, Result, Server};
-use schemars::schema::Metadata;
+pub use self::net_ref::NetRef;
+use crate::{config::Config, INet, IServer, IntoDyn, Net, Result, Server};
 pub use schemars::JsonSchema;
-use schemars::{
-    schema::{InstanceType, RootSchema, SchemaObject},
-    schema_for,
-};
-use serde::{de::DeserializeOwned, Deserialize};
+use schemars::{schema::RootSchema, schema_for};
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 pub type NetMap = BTreeMap<String, Net>;
@@ -54,7 +49,7 @@ impl Registry {
 
 pub trait NetFactory {
     const NAME: &'static str;
-    type Config: DeserializeOwned + ResolveNetRef + JsonSchema;
+    type Config: DeserializeOwned + JsonSchema + Config;
     type Net: INet + Sized + 'static;
 
     fn new(config: Self::Config) -> Result<Self::Net>;
@@ -74,7 +69,7 @@ impl NetResolver {
                 serde_json::from_value(cfg)
                     .map_err(Into::<crate::Error>::into)
                     .and_then(|mut cfg: N::Config| {
-                        cfg.resolve(nets)?;
+                        cfg.resolve_net(nets)?;
                         Ok(cfg)
                     })
                     .and_then(N::new)
@@ -141,51 +136,5 @@ impl ServerResolver {
     }
     pub fn schema(&self) -> &RootSchema {
         &self.schema
-    }
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub struct EmptyConfig(Value);
-
-impl JsonSchema for EmptyConfig {
-    fn schema_name() -> String {
-        "EmptyConfig".to_string()
-    }
-
-    fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        SchemaObject {
-            instance_type: Some(InstanceType::Null.into()),
-            format: None,
-            ..Default::default()
-        }
-        .into()
-    }
-}
-
-crate::impl_empty_net_resolve! { EmptyConfig, Address }
-
-impl JsonSchema for Address {
-    fn is_referenceable() -> bool {
-        false
-    }
-
-    fn schema_name() -> String {
-        "Address".to_string()
-    }
-
-    fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        SchemaObject {
-            instance_type: Some(InstanceType::String.into()),
-            format: None,
-            metadata: Some(
-                Metadata {
-                    description: Some("An address contains host and port.\nFor example: example.com:80, 1.1.1.1:53, [::1]:443".to_string()),
-                    ..Default::default()
-                }
-                .into(),
-            ),
-            ..Default::default()
-        }
-        .into()
     }
 }

@@ -9,6 +9,7 @@ pub use serde_json::Value;
 pub use util::{CombineNet, NotImplementedNet};
 
 mod address;
+pub mod config;
 pub mod constant;
 pub mod context;
 pub mod error;

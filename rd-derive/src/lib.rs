@@ -69,25 +69,16 @@ pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let ident = &input.ident;
 
-    let resolve_body = call_all(
+    let visitor_body = call_all(
         &input,
-        quote! { rd_interface::registry::ResolveNetRef::resolve },
-        quote! { nets },
-    );
-    let get_dependency_set_body = call_all(
-        &input,
-        quote! { rd_interface::registry::ResolveNetRef::get_dependency_set },
-        quote! { nets },
+        quote! { rd_interface::config::Config::visit },
+        quote! { visitor },
     );
 
     let expanded = quote! {
-        impl rd_interface::registry::ResolveNetRef for #ident {
-            fn resolve(&mut self, nets: &rd_interface::registry::NetMap) -> rd_interface::Result<()> {
-                #resolve_body
-                Ok(())
-            }
-            fn get_dependency_set(&mut self, nets: &mut std::collections::HashSet<String>) -> rd_interface::Result<()> {
-                #get_dependency_set_body
+        impl rd_interface::config::Config for #ident {
+            fn visit(&mut self, visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
+                #visitor_body
                 Ok(())
             }
         }

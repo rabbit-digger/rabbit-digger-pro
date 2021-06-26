@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use super::matcher;
 use rd_interface::{
-    impl_empty_net_resolve,
+    impl_empty_config,
     prelude::*,
     registry::NetRef,
     schemars::{
@@ -57,7 +57,7 @@ impl FromStr for IpCidr {
     }
 }
 
-impl_empty_net_resolve! { IpCidr }
+impl_empty_config! { IpCidr }
 
 #[rd_config]
 #[derive(Debug, Clone)]
