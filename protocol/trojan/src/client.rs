@@ -89,11 +89,11 @@ impl INet for TrojanNet {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: RdAddress,
+        addr: &RdAddress,
     ) -> Result<TcpStream> {
-        let stream = self.net.tcp_connect(ctx, self.server.clone()).await?;
+        let stream = self.net.tcp_connect(ctx, &self.server).await?;
         let stream = self.connector.connect(stream).await?;
-        let head = self.make_head(1, ra2sa(addr))?;
+        let head = self.make_head(1, ra2sa(addr.clone()))?;
 
         let tcp = tcp::TrojanTcp::new(stream, head);
         Ok(tcp.into_dyn())
@@ -102,7 +102,7 @@ impl INet for TrojanNet {
     async fn tcp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
-        _addr: RdAddress,
+        _addr: &RdAddress,
     ) -> Result<TcpListener> {
         Err(NOT_IMPLEMENTED)
     }
@@ -110,14 +110,14 @@ impl INet for TrojanNet {
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: RdAddress,
+        addr: &RdAddress,
     ) -> Result<UdpSocket> {
         if !self.udp {
             return Err(NOT_ENABLED);
         }
-        let stream = self.net.tcp_connect(ctx, self.server.clone()).await?;
+        let stream = self.net.tcp_connect(ctx, &self.server).await?;
         let stream = self.connector.connect(stream).await?;
-        let head = self.make_head(3, ra2sa(addr))?;
+        let head = self.make_head(3, ra2sa(addr.clone()))?;
 
         let udp = udp::TrojanUdp::new(stream, head);
 

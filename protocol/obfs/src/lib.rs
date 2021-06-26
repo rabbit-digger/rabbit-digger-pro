@@ -30,7 +30,7 @@ pub fn init(registry: &mut Registry) -> Result<()> {
 /// An obfs protocol used in front of a `TcpStream`
 pub trait Obfs {
     /// Wrap the `TcpStream` with obfs request and response. Used by client.
-    fn tcp_connect(&self, tcp: TcpStream, ctx: &mut Context, addr: Address) -> Result<TcpStream>;
+    fn tcp_connect(&self, tcp: TcpStream, ctx: &mut Context, addr: &Address) -> Result<TcpStream>;
     /// Wrap the `TcpStream` with obfs request and response. Used by server.
     fn tcp_accept(&self, tcp: TcpStream, addr: SocketAddr) -> Result<TcpStream>;
 }
@@ -50,7 +50,7 @@ impl Default for ObfsType {
 }
 
 impl Obfs for ObfsType {
-    fn tcp_connect(&self, tcp: TcpStream, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
+    fn tcp_connect(&self, tcp: TcpStream, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         match self {
             ObfsType::HttpSimple(i) => i.tcp_connect(tcp, ctx, addr),
             ObfsType::Plain(i) => i.tcp_connect(tcp, ctx, addr),

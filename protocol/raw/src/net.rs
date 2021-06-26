@@ -74,7 +74,7 @@ impl INet for RawNet {
     async fn tcp_connect(
         &self,
         _ctx: &mut Context,
-        addr: Address,
+        addr: &Address,
     ) -> Result<rd_interface::TcpStream> {
         let tcp = TcpStreamWrap(self.net.tcp_connect(addr.to_socket_addr()?).await?);
 
@@ -84,14 +84,18 @@ impl INet for RawNet {
     async fn tcp_bind(
         &self,
         _ctx: &mut Context,
-        addr: Address,
+        addr: &Address,
     ) -> Result<rd_interface::TcpListener> {
         let addr = addr.to_socket_addr()?;
         let listener = TcpListenerWrap(Mutex::new(self.net.tcp_bind(addr).await?), addr);
         Ok(listener.into_dyn())
     }
 
-    async fn udp_bind(&self, _ctx: &mut Context, addr: Address) -> Result<rd_interface::UdpSocket> {
+    async fn udp_bind(
+        &self,
+        _ctx: &mut Context,
+        addr: &Address,
+    ) -> Result<rd_interface::UdpSocket> {
         let udp = UdpSocketWrap(self.net.udp_bind(addr.to_socket_addr()?).await?);
         Ok(udp.into_dyn())
     }

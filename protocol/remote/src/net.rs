@@ -44,11 +44,15 @@ impl INet for RemoteNet {
     async fn tcp_connect(
         &self,
         _ctx: &mut rd_interface::Context,
-        address: Address,
+        address: &Address,
     ) -> Result<TcpStream> {
         let mut channel = self.protocol.channel().await?;
 
-        channel.send(CommandRequest::TcpConnect { address }).await?;
+        channel
+            .send(CommandRequest::TcpConnect {
+                address: address.clone(),
+            })
+            .await?;
 
         Ok(channel.into_inner())
     }
@@ -56,11 +60,15 @@ impl INet for RemoteNet {
     async fn tcp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
-        address: Address,
+        address: &Address,
     ) -> Result<TcpListener> {
         let mut channel = self.protocol.channel().await?;
 
-        channel.send(CommandRequest::TcpBind { address }).await?;
+        channel
+            .send(CommandRequest::TcpBind {
+                address: address.clone(),
+            })
+            .await?;
         let resp = channel.recv().await?;
         let addr = match resp {
             CommandResponse::BindAddr { addr } => addr,
@@ -78,7 +86,7 @@ impl INet for RemoteNet {
     async fn udp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
-        _addr: Address,
+        _addr: &Address,
     ) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }

@@ -139,7 +139,7 @@ impl RawServer {
                     let target = net
                         .tcp_connect(
                             &mut Context::from_socketaddr(addr),
-                            SocketAddr::from(orig_addr).into_address()?,
+                            &SocketAddr::from(orig_addr).into_address()?,
                         )
                         .await?;
                     connect_tcp(tcp, target).await?;
@@ -302,7 +302,7 @@ impl UdpTunnel {
                 Duration::from_secs(5),
                 net.udp_bind(
                     &mut Context::from_socketaddr(src),
-                    "0.0.0.0:0".into_address()?,
+                    &"0.0.0.0:0".into_address()?,
                 ),
             )
             .await

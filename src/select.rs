@@ -29,15 +29,15 @@ impl SelectNet {
 
 #[async_trait]
 impl INet for SelectNet {
-    async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
+    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         self.0.tcp_connect(ctx, addr).await
     }
 
-    async fn tcp_bind(&self, ctx: &mut Context, addr: Address) -> Result<TcpListener> {
+    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
         self.0.tcp_bind(ctx, addr).await
     }
 
-    async fn udp_bind(&self, ctx: &mut Context, addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         self.0.udp_bind(ctx, addr).await
     }
 }

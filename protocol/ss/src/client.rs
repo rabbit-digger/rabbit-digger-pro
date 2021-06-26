@@ -40,10 +40,10 @@ impl INet for SSNet {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
-        addr: Address,
+        addr: &Address,
     ) -> Result<TcpStream> {
         let cfg = self.config.clone();
-        let stream = self.config.net.tcp_connect(ctx, cfg.server.clone()).await?;
+        let stream = self.config.net.tcp_connect(ctx, &cfg.server).await?;
         let svr_cfg = ServerConfig::new(
             (cfg.server.host(), cfg.server.port()),
             cfg.password,
@@ -53,7 +53,7 @@ impl INet for SSNet {
             self.context.clone(),
             stream,
             &svr_cfg,
-            WrapAddress(addr),
+            WrapAddress(addr.clone()),
         );
         Ok(WrapSSTcp(client).into_dyn())
     }
@@ -61,12 +61,16 @@ impl INet for SSNet {
     async fn tcp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
-        _addr: Address,
+        _addr: &Address,
     ) -> Result<TcpListener> {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn udp_bind(&self, ctx: &mut rd_interface::Context, _addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(
+        &self,
+        ctx: &mut rd_interface::Context,
+        _addr: &Address,
+    ) -> Result<UdpSocket> {
         if !self.config.udp {
             return Err(NOT_ENABLED);
         }
@@ -75,7 +79,7 @@ impl INet for SSNet {
             .config
             .net
             // TODO: don't bind 0.0.0.0
-            .udp_bind(ctx, "0.0.0.0:0".into_address()?)
+            .udp_bind(ctx, &"0.0.0.0:0".into_address()?)
             .await?;
         let svr_cfg = ServerConfig::new(
             (cfg.server.host(), cfg.server.port()),

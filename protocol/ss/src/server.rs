@@ -30,7 +30,7 @@ impl IServer for SSServer {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen
-            .tcp_bind(&mut rd_interface::Context::new(), self.cfg.bind.clone())
+            .tcp_bind(&mut rd_interface::Context::new(), &self.cfg.bind)
             .await?;
         loop {
             let (socket, addr) = listener.accept().await?;
@@ -72,7 +72,7 @@ impl SSServer {
         let target = net
             .tcp_connect(
                 &mut rd_interface::Context::from_socketaddr(addr),
-                match target {
+                &match target {
                     S5Addr::Domain(d, p) => Address::Domain(d, p),
                     S5Addr::SocketAddr(s) => Address::SocketAddr(s),
                 },

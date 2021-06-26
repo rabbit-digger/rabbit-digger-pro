@@ -46,7 +46,7 @@ impl Protocol for ActiveProtocol {
     async fn channel(&self) -> Result<Channel> {
         let mut conn = self
             .net
-            .tcp_connect(&mut Context::new(), self.remote.clone())
+            .tcp_connect(&mut Context::new(), &self.remote)
             .await?;
 
         handshake(&mut conn, &self.token).await?;
@@ -75,10 +75,7 @@ impl PassiveProtocol {
         let new_one = match listener.as_ref() {
             Some(f) => return f.accept().await,
             None => {
-                let listener = self
-                    .net
-                    .tcp_bind(&mut Context::new(), self.bind.clone())
-                    .await?;
+                let listener = self.net.tcp_bind(&mut Context::new(), &self.bind).await?;
                 listener
             }
         };

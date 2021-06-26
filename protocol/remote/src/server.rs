@@ -45,11 +45,11 @@ async fn process_channel(mut channel: Channel, net: Net, map: Map) -> Result<()>
 
     match req {
         CommandRequest::TcpConnect { address } => {
-            let target = net.tcp_connect(&mut Context::new(), address).await?;
+            let target = net.tcp_connect(&mut Context::new(), &address).await?;
             connect_tcp(target, channel.into_inner()).await?;
         }
         CommandRequest::TcpBind { address } => {
-            let listener = net.tcp_bind(&mut Context::new(), address).await?;
+            let listener = net.tcp_bind(&mut Context::new(), &address).await?;
             channel
                 .send(CommandResponse::BindAddr {
                     addr: listener.local_addr().await?,

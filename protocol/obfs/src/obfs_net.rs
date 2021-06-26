@@ -33,17 +33,17 @@ impl ObfsNet {
 
 #[async_trait]
 impl INet for ObfsNet {
-    async fn tcp_connect(&self, ctx: &mut Context, addr: Address) -> Result<TcpStream> {
-        let tcp = self.net.tcp_connect(ctx, addr.clone()).await?;
+    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
+        let tcp = self.net.tcp_connect(ctx, addr).await?;
         Ok(self.obfs.tcp_connect(tcp, ctx, addr)?)
     }
 
-    async fn tcp_bind(&self, ctx: &mut Context, addr: Address) -> Result<TcpListener> {
+    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
         let listener = self.net.tcp_bind(ctx, addr).await?;
         Ok(ObfsTcpListener(listener, self.obfs.clone()).into_dyn())
     }
 
-    async fn udp_bind(&self, _ctx: &mut Context, _addr: Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
 }

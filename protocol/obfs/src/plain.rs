@@ -10,7 +10,7 @@ impl Obfs for Plain {
         &self,
         tcp: TcpStream,
         _ctx: &mut rd_interface::Context,
-        _addr: Address,
+        _addr: &Address,
     ) -> Result<TcpStream> {
         Ok(tcp)
     }
