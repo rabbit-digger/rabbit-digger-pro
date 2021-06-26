@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, str::FromStr};
 
 use anyhow::{anyhow, Result};
 use rabbit_digger::{
-    config::{Config, Net, Server},
+    config::{Config, Net},
     rd_std::rule::config::{
         self as rule_config, AnyMatcher, DomainMatcher, DomainMatcherMethod, GeoIpMatcher, IpCidr,
         IpCidrMatcher, Matcher,
@@ -14,11 +14,11 @@ use serde_json::{from_value, json, Value};
 
 #[derive(Debug, Deserialize)]
 pub struct Clash {
+    rule_name: String,
     prefix: Option<String>,
-    target: Option<String>,
     direct: Option<String>,
-    #[serde(default)]
-    disable_socks5: bool,
+    reject: Option<String>,
+
     #[serde(default)]
     disable_proxy_group: bool,
     #[serde(default)]
@@ -31,7 +31,6 @@ pub struct Clash {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 struct ClashConfig {
-    socks_port: u16,
     proxies: Vec<Proxy>,
     proxy_groups: Vec<ProxyGroup>,
     rules: Vec<String>,
@@ -101,7 +100,7 @@ impl Clash {
         }
         // TODO: noop is not reject, add blackhole net
         if target == "REJECT" {
-            return Ok(self.direct.clone().unwrap_or_else(|| "noop".to_string()));
+            return Ok(self.reject.clone().unwrap_or_else(|| "noop".to_string()));
         }
         let net_name = self.name_map.get(target);
         net_name
@@ -196,6 +195,7 @@ impl Clash {
 
     pub async fn process(&mut self, config: &mut Config, content: String) -> Result<()> {
         let clash_config: ClashConfig = serde_yaml::from_str(&content)?;
+
         for p in clash_config.proxies {
             let old_name = p.name.clone();
             let name = self.prefix(&old_name);
@@ -247,22 +247,8 @@ impl Clash {
                 }
             }
             config.net.insert(
-                self.prefix("clash_rule"),
+                self.rule_name.clone(),
                 Net::new("rule", json!({ "rule": rule })),
-            );
-        }
-
-        if !self.disable_socks5 {
-            config.server.insert(
-                self.prefix("socks_port"),
-                Server::new(
-                    "socks5",
-                    "local",
-                    self.target
-                        .clone()
-                        .unwrap_or_else(|| self.prefix("clash_rule")),
-                    json!({ "bind": format!("0.0.0.0:{}", clash_config.socks_port) }),
-                ),
             );
         }
 

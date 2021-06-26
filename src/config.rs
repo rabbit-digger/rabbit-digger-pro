@@ -5,11 +5,18 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ImportSource {
+    Path(PathBuf),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Import {
     pub name: Option<String>,
     #[serde(rename = "type")]
     pub format: String,
-    pub path: PathBuf,
+    #[serde(flatten)]
+    pub source: ImportSource,
     #[serde(flatten)]
     pub opt: Value,
 }
