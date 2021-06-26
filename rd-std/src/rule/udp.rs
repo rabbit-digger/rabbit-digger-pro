@@ -12,7 +12,7 @@ use tokio::{
         mpsc::{channel, error::TrySendError, Receiver, Sender},
         Mutex,
     },
-    task::spawn,
+    task::{spawn, yield_now},
     time::timeout,
 };
 
@@ -144,19 +144,26 @@ impl IUdpSocket for UdpRuleSocket {
     }
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        let (net, out_net) = self.get_net_name(&self.context, &addr).await?;
-        let mut nat = self.nat.lock();
+        let size = {
+            let (net, out_net) = self.get_net_name(&self.context, &addr).await?;
+            let mut nat = self.nat.lock();
 
-        let udp = nat.entry(out_net).or_insert_with(|| {
-            UdpTunnel::new(
-                net,
-                self.context.clone(),
-                self.bind_addr.clone(),
-                self.tx.clone(),
-            )
-        });
+            let udp = nat.entry(out_net).or_insert_with(|| {
+                UdpTunnel::new(
+                    net,
+                    self.context.clone(),
+                    self.bind_addr.clone(),
+                    self.tx.clone(),
+                )
+            });
 
-        udp.send_to(buf, addr)
+            udp.send_to(buf, addr)?
+        };
+        if size == 0 {
+            // the queue is full, yield to send
+            yield_now().await;
+        }
+        Ok(size)
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
