@@ -9,10 +9,10 @@ use rd_interface::{
 use tokio::{
     select,
     sync::{
-        mpsc::{channel, error::TrySendError, Receiver, Sender},
+        mpsc::{unbounded_channel, UnboundedReceiver as Receiver, UnboundedSender as Sender},
         Mutex,
     },
-    task::{spawn, yield_now},
+    task::spawn,
     time::timeout,
 };
 
@@ -38,7 +38,7 @@ impl UdpTunnel {
         bind_addr: Address,
         send_back: Sender<UdpPacket>,
     ) -> UdpTunnel {
-        let (tx, mut rx) = channel::<(Vec<u8>, Address)>(64);
+        let (tx, mut rx) = unbounded_channel::<(Vec<u8>, Address)>();
         spawn(async move {
             let udp = timeout(
                 Duration::from_secs(5),
@@ -61,7 +61,7 @@ impl UdpTunnel {
                 loop {
                     let (size, addr) = udp.recv_from(&mut buf).await?;
 
-                    if send_back.send((buf[..size].to_vec(), addr)).await.is_err() {
+                    if send_back.send((buf[..size].to_vec(), addr)).is_err() {
                         break;
                     }
                 }
@@ -79,14 +79,8 @@ impl UdpTunnel {
         UdpTunnel(tx)
     }
     fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        match self.0.try_send((buf.to_vec(), addr)) {
-            Err(TrySendError::Closed(_)) => {
-                Err(rd_interface::Error::Other("Other side closed".into()))
-            }
-            Err(TrySendError::Full(p)) => {
-                tracing::trace!("send_to queue full, dropped {}", p.0.len());
-                Ok(0)
-            }
+        match self.0.send((buf.to_vec(), addr)) {
+            Err(_) => Err(rd_interface::Error::Other("Other side closed".into())),
             Ok(_) => Ok(buf.len()),
         }
     }
@@ -94,7 +88,7 @@ impl UdpTunnel {
 
 impl UdpRuleSocket {
     pub fn new(rule: Rule, context: Context, bind_addr: Address) -> UdpRuleSocket {
-        let (tx, rx) = channel::<UdpPacket>(64);
+        let (tx, rx) = unbounded_channel::<UdpPacket>();
         let nat: NatTable = parking_lot::Mutex::new(LruCache::with_expiry_duration_and_capacity(
             Duration::from_secs(30),
             128,
@@ -144,26 +138,19 @@ impl IUdpSocket for UdpRuleSocket {
     }
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        let size = {
-            let (net, out_net) = self.get_net_name(&self.context, &addr).await?;
-            let mut nat = self.nat.lock();
+        let (net, out_net) = self.get_net_name(&self.context, &addr).await?;
+        let mut nat = self.nat.lock();
 
-            let udp = nat.entry(out_net).or_insert_with(|| {
-                UdpTunnel::new(
-                    net,
-                    self.context.clone(),
-                    self.bind_addr.clone(),
-                    self.tx.clone(),
-                )
-            });
+        let udp = nat.entry(out_net).or_insert_with(|| {
+            UdpTunnel::new(
+                net,
+                self.context.clone(),
+                self.bind_addr.clone(),
+                self.tx.clone(),
+            )
+        });
 
-            udp.send_to(buf, addr)?
-        };
-        if size == 0 {
-            // the queue is full, yield to send
-            yield_now().await;
-        }
-        Ok(size)
+        udp.send_to(buf, addr)
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
