@@ -23,8 +23,7 @@ use smoltcp::{
 };
 use tokio::{
     select, spawn,
-    sync::mpsc::{channel, error::TrySendError, Sender},
-    task::yield_now,
+    sync::mpsc::{unbounded_channel, UnboundedSender as Sender},
     time::timeout,
 };
 use tokio_smoltcp::{
@@ -149,7 +148,7 @@ impl RawServer {
         }
     }
     async fn serve_udp(&self, raw: RawSocket) -> Result<()> {
-        let (send_raw, mut send_rx) = channel::<(SocketAddr, SocketAddr, Vec<u8>)>(64);
+        let (send_raw, mut send_rx) = unbounded_channel::<(SocketAddr, SocketAddr, Vec<u8>)>();
 
         let mut buf = [0u8; UDP_BUFFER_SIZE];
         let mut nat = LruCache::<SocketAddr, UdpTunnel>::with_expiry_duration_and_capacity(
@@ -296,7 +295,7 @@ impl UdpTunnel {
         src: SocketAddr,
         send_raw: Sender<(SocketAddr, SocketAddr, Vec<u8>)>,
     ) -> UdpTunnel {
-        let (tx, mut rx) = channel::<(SocketAddr, Vec<u8>)>(64);
+        let (tx, mut rx) = unbounded_channel::<(SocketAddr, Vec<u8>)>();
         tokio::spawn(async move {
             let udp = timeout(
                 Duration::from_secs(5),
@@ -319,11 +318,7 @@ impl UdpTunnel {
                 loop {
                     let (size, addr) = udp.recv_from(&mut buf).await?;
 
-                    if send_raw
-                        .send((addr, src, buf[..size].to_vec()))
-                        .await
-                        .is_err()
-                    {
+                    if send_raw.send((addr, src, buf[..size].to_vec())).is_err() {
                         break;
                     }
                 }
@@ -342,14 +337,9 @@ impl UdpTunnel {
     }
     /// return false if the send queue is full
     async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
-        match self.tx.try_send((addr, buf.to_vec())) {
+        match self.tx.send((addr, buf.to_vec())) {
             Ok(_) => Ok(()),
-            Err(TrySendError::Full(p)) => {
-                tracing::trace!("send_to queue full, dropped {}", p.1.len());
-                yield_now().await;
-                Ok(())
-            }
-            Err(TrySendError::Closed(_)) => Err(Error::Other("Other side closed".into())),
+            Err(_) => Err(Error::Other("Other side closed".into())),
         }
     }
 }
