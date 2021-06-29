@@ -1,4 +1,5 @@
 use futures::{future::BoxFuture, Future, FutureExt};
+use rd_interface::Address;
 use std::{pin, task};
 
 pub(super) enum MaybeAsync<T> {
@@ -31,9 +32,21 @@ impl<T: Unpin> Future for MaybeAsync<T> {
 }
 
 pub(super) trait Matcher: Send + Sync {
-    fn match_rule(
-        &self,
-        ctx: &rd_interface::Context,
-        addr: &rd_interface::Address,
-    ) -> MaybeAsync<bool>;
+    fn match_rule(&self, match_context: &MatchContext) -> MaybeAsync<bool>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct MatchContext {
+    address: Address,
+}
+
+impl MatchContext {
+    pub fn from_context_address(_ctx: &rd_interface::Context, addr: &Address) -> MatchContext {
+        MatchContext {
+            address: addr.clone(),
+        }
+    }
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
 }

@@ -1,6 +1,6 @@
 use std::{fmt, str::FromStr};
 
-use super::matcher;
+use super::matcher::{self, MatchContext};
 use rd_interface::{
     impl_empty_config,
     prelude::*,
@@ -115,20 +115,22 @@ pub struct RuleItem {
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct RuleNetConfig {
+    #[serde(default = "default_lru_cache_size")]
+    pub lru_cache_size: usize,
     pub rule: Vec<RuleItem>,
 }
 
+fn default_lru_cache_size() -> usize {
+    128
+}
+
 impl matcher::Matcher for Matcher {
-    fn match_rule(
-        &self,
-        ctx: &rd_interface::Context,
-        addr: &rd_interface::Address,
-    ) -> matcher::MaybeAsync<bool> {
+    fn match_rule(&self, match_context: &MatchContext) -> matcher::MaybeAsync<bool> {
         match self {
-            Matcher::Domain(i) => i.match_rule(ctx, addr),
-            Matcher::IpCidr(i) => i.match_rule(ctx, addr),
-            Matcher::GeoIp(i) => i.match_rule(ctx, addr),
-            Matcher::Any(i) => i.match_rule(ctx, addr),
+            Matcher::Domain(i) => i.match_rule(match_context),
+            Matcher::IpCidr(i) => i.match_rule(match_context),
+            Matcher::GeoIp(i) => i.match_rule(match_context),
+            Matcher::Any(i) => i.match_rule(match_context),
         }
     }
 }

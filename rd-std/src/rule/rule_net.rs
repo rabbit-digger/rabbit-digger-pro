@@ -1,8 +1,13 @@
+use crate::rule::matcher::MatchContext;
+
 use super::config;
 use super::matcher::Matcher;
 use super::udp::UdpRuleSocket;
 use std::io;
+use std::time::Instant;
 
+use lru_time_cache::LruCache;
+use parking_lot::Mutex;
 use rd_interface::{
     async_trait, Address, Arc, Context, INet, IntoDyn, Net, Result, TcpListener, TcpStream,
     UdpSocket, NOT_IMPLEMENTED,
@@ -17,6 +22,7 @@ pub struct RuleItem {
 #[derive(Clone)]
 pub struct Rule {
     rule: Arc<Vec<RuleItem>>,
+    cache: Arc<Mutex<LruCache<MatchContext, usize>>>,
 }
 
 impl Rule {
@@ -42,23 +48,42 @@ impl Rule {
             })
             .collect::<Result<Vec<_>>>()?;
         let rule = Arc::new(rule);
+        let cache = Arc::new(Mutex::new(LruCache::with_capacity(config.lru_cache_size)));
 
-        Ok(Rule { rule })
+        Ok(Rule { rule, cache })
     }
     pub async fn get_rule(&self, ctx: &Context, target: &Address) -> Result<&RuleItem> {
+        let start = Instant::now();
         let src = ctx
             .get_source_addr()
             .map(|s| s.to_string())
             .unwrap_or_default();
+        let match_context = MatchContext::from_context_address(ctx, target);
 
-        for rule in self.rule.iter() {
-            if rule.matcher.match_rule(ctx, &target).await {
+        // hit cache
+        if let Some(i) = self.cache.lock().get(&match_context).copied() {
+            let rule = &self.rule[i];
+            tracing::trace!(
+                "[{}] {} -> {} matched rule: {:?} ({:?})",
+                &rule.target_name,
+                &src,
+                &target,
+                &rule.matcher,
+                start.elapsed(),
+            );
+            return Ok(rule);
+        }
+
+        for (i, rule) in self.rule.iter().enumerate() {
+            if rule.matcher.match_rule(&match_context).await {
+                self.cache.lock().insert(match_context, i);
                 tracing::trace!(
-                    "[{}] {} -> {} matched rule: {:?}",
+                    "[{}] {} -> {} matched rule: {:?} ({:?})",
                     &rule.target_name,
                     &src,
                     &target,
-                    &rule.matcher
+                    &rule.matcher,
+                    start.elapsed(),
                 );
                 return Ok(&rule);
             }
@@ -68,10 +93,6 @@ impl Rule {
         Err(rd_interface::Error::IO(
             io::ErrorKind::ConnectionRefused.into(),
         ))
-    }
-    pub async fn get_rule_append(&self, ctx: &mut Context, target: &Address) -> Result<&RuleItem> {
-        let rule = self.get_rule(ctx, target).await?;
-        Ok(rule)
     }
 }
 
@@ -97,7 +118,7 @@ impl INet for RuleNet {
 
         let r = self
             .rule
-            .get_rule_append(ctx, &addr)
+            .get_rule(ctx, &addr)
             .await?
             .target
             .tcp_connect(ctx, addr)

@@ -2,7 +2,7 @@ use std::io::Read;
 use std::net::IpAddr;
 
 use super::config::GeoIpMatcher;
-use super::matcher::{Matcher, MaybeAsync};
+use super::matcher::{MatchContext, Matcher, MaybeAsync};
 use flate2::read::GzDecoder;
 use maxminddb::geoip2;
 use once_cell::sync::OnceCell;
@@ -60,7 +60,8 @@ impl GeoIpMatcher {
 }
 
 impl Matcher for GeoIpMatcher {
-    fn match_rule(&self, _ctx: &rd_interface::Context, addr: &Address) -> MaybeAsync<bool> {
+    fn match_rule(&self, match_context: &MatchContext) -> MaybeAsync<bool> {
+        let addr = match_context.address();
         match addr {
             Address::SocketAddr(addr) => self.test(addr.ip()),
             // if it's a domain, try to parse it to SocketAddr.

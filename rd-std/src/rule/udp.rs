@@ -23,7 +23,6 @@ pub struct UdpRuleSocket {
     rule: Rule,
     context: Context,
     nat: NatTable,
-    cache: Mutex<LruCache<Address, (Net, String)>>,
     tx: Sender<UdpPacket>,
     rx: Mutex<Receiver<UdpPacket>>,
     bind_addr: Address,
@@ -98,25 +97,14 @@ impl UdpRuleSocket {
             rule,
             context,
             nat,
-            cache: Mutex::new(LruCache::with_expiry_duration_and_capacity(
-                Duration::from_secs(30),
-                128,
-            )),
             tx,
             rx: Mutex::new(rx),
             bind_addr,
         }
     }
-    async fn get_net_name(&self, ctx: &Context, addr: &Address) -> Result<(Net, String)> {
-        let mut c = self.cache.lock().await;
-        if let Some((net, name)) = c.get(addr) {
-            Ok((net.clone(), name.clone()))
-        } else {
-            let rule_item = self.rule.get_rule(ctx, addr).await?;
-            let out_net = (rule_item.target.clone(), rule_item.target_name.to_string());
-            c.insert(addr.clone(), out_net.clone());
-            Ok(out_net)
-        }
+    async fn get_net_name(&self, ctx: &Context, addr: &Address) -> Result<(&Net, &String)> {
+        let rule_item = self.rule.get_rule(ctx, addr).await?;
+        Ok((&rule_item.target, &rule_item.target_name))
     }
 }
 
@@ -141,9 +129,9 @@ impl IUdpSocket for UdpRuleSocket {
         let (net, out_net) = self.get_net_name(&self.context, &addr).await?;
         let mut nat = self.nat.lock();
 
-        let udp = nat.entry(out_net).or_insert_with(|| {
+        let udp = nat.entry(out_net.to_string()).or_insert_with(|| {
             UdpTunnel::new(
-                net,
+                net.clone(),
                 self.context.clone(),
                 self.bind_addr.clone(),
                 self.tx.clone(),
