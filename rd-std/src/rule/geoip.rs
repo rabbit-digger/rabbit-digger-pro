@@ -72,3 +72,32 @@ impl Matcher for GeoIpMatcher {
         .into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rd_interface::Context;
+
+    #[tokio::test]
+    async fn test_cn() {
+        let matcher = GeoIpMatcher {
+            country: "CN".to_string(),
+        };
+        assert!(
+            matcher
+                .match_rule(
+                    &Context::new(),
+                    &Address::SocketAddr("114.114.114.114:53".parse().unwrap()),
+                )
+                .await
+        );
+        assert!(
+            !matcher
+                .match_rule(
+                    &Context::new(),
+                    &Address::SocketAddr("1.1.1.1:53".parse().unwrap()),
+                )
+                .await
+        );
+    }
+}
