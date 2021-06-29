@@ -1,9 +1,12 @@
 pub mod default;
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use anyhow::Result;
-use rd_interface::Value;
+use rd_interface::{
+    schemars::{self, JsonSchema},
+    Value,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::Registry;
@@ -39,8 +42,17 @@ pub struct Config {
     pub server: ConfigServer,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default, JsonSchema)]
+pub struct NetMetadata {
+    /// Reset all connections passing through this Net
+    reset_on_change: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Net {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub metadata: Option<NetMetadata>,
     #[serde(flatten)]
     pub _reserved: Reserved,
     #[serde(rename = "type")]
@@ -49,8 +61,14 @@ pub struct Net {
     pub opt: Value,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct ServerMetadata {}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Server {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub metadata: Option<ServerMetadata>,
     #[serde(flatten)]
     pub _reserved: Reserved,
     #[serde(rename = "type")]
@@ -72,15 +90,15 @@ impl Config {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Reserved {
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     r#async: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     r#await: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     r#as: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     r#break: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     r#const: bool,
     #[serde(default)]
     name: bool,
@@ -92,6 +110,7 @@ impl Net {
             net_type: net_type.into(),
             opt,
             _reserved: Default::default(),
+            metadata: Default::default(),
         }
     }
     pub fn new_opt(
@@ -99,6 +118,12 @@ impl Net {
         opt: impl serde::Serialize,
     ) -> rd_interface::Result<Net> {
         Ok(Net::new(net_type, serde_json::to_value(opt)?))
+    }
+    pub fn metadata<'a>(&'a self) -> Cow<'a, NetMetadata> {
+        match self.metadata.as_ref() {
+            Some(m) => Cow::Borrowed(m),
+            None => Cow::Owned(Default::default()),
+        }
     }
 }
 
@@ -115,6 +140,7 @@ impl Server {
             net: net.into(),
             opt,
             _reserved: Default::default(),
+            metadata: Default::default(),
         }
     }
     pub fn new_opt(
@@ -129,5 +155,11 @@ impl Server {
             net,
             serde_json::to_value(opt)?,
         ))
+    }
+    pub fn metadata<'a>(&'a self) -> Cow<'a, ServerMetadata> {
+        match self.metadata.as_ref() {
+            Some(m) => Cow::Borrowed(m),
+            None => Cow::Owned(Default::default()),
+        }
     }
 }

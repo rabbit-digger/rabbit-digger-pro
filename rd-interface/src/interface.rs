@@ -85,6 +85,7 @@ impl<T: INet> IntoDyn<Net> for T {
 /// A Server.
 #[async_trait]
 pub trait IServer: Unpin + Send + Sync {
+    /// Start the server, drop to stop.
     async fn start(&self) -> Result<()>;
 }
 pub type Server = Box<dyn IServer>;

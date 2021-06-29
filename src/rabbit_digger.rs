@@ -8,8 +8,9 @@ use crate::util::topological_sort;
 use anyhow::{anyhow, Context, Result};
 use config::AllNet;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
+use rd_interface::config::EmptyConfig;
 use rd_interface::{Arc, Net, Server, Value};
-use serde_json::Map;
+use rd_std::builtin::local::LocalNetConfig;
 
 pub type PluginLoader =
     Arc<dyn Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static>;
@@ -37,10 +38,10 @@ impl RabbitDigger {
         tracing::info!("Server:\n{}", ServerList(&servers));
 
         let mut server_tasks: FuturesUnordered<_> = servers
-            .iter()
+            .into_iter()
             .map(|i| {
-                let name = i.name.clone();
-                start_server(&i.server).map(|r| (name, r)).boxed()
+                let name = i.name;
+                start_server(i.server).map(|r| (name, r)).boxed()
             })
             .collect();
 
@@ -108,7 +109,7 @@ impl RabbitDiggerBuilder {
     }
 }
 
-async fn start_server(server: &Server) -> Result<()> {
+async fn start_server(server: Server) -> Result<()> {
     server.start().await?;
     Ok(())
 }
@@ -153,15 +154,16 @@ fn build_net(
     if !all_net.contains_key("noop") {
         all_net.insert(
             "noop".to_string(),
-            AllNet::Net(config::Net::new("noop", Value::Object(Map::new()))),
+            AllNet::Net(config::Net::new_opt("noop", EmptyConfig::default())?),
         );
     }
     if !all_net.contains_key("local") {
         all_net.insert(
             "local".to_string(),
-            AllNet::Net(config::Net::new("local", Value::Object(Map::new()))),
+            AllNet::Net(config::Net::new_opt("local", LocalNetConfig::default())?),
         );
     }
+
     all_net.insert(
         "_".to_string(),
         AllNet::Root(

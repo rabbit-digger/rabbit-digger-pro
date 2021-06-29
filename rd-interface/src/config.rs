@@ -3,7 +3,7 @@ use schemars::{
     schema::{InstanceType, Metadata, SchemaObject},
     JsonSchema,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 
@@ -114,7 +114,7 @@ mod impl_std {
     impl_key_container_config! { HashMap, BTreeMap }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct EmptyConfig(Value);
 
 impl JsonSchema for EmptyConfig {
