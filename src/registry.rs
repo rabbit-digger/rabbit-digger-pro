@@ -37,8 +37,8 @@ impl ServerItem {
 
 #[derive(Debug)]
 pub struct Registry {
-    pub net: BTreeMap<String, NetItem>,
-    pub server: BTreeMap<String, ServerItem>,
+    net: BTreeMap<String, NetItem>,
+    server: BTreeMap<String, ServerItem>,
 }
 
 impl Default for Registry {

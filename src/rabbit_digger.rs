@@ -1,16 +1,29 @@
-use std::{collections::BTreeMap, fmt};
+use std::{collections::BTreeMap, fmt, time::Duration};
 
-use crate::builtin::load_builtin;
-use crate::config;
-use crate::controller;
-use crate::registry::Registry;
-use crate::util::topological_sort;
+use crate::{
+    builtin::load_builtin,
+    config,
+    rabbit_digger::running::{RunningNet, RunningServer, RunningServerNet},
+    registry::Registry,
+    util::topological_sort,
+};
 use anyhow::{anyhow, Context, Result};
-use config::AllNet;
 use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
-use rd_interface::config::EmptyConfig;
-use rd_interface::{Arc, Net, Server, Value};
+use rd_interface::{config::EmptyConfig, Arc, IntoDyn, Net, Value};
 use rd_std::builtin::local::LocalNetConfig;
+use tokio::{
+    sync::{broadcast, mpsc, Mutex, RwLock},
+    time::sleep,
+};
+
+use self::{
+    connection::ConnectionConfig,
+    event::{BatchEvent, Event},
+};
+
+mod connection;
+mod event;
+mod running;
 
 pub type PluginLoader =
     Arc<dyn Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static>;
@@ -20,11 +33,25 @@ pub struct RabbitDiggerBuilder {
     pub plugin_loader: PluginLoader,
 }
 
+enum State {
+    WaitConfig,
+    Running {
+        config: config::Config,
+        registry: Registry,
+        nets: BTreeMap<String, RunningNet>,
+        servers: BTreeMap<String, ServerInfo>,
+    },
+}
+
+struct Inner {
+    state: RwLock<State>,
+    conn_cfg: ConnectionConfig,
+}
+
+#[derive(Clone)]
 pub struct RabbitDigger {
-    pub config: config::Config,
-    pub registry: Registry,
-    pub nets: BTreeMap<String, Net>,
-    pub servers: Vec<ServerInfo>,
+    inner: Arc<Inner>,
+    plugin_loader: PluginLoader,
 }
 
 impl fmt::Debug for RabbitDigger {
@@ -34,22 +61,142 @@ impl fmt::Debug for RabbitDigger {
 }
 
 impl RabbitDigger {
-    pub async fn run(servers: Vec<ServerInfo>) -> Result<()> {
+    async fn recv_event(
+        mut rx: mpsc::UnboundedReceiver<Event>,
+        sender: broadcast::Sender<BatchEvent>,
+    ) {
+        loop {
+            let e = match rx.recv().now_or_never() {
+                Some(Some(e)) => e,
+                Some(None) => break,
+                None => {
+                    sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
+
+            let mut events = Vec::with_capacity(16);
+            events.push(e);
+            while let Some(Some(e)) = rx.recv().now_or_never() {
+                events.push(e);
+            }
+
+            // Failed only when no receiver
+            sender.send(Arc::new(events)).ok();
+        }
+        tracing::trace!("recv_event task exited");
+    }
+    async fn new(plugin_loader: &PluginLoader) -> Result<RabbitDigger> {
+        let (sender, _) = broadcast::channel(16);
+        let (event_sender, event_receiver) = mpsc::unbounded_channel();
+        tokio::spawn(Self::recv_event(event_receiver, sender));
+
+        let inner = Inner {
+            state: RwLock::new(State::WaitConfig),
+            conn_cfg: ConnectionConfig::new(event_sender),
+        };
+
+        Ok(RabbitDigger {
+            inner: Arc::new(inner),
+            plugin_loader: plugin_loader.clone(),
+        })
+    }
+    // update config, stopping all running servers and rerun them with new config
+    async fn update_config(&self, config: config::Config) -> Result<()> {
+        let inner = &self.inner;
+
+        match &*inner.state.read().await {
+            State::WaitConfig => {}
+            State::Running { servers, .. } => {
+                for i in servers.values() {
+                    i.server.stop().await;
+                }
+            }
+        };
+
+        let mut registry = Registry::new();
+
+        load_builtin(&mut registry).context("Failed to load builtin")?;
+        (self.plugin_loader)(&config, &mut registry).context("Failed to load plugin")?;
+        tracing::debug!("Registry:\n{}", registry);
+
+        let nets = build_net(&registry, config.net.clone()).context("Failed to build net")?;
+        let servers = build_server(&nets, &config.server, &inner.conn_cfg)
+            .await
+            .context("Failed to build server")?;
+        tracing::debug!(
+            "net and server are built. net count: {}, server count: {}",
+            nets.len(),
+            servers.len()
+        );
+
         tracing::info!("Server:\n{}", ServerList(&servers));
-
-        let mut server_tasks: FuturesUnordered<_> = servers
-            .into_iter()
-            .map(|i| {
-                let name = i.name;
-                start_server(i.server).map(|r| (name, r)).boxed()
-            })
-            .collect();
-
-        while let Some((name, r)) = server_tasks.next().await {
-            tracing::info!("Server {} is stopped. Return: {:?}", name, r)
+        // TODO
+        for (name, server) in &servers {
+            server.server.start(&registry).await?;
         }
 
-        tracing::info!("all servers are down, exit.");
+        Ok(())
+    }
+    pub async fn stop(&self) -> Result<()> {
+        let inner = &self.inner;
+
+        {
+            match &*inner.state.read().await {
+                State::WaitConfig => {}
+                State::Running { servers, .. } => {
+                    for i in servers.values() {
+                        i.server.stop().await?;
+                    }
+                }
+            };
+        }
+
+        *inner.state.write().await = State::WaitConfig;
+
+        Ok(())
+    }
+    pub async fn join(&self) -> Result<()> {
+        let inner = &self.inner;
+
+        match &*inner.state.read().await {
+            State::WaitConfig => {}
+            State::Running { servers, .. } => {
+                for i in servers.values() {
+                    i.server.join().await?;
+                }
+            }
+        };
+
+        Ok(())
+    }
+    // start all server, all server run in background.
+    pub async fn start(&self) -> Result<()> {
+        // let mut server_tasks: FuturesUnordered<_> = self
+        //     .servers
+        //     .iter()
+        //     .map(|(name, i)| {
+        //         let name = name.clone();
+        //         let i = i.clone();
+        //         async move {
+        //             let server = i.server.build(&registry).context(format!(
+        //                 "Failed to build server {:?}. Please check your config.",
+        //                 name
+        //             ));
+        //             let r = match server {
+        //                 Ok(server) => server.start().await.map_err(anyhow::Error::from),
+        //                 Err(e) => Err(e),
+        //             };
+        //             (name, r)
+        //         }
+        //     })
+        //     .collect();
+
+        // while let Some((name, r)) = server_tasks.next().await {
+        //     tracing::info!("Server {} is stopped. Return: {:?}", name, r)
+        // }
+
+        // tracing::info!("all servers are down, exit.");
         Ok(())
     }
 }
@@ -66,63 +213,22 @@ impl RabbitDiggerBuilder {
             plugin_loader: Arc::new(|_, _| Ok(())),
         }
     }
-    pub fn build(
-        &self,
-        ctl: &controller::Controller,
-        config: config::Config,
-    ) -> Result<RabbitDigger> {
-        let wrap_net = {
-            let c = ctl.clone();
-            move |net_name: String, net: Net| c.get_net(net_name, net)
-        };
-        let wrap_server_net = {
-            let c = ctl.clone();
-            move |net: Net| c.get_server_net(net)
-        };
-        let mut registry = Registry::new();
-
-        load_builtin(&mut registry).context("Failed to load builtin")?;
-        (self.plugin_loader)(&config, &mut registry).context("Failed to load plugin")?;
-        tracing::debug!("Registry:\n{}", registry);
-
-        let all_net = config
-            .net
-            .iter()
-            .map(|(k, v)| (k.to_string(), AllNet::Net(v.clone())))
-            .collect();
-        let nets = build_net(&registry, all_net, &config.server, wrap_net)
-            .context("Failed to build net")?;
-        let servers = build_server(&registry, &nets, &config.server, wrap_server_net)
-            .context("Failed to build server")?;
-        tracing::debug!(
-            "net and server are built. net count: {}, server count: {}",
-            nets.len(),
-            servers.len()
-        );
-
-        Ok(RabbitDigger {
-            config,
-            registry,
-            nets,
-            servers,
-        })
+    pub async fn build(&self) -> Result<RabbitDigger> {
+        let rd = RabbitDigger::new(&self.plugin_loader).await?;
+        Ok(rd)
     }
 }
 
-async fn start_server(server: Server) -> Result<()> {
-    server.start().await?;
-    Ok(())
-}
-
+#[derive(Clone)]
 pub struct ServerInfo {
     name: String,
     listen: String,
     net: String,
-    server: Server,
+    server: RunningServer,
     config: Value,
 }
 
-struct ServerList<'a>(&'a Vec<ServerInfo>);
+struct ServerList<'a>(&'a BTreeMap<String, ServerInfo>);
 
 impl fmt::Display for ServerInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -136,7 +242,7 @@ impl fmt::Display for ServerInfo {
 
 impl<'a> fmt::Display for ServerList<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for i in self.0.iter() {
+        for i in self.0.values() {
             writeln!(f, "\t{}", i)?;
         }
         Ok(())
@@ -145,106 +251,121 @@ impl<'a> fmt::Display for ServerList<'a> {
 
 fn build_net(
     registry: &Registry,
-    mut all_net: BTreeMap<String, config::AllNet>,
-    server: &config::ConfigServer,
-    wrapper: impl Fn(String, Net) -> Net,
-) -> Result<BTreeMap<String, Net>> {
+    mut all_net: BTreeMap<String, config::Net>,
+) -> Result<BTreeMap<String, RunningNet>> {
     let mut net_map: BTreeMap<String, Net> = BTreeMap::new();
+    let mut running_map: BTreeMap<String, RunningNet> = BTreeMap::new();
 
     if !all_net.contains_key("noop") {
         all_net.insert(
             "noop".to_string(),
-            AllNet::Net(config::Net::new_opt("noop", EmptyConfig::default())?),
+            config::Net::new_opt("noop", EmptyConfig::default())?,
         );
     }
     if !all_net.contains_key("local") {
         all_net.insert(
             "local".to_string(),
-            AllNet::Net(config::Net::new_opt("local", LocalNetConfig::default())?),
+            config::Net::new_opt("local", LocalNetConfig::default())?,
         );
     }
 
-    all_net.insert(
-        "_".to_string(),
-        AllNet::Root(
-            server
-                .values()
-                .flat_map(|i| vec![i.net.clone(), i.listen.clone()])
-                .collect(),
-        ),
-    );
-
     let all_net = topological_sort(all_net, |k, n| {
-        n.get_dependency(registry)
+        registry
+            .get_net(&n.net_type)?
+            .resolver
+            .get_dependency(n.opt.clone())
             .context(format!("Failed to get_dependency for net/server: {}", k))
     })
     .context("Failed to do topological_sort")?
     .ok_or_else(|| anyhow!("There is cyclic dependencies in net",))?;
 
     for (name, i) in all_net {
-        match i {
-            AllNet::Net(i) => {
-                let load_net = || -> Result<()> {
-                    let net_item = registry.get_net(&i.net_type)?;
+        let load_net = || -> Result<()> {
+            let net_item = registry.get_net(&i.net_type)?;
 
-                    let net = net_item.build(&net_map, i.opt).context(format!(
-                        "Failed to build net {:?}. Please check your config.",
-                        name
-                    ))?;
-                    let net = wrapper(name.to_string(), net);
-                    net_map.insert(name.to_string(), net);
-                    Ok(())
-                };
-                load_net().context(format!("Loading net {}", name))?;
-            }
-            AllNet::Root(_) => {}
-        }
+            let net = net_item.build(&net_map, i.opt.clone()).context(format!(
+                "Failed to build net {:?}. Please check your config.",
+                name
+            ))?;
+            let net = RunningNet::new(name.to_string(), i.opt, net);
+            net_map.insert(name.to_string(), net.clone().into_dyn());
+            running_map.insert(name.to_string(), net);
+            Ok(())
+        };
+        load_net().context(format!("Loading net {}", name))?;
     }
 
-    Ok(net_map)
+    Ok(running_map)
 }
 
-fn build_server(
-    registry: &Registry,
-    net: &BTreeMap<String, Net>,
+async fn build_server(
+    net: &BTreeMap<String, RunningNet>,
     config: &config::ConfigServer,
-    wrapper: impl Fn(Net) -> Net,
-) -> Result<Vec<ServerInfo>> {
-    let mut servers: Vec<ServerInfo> = Vec::new();
+    conn_cfg: &ConnectionConfig,
+) -> Result<BTreeMap<String, ServerInfo>> {
+    let mut servers = BTreeMap::new();
     let config = config.clone();
 
     for (name, i) in config {
         let name = &name;
-        let load_server = || -> Result<()> {
-            let server_item = registry.get_server(&i.server_type)?;
-            let listen = net.get(&i.listen).ok_or_else(|| {
-                anyhow!(
-                    "Listen Net {} is not loaded. Required by {:?}",
-                    &i.net,
-                    &name
-                )
-            })?;
-            let net = net
-                .get(&i.net)
-                .ok_or_else(|| anyhow!("Net {} is not loaded. Required by {:?}", &i.net, &name))?;
 
-            let server = server_item
-                .build(listen.clone(), wrapper(net.clone()), i.opt.clone())
-                .context(format!(
-                    "Failed to build server {:?}. Please check your config.",
-                    name
-                ))?;
-            servers.push(ServerInfo {
-                name: name.to_string(),
-                server,
-                config: i.opt,
-                listen: i.listen,
-                net: i.net,
-            });
-            Ok(())
+        let load_server = async {
+            let listen = net
+                .get(&i.listen)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Listen Net {} is not loaded. Required by {:?}",
+                        &i.net,
+                        &name
+                    )
+                })?
+                .net()
+                .await;
+            let net = RunningServerNet::new(
+                net.get(&i.net)
+                    .ok_or_else(|| {
+                        anyhow!("Net {} is not loaded. Required by {:?}", &i.net, &name)
+                    })?
+                    .net()
+                    .await,
+                conn_cfg.clone(),
+            )
+            .into_dyn();
+
+            let server = RunningServer::new(name.to_string(), i.opt.clone(), net, listen);
+            servers.insert(
+                name.to_string(),
+                ServerInfo {
+                    name: name.to_string(),
+                    server,
+                    config: i.opt,
+                    listen: i.listen,
+                    net: i.net,
+                },
+            );
+            Ok(()) as Result<()>
         };
-        load_server().context(format!("Loading server {}", name))?;
+
+        load_server
+            .await
+            .context(format!("Loading server {}", name))?;
     }
 
     Ok(servers)
+}
+
+enum SingletonState {
+    Idle,
+}
+
+pub struct RabbitDiggerSingleton {
+    state: SingletonState,
+}
+
+impl RabbitDiggerSingleton {
+    pub fn new() -> Self {
+        Self {
+            state: SingletonState::Idle,
+        }
+    }
 }

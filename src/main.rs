@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use rabbit_digger::{config::Config, controller};
+use rabbit_digger::{config::Config, rabbit_digger::RabbitDiggerBuilder};
 use structopt::StructOpt;
 use tokio::fs::read_to_string;
 
@@ -27,9 +27,9 @@ async fn real_main(args: Args) -> Result<()> {
     let content = read_to_string(args.config).await?;
     let config: Config = serde_yaml::from_str(&content)?;
 
-    let controller = controller::Controller::new();
-
-    controller.run(config).await?;
+    let builder = RabbitDiggerBuilder::new();
+    let rd = builder.build(config).await?;
+    rd.run().await?;
 
     Ok(())
 }

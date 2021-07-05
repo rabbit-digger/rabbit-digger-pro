@@ -3,7 +3,7 @@ use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-use super::{event::EventType, Event};
+use super::event::{Event, EventType};
 
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {

@@ -1,6 +1,5 @@
 pub mod builtin;
 pub mod config;
-pub mod controller;
 
 pub mod rabbit_digger;
 pub mod registry;

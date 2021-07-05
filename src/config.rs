@@ -2,35 +2,14 @@ pub mod default;
 
 use std::{borrow::Cow, collections::BTreeMap};
 
-use anyhow::Result;
 use rd_interface::{
     schemars::{self, JsonSchema},
     Value,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::Registry;
-
 pub type ConfigNet = BTreeMap<String, Net>;
 pub type ConfigServer = BTreeMap<String, Server>;
-
-#[derive(Debug)]
-pub enum AllNet {
-    Net(Net),
-    Root(Vec<String>),
-}
-
-impl AllNet {
-    pub fn get_dependency(&self, registry: &Registry) -> Result<Vec<String>> {
-        Ok(match self {
-            AllNet::Net(Net { net_type, opt, .. }) => registry
-                .get_net(net_type)?
-                .resolver
-                .get_dependency(opt.clone())?,
-            AllNet::Root(v) => v.clone(),
-        })
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Config {
