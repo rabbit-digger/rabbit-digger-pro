@@ -53,14 +53,14 @@ pub trait IUdpSocket: Unpin + Send + Sync {
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize>;
     async fn local_addr(&self) -> Result<SocketAddr>;
 }
-pub type UdpSocket = Arc<dyn IUdpSocket>;
+pub type UdpSocket = Box<dyn IUdpSocket>;
 
 impl<T: IUdpSocket> IntoDyn<UdpSocket> for T {
     fn into_dyn(self) -> UdpSocket
     where
         Self: Sized + 'static,
     {
-        Arc::new(self)
+        Box::new(self)
     }
 }
 
@@ -105,13 +105,13 @@ pub trait IUdpChannel: Send + Sync {
     async fn recv_send_to(&self, data: &mut [u8]) -> Result<(usize, Address)>;
     async fn send_recv_from(&self, data: &[u8], addr: SocketAddr) -> Result<usize>;
 }
-pub type UdpChannel = Arc<dyn IUdpChannel>;
+pub type UdpChannel = Box<dyn IUdpChannel>;
 
 impl<T: IUdpChannel> crate::IntoDyn<UdpChannel> for T {
     fn into_dyn(self) -> UdpChannel
     where
         Self: Sized + 'static,
     {
-        Arc::new(self)
+        Box::new(self)
     }
 }
