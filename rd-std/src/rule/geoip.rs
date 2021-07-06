@@ -86,18 +86,18 @@ mod tests {
         };
         assert!(
             matcher
-                .match_rule(
+                .match_rule(&MatchContext::from_context_address(
                     &Context::new(),
-                    &Address::SocketAddr("114.114.114.114:53".parse().unwrap()),
-                )
+                    &Address::SocketAddr("114.114.114.114:53".parse().unwrap())
+                ))
                 .await
         );
         assert!(
             !matcher
-                .match_rule(
+                .match_rule(&MatchContext::from_context_address(
                     &Context::new(),
-                    &Address::SocketAddr("1.1.1.1:53".parse().unwrap()),
-                )
+                    &Address::SocketAddr("1.1.1.1:53".parse().unwrap())
+                ))
                 .await
         );
     }
