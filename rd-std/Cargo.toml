@@ -26,9 +26,10 @@ http = { version = "0.2.4", optional = true }
 # hyper = { version = "0.14.7", features = ["http1", "client", "server"] }
 hyper = { git = "https://github.com/hyperium/hyper", version = "0.14.11", features = ["http1", "client", "server"], rev = "39b6d01aa0e520077bb25e16811f5ece00a224d6" }
 
-# redir
+# transparent
 libc = "0.2.91"
 socket2 = "0.4.0"
+cfg-if = "1.0"
 
 # rule
 smoltcp = "0.7.0"
