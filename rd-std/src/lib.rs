@@ -3,15 +3,15 @@ use rd_interface::{Registry, Result};
 pub mod builtin;
 pub mod http;
 pub mod mixed;
-pub mod redir;
 pub mod rule;
 pub mod socks5;
+pub mod transparent;
 
 pub fn init(registry: &mut Registry) -> Result<()> {
     builtin::init(registry)?;
     http::init(registry)?;
     mixed::init(registry)?;
-    redir::init(registry)?;
+    transparent::init(registry)?;
     rule::init(registry)?;
     socks5::init(registry)?;
     Ok(())
