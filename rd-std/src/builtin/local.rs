@@ -3,6 +3,7 @@ use std::{
     net::SocketAddr,
 };
 
+use cfg_if::cfg_if;
 use rd_interface::{
     async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, INet, IntoDyn,
     Result, TcpListener, TcpStream, UdpSocket,
@@ -19,6 +20,9 @@ pub struct LocalNetConfig {
     /// set nodelay
     #[serde(default)]
     pub nodelay: Option<bool>,
+
+    /// set SO_MARK on linux
+    pub mark: Option<u32>,
 }
 
 pub struct LocalNet(LocalNetConfig);
@@ -93,6 +97,29 @@ impl rd_interface::IUdpSocket for Udp {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn set_mark(socket: libc::c_int, mark: Option<u32>) -> Result<()> {
+    cfg_if! {
+        if #[cfg(target_os = "linux")] {
+            if let Some(mark) = mark {
+                let ret = unsafe {
+                    libc::setsockopt(
+                        socket,
+                        libc::SOL_SOCKET,
+                        libc::SO_MARK,
+                        &mark as *const _ as *const _,
+                        std::mem::size_of_val(&mark) as libc::socklen_t,
+                    )
+                };
+                if ret != 0 {
+                    return Err(io::Error::last_os_error().into());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl INet for LocalNet {
     async fn tcp_connect(
@@ -110,6 +137,11 @@ impl INet for LocalNet {
         if let Some(nodelay) = self.0.nodelay {
             tcp.set_nodelay(nodelay)?;
         }
+        #[cfg(target_os = "linux")]
+        set_mark(
+            std::os::unix::prelude::AsRawFd::as_raw_fd(&tcp),
+            self.0.mark,
+        )?;
         Ok(CompatTcp::new(tcp).into_dyn())
     }
 
@@ -140,6 +172,11 @@ impl INet for LocalNet {
         if let Some(ttl) = self.0.ttl {
             udp.set_ttl(ttl)?;
         }
+        #[cfg(target_os = "linux")]
+        set_mark(
+            std::os::unix::prelude::AsRawFd::as_raw_fd(&udp),
+            self.0.mark,
+        )?;
         Ok(Udp(udp).into_dyn())
     }
 }
