@@ -1,0 +1,46 @@
+on:
+  push:
+    branches:
+      - main
+
+name: Update schema
+
+jobs:
+  update_schema:
+    runs-on: ubuntu-latest
+    steps:
+      - name: clone schema
+        run: |
+          cd /tmp/
+          git clone https://${{ secrets.API_TOKEN_GITHUB }}@github.com/rabbit-digger/schema
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - name: Cache Cargo
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo
+          key: ${{ matrix.os }}-nightly-2021-05-21-cargo-v1
+          restore-keys: |
+            ${{ matrix.os }}-nightly-2021-05-21-cargo-v1
+      - name: Setup toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-05-21
+          target: ${{ matrix.target }}
+          override: true
+      - name: Generate schema
+        uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --features=tracing-subscriber -- generate-schema /tmp/rabbit-digger-pro-schema.json
+      - name: Update git repo
+        run: |
+          cd /tmp/schema/
+          cp /tmp/rabbit-digger-pro-schema.json .
+
+          git add .
+          git config user.email "spacemeowx2@gmail.com"
+          git config user.name "spacemeowx2"
+          git commit -m "update at `date`"
+          git push
