@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::{collections::BTreeMap, fmt, time::Duration};
 
 use crate::{
@@ -38,6 +37,7 @@ pub struct RabbitDiggerBuilder {
     pub plugin_loader: PluginLoader,
 }
 
+#[allow(dead_code)]
 enum State {
     WaitConfig,
     Running {
@@ -151,6 +151,7 @@ impl RabbitDigger {
 
         Ok(())
     }
+
     // start all server, all server run in background.
     pub async fn start(&self, config: config::Config) -> Result<()> {
         let inner = &self.inner;

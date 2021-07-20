@@ -29,7 +29,8 @@ async fn real_main(args: Args) -> Result<()> {
 
     let builder = RabbitDiggerBuilder::new();
     let rd = builder.build().await?;
-    rd.run().await?;
+    rd.start(config).await?;
+    rd.join().await?;
 
     Ok(())
 }
