@@ -1,7 +1,7 @@
 use std::{convert::Infallible, future, path::PathBuf};
 
 use super::{handlers, reject::handle_rejection, reject::ApiError, Server};
-use rabbit_digger::controller::{Controller, OnceConfigStopper};
+use rabbit_digger::rabbit_digger::RabbitDigger;
 use rd_interface::Arc;
 use tokio::sync::Mutex;
 use warp::{Filter, Rejection};
@@ -13,8 +13,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     let userdata = &server
         .userdata
         .or_else(|| dirs::config_dir().map(|d| d.join("rabbit-digger")));
-    let ctl = &server.controller;
-    let stopper: Arc<Mutex<Option<OnceConfigStopper>>> = Arc::new(Mutex::new(None));
+    let rd = &server.RabbitDigger;
 
     let get_config = warp::path!("config")
         .and(warp::get())
@@ -99,7 +98,7 @@ pub fn ws_event(
         .and_then(handlers::ws_event)
 }
 
-fn with_ctl(ctl: &Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {
+fn with_rd(ctl: &Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {
     let ctl = ctl.clone();
     warp::any().map(move || ctl.clone())
 }

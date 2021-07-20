@@ -1,9 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use controller::Controller;
 use futures::{pin_mut, stream::TryStreamExt};
-use rabbit_digger::controller;
+use rabbit_digger::rabbit_digger::{RabbitDigger, RabbitDiggerBuilder};
 #[cfg(feature = "api_server")]
 use rabbit_digger_pro::api_server;
 use rabbit_digger_pro::{plugin_loader, schema, watch_config_stream};
@@ -71,7 +70,7 @@ async fn write_config(path: impl AsRef<Path>, cfg: &rabbit_digger::Config) -> Re
     Ok(())
 }
 
-async fn run_api_server(controller: &Controller, api_server: &ApiServer) -> Result<()> {
+async fn run_api_server(_rd: &RabbitDigger, api_server: &ApiServer) -> Result<()> {
     if let Some(_bind) = &api_server.bind {
         #[cfg(feature = "api_server")]
         api_server::Server {
@@ -87,11 +86,18 @@ async fn run_api_server(controller: &Controller, api_server: &ApiServer) -> Resu
     Ok(())
 }
 
-async fn real_main(args: Args) -> Result<()> {
-    let controller = Controller::new();
-    controller.set_plugin_loader(plugin_loader).await;
+async fn get_rd() -> Result<RabbitDigger> {
+    let rd = RabbitDiggerBuilder::new()
+        .plugin_loader(plugin_loader)
+        .build()
+        .await?;
+    Ok(rd)
+}
 
-    run_api_server(&controller, &args.api_server).await?;
+async fn real_main(args: Args) -> Result<()> {
+    let rd = get_rd().await?;
+
+    run_api_server(&rd, &args.api_server).await?;
 
     let config_path = args.config.clone();
     let write_config_path = args.write_config;
@@ -105,8 +111,7 @@ async fn real_main(args: Args) -> Result<()> {
         });
 
     pin_mut!(config_stream);
-    controller
-        .run_stream(config_stream)
+    rd.start_stream(config_stream)
         .await
         .context("Failed to run RabbitDigger")?;
 
@@ -150,10 +155,9 @@ async fn main(args: Args) -> Result<()> {
             return Ok(());
         }
         Some(Command::Server { api_server }) => {
-            let controller = Controller::new();
-            controller.set_plugin_loader(plugin_loader).await;
+            let rd = get_rd().await?;
 
-            run_api_server(&controller, &api_server).await?;
+            run_api_server(&rd, &api_server).await?;
 
             tokio::signal::ctrl_c().await?;
 

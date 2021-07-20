@@ -98,7 +98,7 @@ pub async fn generate_schema() -> Result<RootSchema> {
     let mut servers: Vec<Schema> = Vec::new();
     let mut root: RootSchema = RootSchema::default();
 
-    for (id, net) in registry.net.iter() {
+    for (id, net) in registry.net().iter() {
         let mut schema = append_type(net.resolver.schema(), id);
         let mut visitor = PrefixVisitor(format!("net_{}_", id));
 
@@ -107,7 +107,7 @@ pub async fn generate_schema() -> Result<RootSchema> {
         nets.push(schema.schema.into());
         root.definitions.extend(schema.definitions);
     }
-    for (id, server) in registry.server.iter() {
+    for (id, server) in registry.server().iter() {
         let mut schema = append_type(server.resolver.schema(), id);
         let mut visitor = PrefixVisitor(format!("server_{}_", id));
 
