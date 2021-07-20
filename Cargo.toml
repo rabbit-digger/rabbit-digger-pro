@@ -41,7 +41,7 @@ console-subscriber = { git = "https://github.com/tokio-rs/console", rev = "b3450
 rusty-hook = "0.11.0"
 
 [features]
-default = [ "api_server", "ss", "trojan", "remote", "obfs" ]
+default = [ "ss", "trojan", "remote", "obfs" ]
 api_server = [ "warp", "dirs" ]
 local_log = [ "rabbit-digger/local_log" ]
 console = ["console-subscriber"]
