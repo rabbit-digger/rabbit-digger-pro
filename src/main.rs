@@ -28,7 +28,7 @@ async fn real_main(args: Args) -> Result<()> {
     let config: Config = serde_yaml::from_str(&content)?;
 
     let builder = RabbitDiggerBuilder::new();
-    let rd = builder.build(config).await?;
+    let rd = builder.build().await?;
     rd.run().await?;
 
     Ok(())

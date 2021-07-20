@@ -1,5 +1,6 @@
 use std::{
     io,
+    mem::replace,
     net::SocketAddr,
     pin::Pin,
     task::{self, Poll},
@@ -188,53 +189,96 @@ impl rd_interface::ITcpStream for WrapTcpStream {
 enum State {
     WaitConfig,
     Running {
+        opt: Value,
         handle: JoinHandle<anyhow::Result<()>>,
+    },
+    Finished {
+        opt: Value,
+        result: anyhow::Result<()>,
     },
 }
 
 #[derive(Clone)]
 pub struct RunningServer {
     name: String,
-    opt: Value,
     net: Net,
     listen: Net,
     state: Arc<RwLock<State>>,
 }
 
 impl RunningServer {
-    pub fn new(name: String, opt: Value, net: Net, listen: Net) -> Self {
+    pub fn new(name: String, net: Net, listen: Net) -> Self {
         RunningServer {
             name,
-            opt,
             net,
             listen,
             state: Arc::new(RwLock::new(State::WaitConfig)),
         }
     }
-    pub async fn start(&self, registry: &Registry) -> anyhow::Result<()> {
+    pub async fn start(&self, registry: &Registry, opt: &Value) -> anyhow::Result<()> {
+        match &*self.state.read().await {
+            // skip if config is not changed
+            State::Running {
+                opt: running_opt, ..
+            } => {
+                if opt == running_opt {
+                    return Ok(());
+                }
+            }
+            _ => {}
+        };
+
         self.stop().await?;
 
         let item = registry.get_server(&self.name)?;
-        let server = item.build(self.listen.clone(), self.net.clone(), self.opt.clone())?;
+        let server = item.build(self.listen.clone(), self.net.clone(), opt.clone())?;
         let handle = tokio::spawn(async move { server.start().await.map_err(Into::into) });
 
-        *self.state.write().await = State::Running { handle };
+        *self.state.write().await = State::Running {
+            opt: opt.clone(),
+            handle,
+        };
 
         Ok(())
     }
     pub async fn stop(&self) -> anyhow::Result<()> {
         match &*self.state.read().await {
-            State::WaitConfig => {}
-            State::Running { handle } => {
-                handle.abort();
-            }
+            State::Running { .. } => {}
+            _ => return Ok(()),
         };
 
-        *self.state.write().await = State::WaitConfig;
+        // make sure only one task is calling `stop`
+        let state = &mut *self.state.write().await;
+
+        match state {
+            State::Running { handle, .. } => {
+                handle.abort();
+            }
+            _ => {}
+        };
+        *state = State::WaitConfig;
 
         Ok(())
     }
     pub async fn join(&self) -> anyhow::Result<()> {
+        match &*self.state.read().await {
+            State::Running { .. } => {}
+            _ => return Ok(()),
+        };
+
+        // make sure only one task is `join`ed
+        let state = &mut *self.state.write().await;
+
+        let (opt, result) = match state {
+            State::Running { handle, opt } => {
+                let result = handle.await?;
+                (replace(opt, Value::Null), result)
+            }
+            _ => return Ok(()),
+        };
+
+        *state = State::Finished { opt, result };
+
         Ok(())
     }
 }

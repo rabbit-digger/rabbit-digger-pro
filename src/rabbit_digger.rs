@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{collections::BTreeMap, fmt, time::Duration};
 
 use crate::{
@@ -8,12 +9,16 @@ use crate::{
     util::topological_sort,
 };
 use anyhow::{anyhow, Context, Result};
-use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
+use futures::{
+    future::{try_select, Either},
+    FutureExt, Stream, TryStreamExt,
+};
 use rd_interface::{config::EmptyConfig, Arc, IntoDyn, Net, Value};
 use rd_std::builtin::local::LocalNetConfig;
 use tokio::{
-    sync::{broadcast, mpsc, Mutex, RwLock},
-    time::sleep,
+    pin,
+    sync::{broadcast, mpsc, RwLock},
+    time::{sleep, timeout},
 };
 
 use self::{
@@ -101,18 +106,58 @@ impl RabbitDigger {
             plugin_loader: plugin_loader.clone(),
         })
     }
-    // update config, stopping all running servers and rerun them with new config
-    async fn update_config(&self, config: config::Config) -> Result<()> {
+    async fn stop_inner(&self, state: &mut State) -> Result<()> {
+        match state {
+            State::Running { servers, .. } => {
+                for i in servers.values() {
+                    i.server.stop().await?;
+                }
+            }
+            _ => {}
+        };
+
+        *state = State::WaitConfig;
+
+        Ok(())
+    }
+    pub async fn stop(&self) -> Result<()> {
         let inner = &self.inner;
 
         match &*inner.state.read().await {
-            State::WaitConfig => {}
+            State::WaitConfig => return Ok(()),
+            State::Running { .. } => {}
+        };
+
+        let state = &mut *inner.state.write().await;
+
+        self.stop_inner(state).await?;
+
+        Ok(())
+    }
+    pub async fn join(&self) -> Result<()> {
+        let inner = &self.inner;
+
+        match &*inner.state.read().await {
+            State::WaitConfig => return Ok(()),
             State::Running { servers, .. } => {
                 for i in servers.values() {
-                    i.server.stop().await;
+                    i.server.join().await?;
                 }
             }
         };
+
+        let state = &mut *inner.state.write().await;
+        *state = State::WaitConfig;
+
+        Ok(())
+    }
+    // start all server, all server run in background.
+    pub async fn start(&self, config: config::Config) -> Result<()> {
+        let inner = &self.inner;
+
+        let state = &mut *inner.state.write().await;
+
+        self.stop_inner(state).await?;
 
         let mut registry = Registry::new();
 
@@ -131,72 +176,70 @@ impl RabbitDigger {
         );
 
         tracing::info!("Server:\n{}", ServerList(&servers));
-        // TODO
-        for (name, server) in &servers {
-            server.server.start(&registry).await?;
+        for (_, server) in &servers {
+            server.server.start(&registry, &server.config).await?;
         }
 
-        Ok(())
-    }
-    pub async fn stop(&self) -> Result<()> {
-        let inner = &self.inner;
-
-        {
-            match &*inner.state.read().await {
-                State::WaitConfig => {}
-                State::Running { servers, .. } => {
-                    for i in servers.values() {
-                        i.server.stop().await?;
-                    }
-                }
-            };
-        }
-
-        *inner.state.write().await = State::WaitConfig;
-
-        Ok(())
-    }
-    pub async fn join(&self) -> Result<()> {
-        let inner = &self.inner;
-
-        match &*inner.state.read().await {
-            State::WaitConfig => {}
-            State::Running { servers, .. } => {
-                for i in servers.values() {
-                    i.server.join().await?;
-                }
-            }
+        *state = State::Running {
+            config,
+            registry,
+            nets,
+            servers,
         };
 
         Ok(())
     }
-    // start all server, all server run in background.
-    pub async fn start(&self) -> Result<()> {
-        // let mut server_tasks: FuturesUnordered<_> = self
-        //     .servers
-        //     .iter()
-        //     .map(|(name, i)| {
-        //         let name = name.clone();
-        //         let i = i.clone();
-        //         async move {
-        //             let server = i.server.build(&registry).context(format!(
-        //                 "Failed to build server {:?}. Please check your config.",
-        //                 name
-        //             ));
-        //             let r = match server {
-        //                 Ok(server) => server.start().await.map_err(anyhow::Error::from),
-        //                 Err(e) => Err(e),
-        //             };
-        //             (name, r)
-        //         }
-        //     })
-        //     .collect();
 
-        // while let Some((name, r)) = server_tasks.next().await {
-        //     tracing::info!("Server {} is stopped. Return: {:?}", name, r)
-        // }
+    pub async fn is_running(&self) -> bool {
+        matches!(*self.inner.state.read().await, State::Running { .. })
+    }
 
-        // tracing::info!("all servers are down, exit.");
+    pub async fn start_stream<S>(self, config_stream: S) -> Result<()>
+    where
+        S: Stream<Item = Result<config::Config>>,
+    {
+        futures::pin_mut!(config_stream);
+
+        let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
+            Ok(Ok(Some(cfg))) => cfg,
+            Ok(Err(e)) => return Err(e.context("Failed to get first config.")),
+            Err(_) | Ok(Ok(None)) => {
+                return Err(anyhow!("The config_stream is empty, can not start."))
+            }
+        };
+
+        loop {
+            tracing::info!("rabbit digger is starting...");
+
+            self.start(config).await?;
+
+            let join_fut = self.join();
+            pin!(join_fut);
+
+            let new_config = match try_select(join_fut, config_stream.try_next()).await {
+                Ok(Either::Left((_, cfg_fut))) => {
+                    tracing::info!("Exited normally, waiting for next config...");
+                    cfg_fut.await
+                }
+                Ok(Either::Right((cfg, _))) => Ok(cfg),
+                Err(Either::Left((e, cfg_fut))) => {
+                    tracing::error!(
+                        "Rabbit digger went to error: {:?}, waiting for next config...",
+                        e
+                    );
+                    cfg_fut.await
+                }
+                Err(Either::Right((e, _))) => Err(e),
+            };
+
+            config = match new_config? {
+                Some(v) => v,
+                None => break,
+            };
+
+            self.stop().await?;
+        }
+
         Ok(())
     }
 }
@@ -332,7 +375,7 @@ async fn build_server(
             )
             .into_dyn();
 
-            let server = RunningServer::new(name.to_string(), i.opt.clone(), net, listen);
+            let server = RunningServer::new(name.to_string(), net, listen);
             servers.insert(
                 name.to_string(),
                 ServerInfo {
@@ -352,20 +395,4 @@ async fn build_server(
     }
 
     Ok(servers)
-}
-
-enum SingletonState {
-    Idle,
-}
-
-pub struct RabbitDiggerSingleton {
-    state: SingletonState,
-}
-
-impl RabbitDiggerSingleton {
-    pub fn new() -> Self {
-        Self {
-            state: SingletonState::Idle,
-        }
-    }
 }
