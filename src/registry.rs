@@ -116,6 +116,12 @@ impl Registry {
             );
         }
     }
+    pub fn net(&self) -> &BTreeMap<String, NetItem> {
+        &self.net
+    }
+    pub fn server(&self) -> &BTreeMap<String, ServerItem> {
+        &self.server
+    }
     pub fn get_net(&self, net_type: &str) -> Result<&NetItem> {
         self.net
             .get(net_type)

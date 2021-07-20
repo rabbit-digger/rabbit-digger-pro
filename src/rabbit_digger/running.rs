@@ -186,6 +186,7 @@ impl rd_interface::ITcpStream for WrapTcpStream {
     }
 }
 
+#[allow(dead_code)]
 enum State {
     WaitConfig,
     Running {
@@ -201,15 +202,17 @@ enum State {
 #[derive(Clone)]
 pub struct RunningServer {
     name: String,
+    server_type: String,
     net: Net,
     listen: Net,
     state: Arc<RwLock<State>>,
 }
 
 impl RunningServer {
-    pub fn new(name: String, net: Net, listen: Net) -> Self {
+    pub fn new(name: String, server_type: String, net: Net, listen: Net) -> Self {
         RunningServer {
             name,
+            server_type,
             net,
             listen,
             state: Arc::new(RwLock::new(State::WaitConfig)),
@@ -230,7 +233,7 @@ impl RunningServer {
 
         self.stop().await?;
 
-        let item = registry.get_server(&self.name)?;
+        let item = registry.get_server(&self.server_type)?;
         let server = item.build(self.listen.clone(), self.net.clone(), opt.clone())?;
         let handle = tokio::spawn(async move { server.start().await.map_err(Into::into) });
 

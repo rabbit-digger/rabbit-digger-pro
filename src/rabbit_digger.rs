@@ -34,7 +34,7 @@ pub type PluginLoader =
 
 #[derive(Clone)]
 pub struct RabbitDiggerBuilder {
-    pub plugin_loader: PluginLoader,
+    plugin_loader: PluginLoader,
 }
 
 #[allow(dead_code)]
@@ -257,6 +257,13 @@ impl RabbitDiggerBuilder {
             plugin_loader: Arc::new(|_, _| Ok(())),
         }
     }
+    pub fn plugin_loader<PL>(mut self, plugin_loader: PL) -> Self
+    where
+        PL: Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static,
+    {
+        self.plugin_loader = Arc::new(plugin_loader);
+        self
+    }
     pub async fn build(&self) -> Result<RabbitDigger> {
         let rd = RabbitDigger::new(&self.plugin_loader).await?;
         Ok(rd)
@@ -376,7 +383,7 @@ async fn build_server(
             )
             .into_dyn();
 
-            let server = RunningServer::new(name.to_string(), net, listen);
+            let server = RunningServer::new(name.to_string(), i.server_type, net, listen);
             servers.insert(
                 name.to_string(),
                 ServerInfo {
