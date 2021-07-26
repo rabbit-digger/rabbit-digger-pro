@@ -10,7 +10,10 @@ use rd_interface::{
     async_trait, Address, Arc, AsyncRead, AsyncWrite, Context, INet, IntoDyn, Net, ReadBuf, Result,
     TcpListener, TcpStream, UdpSocket, Value,
 };
-use tokio::{sync::RwLock, task::JoinHandle};
+use tokio::{
+    sync::{RwLock, Semaphore},
+    task::JoinHandle,
+};
 
 use crate::Registry;
 
@@ -37,9 +40,6 @@ impl RunningNet {
     pub async fn net(&self) -> Net {
         self.inner.read().await.clone()
     }
-    // pub async fn replace(&self, net: Net) -> Net {
-    //     std::mem::replace(&mut *self.inner.write().await, net)
-    // }
 }
 
 #[async_trait]
@@ -192,6 +192,7 @@ enum State {
     Running {
         opt: Value,
         handle: JoinHandle<anyhow::Result<()>>,
+        semaphore: Arc<Semaphore>,
     },
     Finished {
         opt: Value,
@@ -235,47 +236,54 @@ impl RunningServer {
 
         let item = registry.get_server(&self.server_type)?;
         let server = item.build(self.listen.clone(), self.net.clone(), opt.clone())?;
-        let handle = tokio::spawn(async move { server.start().await.map_err(Into::into) });
+        let semaphore = Arc::new(Semaphore::new(0));
+        let s2 = semaphore.clone();
+        let handle = tokio::spawn(async move {
+            let r = server.start().await.map_err(Into::into);
+            s2.close();
+            r
+        });
 
         *self.state.write().await = State::Running {
             opt: opt.clone(),
             handle,
+            semaphore,
         };
 
         Ok(())
     }
     pub async fn stop(&self) -> anyhow::Result<()> {
         match &*self.state.read().await {
-            State::Running { .. } => {}
+            State::Running {
+                handle, semaphore, ..
+            } => {
+                handle.abort();
+                semaphore.close();
+            }
             _ => return Ok(()),
         };
-
-        // make sure only one task is calling `stop`
-        let state = &mut *self.state.write().await;
-
-        match state {
-            State::Running { handle, .. } => {
-                handle.abort();
-            }
-            _ => {}
-        };
-        *state = State::WaitConfig;
+        self.join().await?;
 
         Ok(())
     }
     pub async fn join(&self) -> anyhow::Result<()> {
-        match &*self.state.read().await {
-            State::Running { .. } => {}
+        let state = self.state.read().await;
+
+        match &*state {
+            State::Running { semaphore, .. } => {
+                let _ = semaphore.acquire().await;
+            }
             _ => return Ok(()),
         };
+        drop(state);
 
-        // make sure only one task is `join`ed
-        let state = &mut *self.state.write().await;
+        let mut state = self.state.write().await;
 
-        let (opt, result) = match state {
-            State::Running { handle, opt } => {
-                let result = handle.await?;
-                (replace(opt, Value::Null), result)
+        let (result, opt) = match &mut *state {
+            State::Running { handle, opt, .. } => {
+                let r = handle.await.map_err(Into::into).and_then(|i| i);
+
+                (r, replace(opt, Value::Null))
             }
             _ => return Ok(()),
         };

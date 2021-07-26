@@ -106,8 +106,11 @@ impl RabbitDigger {
             plugin_loader: plugin_loader.clone(),
         })
     }
-    async fn stop_inner(&self, state: &mut State) -> Result<()> {
-        match state {
+    pub async fn stop(&self) -> Result<()> {
+        let inner = &self.inner;
+        let state = inner.state.read().await;
+
+        match &*state {
             State::Running { servers, .. } => {
                 for i in servers.values() {
                     i.server.stop().await?;
@@ -115,22 +118,10 @@ impl RabbitDigger {
             }
             _ => {}
         };
+        // release the lock to allow other join tasks to write the state
+        drop(state);
 
-        *state = State::WaitConfig;
-
-        Ok(())
-    }
-    pub async fn stop(&self) -> Result<()> {
-        let inner = &self.inner;
-
-        match &*inner.state.read().await {
-            State::WaitConfig => return Ok(()),
-            State::Running { .. } => {}
-        };
-
-        let state = &mut *inner.state.write().await;
-
-        self.stop_inner(state).await?;
+        self.join().await?;
 
         Ok(())
     }
@@ -156,10 +147,9 @@ impl RabbitDigger {
     pub async fn start(&self, config: config::Config) -> Result<()> {
         let inner = &self.inner;
 
+        self.stop().await?;
+
         let state = &mut *inner.state.write().await;
-
-        self.stop_inner(state).await?;
-
         let mut registry = Registry::new();
 
         load_builtin(&mut registry).context("Failed to load builtin")?;
@@ -214,23 +204,25 @@ impl RabbitDigger {
 
             self.start(config).await?;
 
-            let join_fut = self.join();
-            pin!(join_fut);
+            let new_config = {
+                let join_fut = self.join();
+                pin!(join_fut);
 
-            let new_config = match try_select(join_fut, config_stream.try_next()).await {
-                Ok(Either::Left((_, cfg_fut))) => {
-                    tracing::info!("Exited normally, waiting for next config...");
-                    cfg_fut.await
+                match try_select(join_fut, config_stream.try_next()).await {
+                    Ok(Either::Left((_, cfg_fut))) => {
+                        tracing::info!("Exited normally, waiting for next config...");
+                        cfg_fut.await
+                    }
+                    Ok(Either::Right((cfg, _))) => Ok(cfg),
+                    Err(Either::Left((e, cfg_fut))) => {
+                        tracing::error!(
+                            "Rabbit digger went to error: {:?}, waiting for next config...",
+                            e
+                        );
+                        cfg_fut.await
+                    }
+                    Err(Either::Right((e, _))) => Err(e),
                 }
-                Ok(Either::Right((cfg, _))) => Ok(cfg),
-                Err(Either::Left((e, cfg_fut))) => {
-                    tracing::error!(
-                        "Rabbit digger went to error: {:?}, waiting for next config...",
-                        e
-                    );
-                    cfg_fut.await
-                }
-                Err(Either::Right((e, _))) => Err(e),
             };
 
             config = match new_config? {
