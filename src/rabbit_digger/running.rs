@@ -186,7 +186,6 @@ impl rd_interface::ITcpStream for WrapTcpStream {
     }
 }
 
-#[allow(dead_code)]
 enum State {
     WaitConfig,
     Running {
@@ -195,7 +194,6 @@ enum State {
         semaphore: Arc<Semaphore>,
     },
     Finished {
-        opt: Value,
         result: anyhow::Result<()>,
     },
 }
@@ -262,34 +260,42 @@ impl RunningServer {
             }
             _ => return Ok(()),
         };
-        self.join().await?;
+        self.join().await;
 
         Ok(())
     }
-    pub async fn join(&self) -> anyhow::Result<()> {
+    pub async fn join(&self) {
         let state = self.state.read().await;
 
         match &*state {
             State::Running { semaphore, .. } => {
                 let _ = semaphore.acquire().await;
             }
-            _ => return Ok(()),
+            _ => return,
         };
         drop(state);
 
         let mut state = self.state.write().await;
 
-        let (result, opt) = match &mut *state {
-            State::Running { handle, opt, .. } => {
-                let r = handle.await.map_err(Into::into).and_then(|i| i);
-
-                (r, replace(opt, Value::Null))
-            }
-            _ => return Ok(()),
+        let result = match &mut *state {
+            State::Running { handle, .. } => handle.await.map_err(Into::into).and_then(|i| i),
+            _ => return,
         };
 
-        *state = State::Finished { opt, result };
+        *state = State::Finished { result };
+    }
+    pub async fn take_result(&self) -> Option<anyhow::Result<()>> {
+        let mut state = self.state.write().await;
 
-        Ok(())
+        match &*state {
+            State::Finished { .. } => {
+                let old = replace(&mut *state, State::WaitConfig);
+                return match old {
+                    State::Finished { result, .. } => Some(result),
+                    _ => unreachable!(),
+                };
+            }
+            _ => return None,
+        };
     }
 }

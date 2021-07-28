@@ -10,7 +10,8 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use futures::{
     future::{try_select, Either},
-    FutureExt, Stream, TryStreamExt,
+    stream::FuturesUnordered,
+    FutureExt, Stream, StreamExt, TryStreamExt,
 };
 use rd_interface::{config::EmptyConfig, Arc, IntoDyn, Net, Value};
 use rd_std::builtin::local::LocalNetConfig;
@@ -131,8 +132,23 @@ impl RabbitDigger {
         match &*inner.state.read().await {
             State::WaitConfig => return Ok(()),
             State::Running { servers, .. } => {
-                for i in servers.values() {
-                    i.server.join().await?;
+                let mut race = FuturesUnordered::new();
+                for (name, i) in servers {
+                    race.push(async move {
+                        i.server.join().await;
+                        if let Some(result) = i.server.take_result().await {
+                            (name, result)
+                        } else {
+                            tracing::warn!("Failed to take result. This shouldn't happend");
+                            (name, Ok(()))
+                        }
+                    });
+                }
+
+                while let Some((name, r)) = race.next().await {
+                    if let Err(e) = r {
+                        tracing::warn!("Server {} stopped with error: {:?}", name, e);
+                    }
                 }
             }
         };
