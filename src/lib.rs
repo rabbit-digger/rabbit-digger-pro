@@ -12,4 +12,4 @@ pub use rd_interface;
 #[cfg(feature = "rd-std")]
 pub use rd_std;
 
-pub use rabbit_digger::{PluginLoader, RabbitDigger, RabbitDiggerBuilder};
+pub use self::rabbit_digger::{PluginLoader, RabbitDigger, RabbitDiggerBuilder};
