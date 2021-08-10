@@ -1,7 +1,7 @@
 pub mod builtin;
 pub mod config;
 
-pub mod rabbit_digger;
+mod rabbit_digger;
 pub mod registry;
 pub mod util;
 
@@ -11,3 +11,5 @@ pub use registry::Registry;
 pub use rd_interface;
 #[cfg(feature = "rd-std")]
 pub use rd_std;
+
+pub use rabbit_digger::{PluginLoader, RabbitDigger, RabbitDiggerBuilder};

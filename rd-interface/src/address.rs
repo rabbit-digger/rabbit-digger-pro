@@ -30,8 +30,7 @@ fn no_addr() -> Error {
 
 fn strip_brackets(host: &str) -> &str {
     host.strip_prefix('[')
-        .map(|h| h.strip_suffix(']'))
-        .flatten()
+        .and_then(|h| h.strip_suffix(']'))
         .unwrap_or(host)
 }
 

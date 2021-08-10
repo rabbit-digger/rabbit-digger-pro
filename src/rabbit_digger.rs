@@ -13,8 +13,9 @@ use futures::{
     stream::FuturesUnordered,
     FutureExt, Stream, StreamExt, TryStreamExt,
 };
-use rd_interface::{config::EmptyConfig, Arc, IntoDyn, Net, Value};
+use rd_interface::{config::EmptyConfig, schemars::schema::RootSchema, Arc, IntoDyn, Net, Value};
 use rd_std::builtin::local::LocalNetConfig;
+use serde::{Deserialize, Serialize};
 use tokio::{
     pin,
     sync::{broadcast, mpsc, RwLock},
@@ -39,14 +40,25 @@ pub struct RabbitDiggerBuilder {
 }
 
 #[allow(dead_code)]
+struct Running {
+    config: config::Config,
+    registry_schema: RegistrySchema,
+    nets: BTreeMap<String, RunningNet>,
+    servers: BTreeMap<String, ServerInfo>,
+}
+
 enum State {
     WaitConfig,
-    Running {
-        config: config::Config,
-        registry: Registry,
-        nets: BTreeMap<String, RunningNet>,
-        servers: BTreeMap<String, ServerInfo>,
-    },
+    Running(Running),
+}
+
+impl State {
+    fn running(&self) -> Option<&Running> {
+        match self {
+            State::Running(running) => Some(running),
+            _ => None,
+        }
+    }
 }
 
 struct Inner {
@@ -58,6 +70,7 @@ struct Inner {
 pub struct RabbitDigger {
     inner: Arc<Inner>,
     plugin_loader: PluginLoader,
+    sender: broadcast::Sender<BatchEvent>,
 }
 
 impl fmt::Debug for RabbitDigger {
@@ -95,7 +108,7 @@ impl RabbitDigger {
     async fn new(plugin_loader: &PluginLoader) -> Result<RabbitDigger> {
         let (sender, _) = broadcast::channel(16);
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        tokio::spawn(Self::recv_event(event_receiver, sender));
+        tokio::spawn(Self::recv_event(event_receiver, sender.clone()));
 
         let inner = Inner {
             state: RwLock::new(State::WaitConfig),
@@ -105,6 +118,7 @@ impl RabbitDigger {
         Ok(RabbitDigger {
             inner: Arc::new(inner),
             plugin_loader: plugin_loader.clone(),
+            sender,
         })
     }
     pub async fn stop(&self) -> Result<()> {
@@ -112,7 +126,7 @@ impl RabbitDigger {
         let state = inner.state.read().await;
 
         match &*state {
-            State::Running { servers, .. } => {
+            State::Running(Running { servers, .. }) => {
                 for i in servers.values() {
                     i.server.stop().await?;
                 }
@@ -131,7 +145,7 @@ impl RabbitDigger {
 
         match &*inner.state.read().await {
             State::WaitConfig => return Ok(()),
-            State::Running { servers, .. } => {
+            State::Running(Running { servers, .. }) => {
                 let mut race = FuturesUnordered::new();
                 for (name, i) in servers {
                     race.push(async move {
@@ -157,6 +171,42 @@ impl RabbitDigger {
         *state = State::WaitConfig;
 
         Ok(())
+    }
+
+    // get current config if it's running
+    pub async fn config(&self) -> Result<config::Config> {
+        let state = self.inner.state.read().await;
+        match &*state {
+            State::Running(Running { config, .. }) => {
+                return Ok(config.clone());
+            }
+            _ => {
+                return Err(anyhow!("Not running"));
+            }
+        };
+    }
+
+    // get state
+    pub async fn state_str(&self) -> Result<&'static str> {
+        let state = self.inner.state.read().await;
+        Ok(match &*state {
+            State::WaitConfig => "WaitConfig",
+            State::Running { .. } => "Running",
+        })
+    }
+
+    // get registry schema
+    pub async fn registry<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<&RegistrySchema>) -> R,
+    {
+        let state = self.inner.state.read().await;
+        f(state.running().map(|i| &i.registry_schema))
+    }
+
+    // get event subscriber
+    pub async fn get_subscriber(&self) -> broadcast::Receiver<BatchEvent> {
+        self.sender.subscribe()
     }
 
     // start all server, all server run in background.
@@ -187,12 +237,12 @@ impl RabbitDigger {
             server.server.start(&registry, &server.config).await?;
         }
 
-        *state = State::Running {
+        *state = State::Running(Running {
             config,
-            registry,
+            registry_schema: get_registry_schema(&registry),
             nets,
             servers,
-        };
+        });
 
         Ok(())
     }
@@ -411,4 +461,27 @@ async fn build_server(
     }
 
     Ok(servers)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegistrySchema {
+    net: BTreeMap<String, RootSchema>,
+    server: BTreeMap<String, RootSchema>,
+}
+
+fn get_registry_schema(registry: &Registry) -> RegistrySchema {
+    let mut r = RegistrySchema {
+        net: BTreeMap::new(),
+        server: BTreeMap::new(),
+    };
+
+    for (key, value) in registry.net() {
+        r.net.insert(key.clone(), value.resolver.schema().clone());
+    }
+    for (key, value) in registry.server() {
+        r.server
+            .insert(key.clone(), value.resolver.schema().clone());
+    }
+
+    r
 }
