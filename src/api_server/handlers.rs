@@ -2,13 +2,9 @@ use std::{convert::Infallible, path::PathBuf};
 
 use super::reject::{custom_reject, ApiError};
 use futures::{pin_mut, SinkExt, Stream, TryStreamExt};
-use rabbit_digger::controller::{Controller, OnceConfigStopper};
-use rd_interface::Arc;
+use rabbit_digger::RabbitDigger;
 use serde_json::json;
-use tokio::{
-    fs::{create_dir_all, read_to_string, remove_file, File},
-    sync::Mutex,
-};
+use tokio::fs::{create_dir_all, read_to_string, remove_file, File};
 use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 use tokio_util::codec::{BytesCodec, FramedWrite};
 use warp::{
@@ -19,39 +15,37 @@ use warp::{
 
 use crate::config::ConfigExt;
 
-pub async fn get_config(ctl: Controller) -> Result<impl warp::Reply, Infallible> {
-    let ctl = ctl.lock().await;
-
-    Ok(warp::reply::json(&ctl.config()))
+pub async fn get_config(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejection> {
+    Ok(warp::reply::json(
+        &rd.config()
+            .await
+            .map_err(|_| warp::reject::custom(ApiError::NotFound))?,
+    ))
 }
 
 pub async fn post_config(
-    ctl: Controller,
+    rd: RabbitDigger,
     config: ConfigExt,
-    last_stopper: Arc<Mutex<Option<OnceConfigStopper>>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let config = config.post_process().await.map_err(custom_reject)?;
     let reply = warp::reply::json(&config);
 
-    let mut last_stopper = last_stopper.lock().await;
-    if let Some(stopper) = last_stopper.take() {
-        stopper.stop().await.map_err(custom_reject)?;
-    }
-    *last_stopper = Some(ctl.start(config).await);
+    rd.stop().await.map_err(custom_reject)?;
+    rd.start(config).await.map_err(custom_reject)?;
 
     Ok(reply)
 }
 
-pub async fn get_registry(ctl: Controller) -> Result<impl warp::Reply, Infallible> {
-    let ctl = ctl.lock().await;
-
-    Ok(warp::reply::json(&ctl.registry()))
+pub async fn get_registry(rd: RabbitDigger) -> Result<impl warp::Reply, Infallible> {
+    Ok(rd.registry(|r| warp::reply::json(&r)).await)
 }
 
-pub async fn get_state(ctl: Controller) -> Result<impl warp::Reply, Infallible> {
-    let ctl = ctl.lock().await;
-
-    Ok(warp::reply::json(&ctl.state()))
+pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejection> {
+    Ok(warp::reply::json(
+        &rd.state_str()
+            .await
+            .map_err(|_| warp::reject::custom(ApiError::NotFound))?,
+    ))
 }
 
 pub async fn get_userdata(
@@ -112,8 +106,8 @@ async fn forward(
     Ok(())
 }
 
-pub async fn ws_event(ctl: Controller, ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
-    let sub = BroadcastStream::new(ctl.get_subscriber().await);
+pub async fn ws_event(rd: RabbitDigger, ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
+    let sub = BroadcastStream::new(rd.get_subscriber().await);
     let sub = sub.map_ok(|i| {
         let events = serde_json::to_string(&i).unwrap();
         Message::text(events)
