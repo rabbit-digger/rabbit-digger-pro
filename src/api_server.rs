@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, path::PathBuf};
 
 use anyhow::Result;
-use rabbit_digger::rabbit_digger::RabbitDigger;
+use rabbit_digger::RabbitDigger;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 
@@ -10,7 +10,7 @@ mod handlers;
 mod reject;
 
 pub struct Server {
-    rabbit_digger: RabbitDigger,
+    pub rabbit_digger: RabbitDigger,
     pub access_token: Option<String>,
     pub web_ui: Option<String>,
     pub userdata: Option<PathBuf>,

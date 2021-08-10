@@ -1,9 +1,7 @@
 use std::{convert::Infallible, future, path::PathBuf};
 
 use super::{handlers, reject::handle_rejection, reject::ApiError, Server};
-use rabbit_digger::rabbit_digger::RabbitDigger;
-use rd_interface::Arc;
-use tokio::sync::Mutex;
+use rabbit_digger::RabbitDigger;
 use warp::{Filter, Rejection};
 
 pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
@@ -13,25 +11,24 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     let userdata = &server
         .userdata
         .or_else(|| dirs::config_dir().map(|d| d.join("rabbit-digger")));
-    let rd = &server.RabbitDigger;
+    let rd = &server.rabbit_digger;
 
     let get_config = warp::path!("config")
         .and(warp::get())
-        .and(with_ctl(ctl))
+        .and(with_rd(rd))
         .and_then(handlers::get_config);
     let post_config = warp::path!("config")
         .and(warp::post())
-        .and(with_ctl(ctl))
+        .and(with_rd(rd))
         .and(warp::body::json())
-        .and(warp::any().map(move || stopper.clone()))
         .and_then(handlers::post_config);
     let get_registry = warp::path!("registry")
         .and(warp::get())
-        .and(with_ctl(ctl))
+        .and(with_rd(rd))
         .and_then(handlers::get_registry);
     let get_state = warp::path!("state")
         .and(warp::get())
-        .and(with_ctl(ctl))
+        .and(with_rd(rd))
         .and_then(handlers::get_state);
 
     let get_userdata = warp::path("userdata")
@@ -52,7 +49,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and_then(handlers::delete_userdata);
 
     prefix.and(
-        ws_event(&server.controller)
+        ws_event(&server.rabbit_digger)
             .or(at.and(
                 get_config
                     .or(post_config)
@@ -90,17 +87,19 @@ pub fn routes(
 
 // Websocket /event
 pub fn ws_event(
-    ctl: &Controller,
+    rd: &RabbitDigger,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("event")
-        .and(with_ctl(ctl))
+        .and(with_rd(rd))
         .and(warp::ws())
         .and_then(handlers::ws_event)
 }
 
-fn with_rd(ctl: &Controller) -> impl Filter<Extract = (Controller,), Error = Infallible> + Clone {
-    let ctl = ctl.clone();
-    warp::any().map(move || ctl.clone())
+fn with_rd(
+    rd: &RabbitDigger,
+) -> impl Filter<Extract = (RabbitDigger,), Error = Infallible> + Clone {
+    let rd = rd.clone();
+    warp::any().map(move || rd.clone())
 }
 
 fn with_userdata(
