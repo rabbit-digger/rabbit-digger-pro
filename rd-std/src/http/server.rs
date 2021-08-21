@@ -15,6 +15,8 @@ impl HttpServer {
         let net = self.net.clone();
 
         server_conn::Http::new()
+            .http1_preserve_header_case(true)
+            .http1_title_case_headers(true)
             .http1_keep_alive(true)
             .serve_connection(socket, service_fn(move |req| proxy(net.clone(), req, addr)))
             .with_upgrades()
@@ -92,7 +94,11 @@ async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result
                 .tcp_connect(&mut Context::from_socketaddr(addr), &dst)
                 .await?;
 
-            let (mut request_sender, connection) = client_conn::handshake(stream).await?;
+            let (mut request_sender, connection) = client_conn::Builder::new()
+                .http1_preserve_header_case(true)
+                .http1_title_case_headers(true)
+                .handshake(stream)
+                .await?;
 
             tokio::spawn(connection);
 
