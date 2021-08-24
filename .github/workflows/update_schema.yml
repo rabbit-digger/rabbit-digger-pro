@@ -42,5 +42,4 @@ jobs:
           git add .
           git config user.email "spacemeowx2@gmail.com"
           git config user.name "spacemeowx2"
-          git commit -m "update at `date`"
-          git push
+          git commit -m "update at `date`" && git push || true
