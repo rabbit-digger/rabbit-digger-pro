@@ -1,21 +1,24 @@
 // UDP: https://github.com/shadowsocks/shadowsocks-rust/blob/0433b3ec09bcaa26f7460a50287b56c67b687a34/crates/shadowsocks-service/src/local/redir/udprelay/sys/unix/linux.rs#L56
 
 use std::{
-    future::pending,
     io, mem,
     net::{SocketAddr, UdpSocket},
     os::unix::prelude::AsRawFd,
     ptr,
+    time::Duration,
 };
 
 use crate::builtin::local::CompatTcp;
 use cfg_if::cfg_if;
+use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
+    constant::UDP_BUFFER_SIZE,
+    error::map_other,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
     util::connect_tcp,
-    Address, Context, IServer, IntoAddress, IntoDyn, Net, Result,
+    Address, Context, Error, IServer, IntoAddress, IntoDyn, Net, Result,
 };
 use serde::Deserialize;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
@@ -23,6 +26,12 @@ use tokio::{
     io::unix::AsyncFd,
     net::{TcpListener, TcpSocket, TcpStream},
     select,
+    sync::{
+        mpsc::{unbounded_channel, UnboundedSender as Sender},
+        Mutex,
+    },
+    task::JoinHandle,
+    time::timeout,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -54,8 +63,26 @@ impl TProxyServer {
     }
 
     async fn serve_udp(&self, listener: UdpListener) -> Result<()> {
-        pending::<()>().await;
-        Ok(())
+        let mut buf = [0u8; 4096];
+        let net = self.net.clone();
+        let mut nat = LruCache::<SocketAddr, UdpTunnel>::with_expiry_duration_and_capacity(
+            Duration::from_secs(30),
+            128,
+        );
+
+        loop {
+            let (size, src, dst) = listener.recv(&mut buf).await?;
+            let payload = &buf[..size];
+
+            let udp = nat
+                .entry(src)
+                .or_insert_with(|| UdpTunnel::new(net.clone(), src));
+
+            if let Err(e) = udp.send_to(payload, dst).await {
+                tracing::error!("Udp send_to {:?}", e);
+                nat.remove(&src);
+            }
+        }
     }
 
     async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
@@ -147,7 +174,7 @@ async fn create_udp_socket(addr: SocketAddr) -> io::Result<UdpListener> {
 
     socket.set_nonblocking(true)?;
     socket.set_reuse_address(true)?;
-    // socket.set_reuse_port(true)?;
+    socket.set_reuse_port(true)?;
 
     socket.bind(&SockAddr::from(addr))?;
 
@@ -304,6 +331,87 @@ impl UdpListener {
             match guard.try_io(|inner| recv_dest_from(inner.get_ref(), buf)) {
                 Ok(result) => return result,
                 Err(_) => continue,
+            }
+        }
+    }
+    async fn send_to(&self, buf: &[u8], target: SocketAddr) -> io::Result<usize> {
+        loop {
+            let mut write_guard = self.0.writable().await?;
+            match write_guard.try_io(|inner| inner.get_ref().send_to(buf, target)) {
+                Ok(result) => return result,
+                Err(_) => continue,
+            }
+        }
+    }
+}
+
+struct UdpTunnel {
+    tx: Sender<(SocketAddr, Vec<u8>)>,
+    handle: Mutex<Option<JoinHandle<Result<()>>>>,
+}
+
+impl UdpTunnel {
+    fn new(net: Net, src: SocketAddr) -> UdpTunnel {
+        let (tx, mut rx) = unbounded_channel::<(SocketAddr, Vec<u8>)>();
+        let handle = tokio::spawn(async move {
+            let udp = timeout(
+                Duration::from_secs(5),
+                net.udp_bind(
+                    &mut Context::from_socketaddr(src),
+                    &"0.0.0.0:0".into_address()?,
+                ),
+            )
+            .await
+            .map_err(map_other)??;
+
+            let send = async {
+                while let Some((addr, packet)) = rx.recv().await {
+                    udp.send_to(&packet, addr.into()).await?;
+                }
+                Ok(()) as Result<()>
+            };
+            let recv = async {
+                let mut buf = [0u8; UDP_BUFFER_SIZE];
+                loop {
+                    let (size, addr) = udp.recv_from(&mut buf).await?;
+
+                    // TODO: cache sockets here.
+                    let back_udp = create_udp_socket(addr).await?;
+                    if back_udp.send_to(&buf[..size], src).await.is_err() {
+                        break;
+                    }
+                }
+                tracing::trace!("send_raw return error");
+                Ok(()) as Result<()>
+            };
+
+            let r = select! {
+                r = send => r,
+                r = recv => r,
+            };
+
+            if let Err(e) = &r {
+                tracing::error!("Error {:?}", e);
+            }
+
+            Ok(()) as Result<()>
+        });
+        UdpTunnel {
+            tx,
+            handle: Mutex::new(handle.into()),
+        }
+    }
+    /// return false if the send queue is full
+    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
+        match self.tx.send((addr, buf.to_vec())) {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                let mut handle = self.handle.lock().await;
+                if let Some(handle) = handle.take() {
+                    let r = handle.await;
+                    tracing::error!("Other side closed: {:?}", r);
+                }
+                Err(Error::Other("Other side closed".into()))
             }
         }
     }
