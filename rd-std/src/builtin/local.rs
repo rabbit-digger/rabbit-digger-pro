@@ -130,18 +130,27 @@ impl INet for LocalNet {
         #[cfg(feature = "local_log")]
         tracing::trace!("local::tcp_connect {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
-        let tcp = net::TcpStream::connect(addr).await?;
+
+        let socket = match addr {
+            SocketAddr::V4(..) => net::TcpSocket::new_v4()?,
+            SocketAddr::V6(..) => net::TcpSocket::new_v6()?,
+        };
+
+        #[cfg(target_os = "linux")]
+        set_mark(
+            std::os::unix::prelude::AsRawFd::as_raw_fd(&socket),
+            self.0.mark,
+        )?;
+
+        let tcp = socket.connect(addr).await?;
+
         if let Some(ttl) = self.0.ttl {
             tcp.set_ttl(ttl)?;
         }
         if let Some(nodelay) = self.0.nodelay {
             tcp.set_nodelay(nodelay)?;
         }
-        #[cfg(target_os = "linux")]
-        set_mark(
-            std::os::unix::prelude::AsRawFd::as_raw_fd(&tcp),
-            self.0.mark,
-        )?;
+
         Ok(CompatTcp::new(tcp).into_dyn())
     }
 

@@ -19,3 +19,7 @@ Some basic net and server, such as rule, HTTP and Socks5.
 * rd-interface
 
 Interface defines of rabbit-digger's plugin.
+
+## Thanks
+
+Many thanks to [shadowsocks-rust](https://github.com/shadowsocks/shadowsocks-rust).
