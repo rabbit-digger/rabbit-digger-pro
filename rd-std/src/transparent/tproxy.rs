@@ -296,3 +296,15 @@ fn recv_dest_from(
         ))
     }
 }
+
+impl UdpListener {
+    async fn recv(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr, SocketAddr)> {
+        loop {
+            let mut guard = self.0.readable().await?;
+            match guard.try_io(|inner| recv_dest_from(inner.get_ref(), buf)) {
+                Ok(result) => return result,
+                Err(_) => continue,
+            }
+        }
+    }
+}
