@@ -16,6 +16,7 @@ where
         for d in get_deps(k, v)?.into_iter() {
             ts.add_dependency(d, k.clone());
         }
+        ts.insert(k.clone());
     }
 
     let mut list = Vec::<K>::new();
