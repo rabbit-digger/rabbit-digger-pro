@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 # Modify from: https://github.com/shadowsocks/shadowsocks-rust/blob/0b1630d1c6abcec3861b1eec39b266e1dad206e5/configs/iptables_tproxy.sh
 # RD_MARK, RD_FW_MARK and RD_PORT are changed to avoid conflict with origin iptables rules.
 
