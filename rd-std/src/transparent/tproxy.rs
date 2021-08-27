@@ -377,21 +377,17 @@ impl UdpTunnel {
 
                     // TODO: cache sockets here.
                     let back_udp = create_udp_socket(addr).await?;
-                    if back_udp.send_to(&buf[..size], src).await.is_err() {
-                        break;
-                    }
+                    back_udp.send_to(&buf[..size], src).await?;
                 }
-                tracing::trace!("send_raw return error");
-                Ok(()) as Result<()>
             };
 
-            let r = select! {
+            let r: Result<()> = select! {
                 r = send => r,
                 r = recv => r,
             };
 
             if let Err(e) = &r {
-                tracing::error!("Error {:?}", e);
+                tracing::error!("tproxy error {:?}", e);
             }
 
             Ok(()) as Result<()>
