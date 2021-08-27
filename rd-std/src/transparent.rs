@@ -2,6 +2,8 @@ mod origin_addr;
 #[cfg(target_os = "linux")]
 mod redir;
 #[cfg(target_os = "linux")]
+mod socket;
+#[cfg(target_os = "linux")]
 mod tproxy;
 
 use rd_interface::{Registry, Result};
