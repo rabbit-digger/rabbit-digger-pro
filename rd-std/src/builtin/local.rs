@@ -3,7 +3,6 @@ use std::{
     net::SocketAddr,
 };
 
-use cfg_if::cfg_if;
 use rd_interface::{
     async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, INet, IntoDyn,
     Result, TcpListener, TcpStream, UdpSocket,
@@ -98,8 +97,8 @@ impl rd_interface::IUdpSocket for Udp {
 }
 
 #[cfg(target_os = "linux")]
-fn set_mark(socket: libc::c_int, mark: Option<u32>) -> Result<()> {
-    cfg_if! {
+pub(crate) fn set_mark(socket: libc::c_int, mark: Option<u32>) -> Result<()> {
+    cfg_if::cfg_if! {
         if #[cfg(target_os = "linux")] {
             if let Some(mark) = mark {
                 let ret = unsafe {

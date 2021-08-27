@@ -3,7 +3,7 @@
 use std::{
     io, mem,
     net::{SocketAddr, UdpSocket},
-    os::unix::prelude::AsRawFd,
+    os::unix::prelude::{AsRawFd, RawFd},
     ptr,
 };
 
@@ -219,12 +219,22 @@ fn recv_dest_from(
     }
 }
 
+impl AsRawFd for TransparentUdp {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
+    }
+}
+
 impl TransparentUdp {
     pub async fn listen(addr: SocketAddr) -> io::Result<TransparentUdp> {
         create_udp_socket(addr, false).await
     }
-    pub async fn bind_any(addr: SocketAddr) -> io::Result<TransparentUdp> {
-        create_udp_socket(addr, true).await
+    pub async fn bind_any(addr: SocketAddr, mark: Option<u32>) -> io::Result<TransparentUdp> {
+        let socket = create_udp_socket(addr, true).await?;
+
+        crate::builtin::local::set_mark(socket.as_raw_fd(), mark)?;
+
+        Ok(socket)
     }
     pub async fn recv(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr, SocketAddr)> {
         loop {

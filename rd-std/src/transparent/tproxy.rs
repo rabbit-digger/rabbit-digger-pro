@@ -29,6 +29,7 @@ use tokio::{
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct TProxyServerConfig {
     bind: Address,
+    mark: Option<u32>,
 }
 
 pub struct TProxyServer {
@@ -61,6 +62,7 @@ impl TProxyServer {
             Duration::from_secs(30),
             128,
         );
+        let mark = self.cfg.mark;
 
         loop {
             let (size, src, dst) = listener.recv(&mut buf).await?;
@@ -68,7 +70,7 @@ impl TProxyServer {
 
             let udp = nat
                 .entry(src)
-                .or_insert_with(|| UdpTunnel::new(net.clone(), src));
+                .or_insert_with(|| UdpTunnel::new(net.clone(), src, mark));
 
             if let Err(e) = udp.send_to(payload, dst).await {
                 tracing::error!("Udp send_to {:?}", e);
@@ -119,7 +121,7 @@ struct UdpTunnel {
 }
 
 impl UdpTunnel {
-    fn new(net: Net, src: SocketAddr) -> UdpTunnel {
+    fn new(net: Net, src: SocketAddr, mark: Option<u32>) -> UdpTunnel {
         let (tx, mut rx) = unbounded_channel::<(SocketAddr, Vec<u8>)>();
         let handle = tokio::spawn(async move {
             let udp = timeout(
@@ -144,7 +146,7 @@ impl UdpTunnel {
                     let (size, addr) = udp.recv_from(&mut buf).await?;
 
                     // TODO: cache sockets here.
-                    let back_udp = TransparentUdp::bind_any(addr).await?;
+                    let back_udp = TransparentUdp::bind_any(addr, mark).await?;
                     back_udp.send_to(&buf[..size], src).await?;
                 }
             };
