@@ -1,0 +1,17 @@
+# This config is a sample of how to use the tproxy module.
+# Make sure setup.sh is run before you run this config.
+# Root is required to use `mark` option in `local` net.
+
+net:
+  local:
+    type: local
+    mark: 254
+  socks5:
+    type: socks5
+    server: 127.0.0.1:10800
+
+server:
+  tproxy:
+    type: tproxy
+    bind: 0.0.0.0:19810
+    net: socks5
