@@ -62,7 +62,7 @@ impl TProxyServer {
         TProxyServer { cfg, net }
     }
 
-    async fn serve_udp(&self, listener: UdpListener) -> Result<()> {
+    async fn serve_udp(&self, listener: TransparentUdp) -> Result<()> {
         let mut buf = [0u8; 4096];
         let net = self.net.clone();
         let mut nat = LruCache::<SocketAddr, UdpTunnel>::with_expiry_duration_and_capacity(
@@ -165,10 +165,10 @@ async fn create_tcp_listener(addr: SocketAddr) -> io::Result<TcpListener> {
     socket.listen(1024)
 }
 
-struct UdpListener(AsyncFd<UdpSocket>);
+struct TransparentUdp(AsyncFd<UdpSocket>);
 
 // https://github.com/shadowsocks/shadowsocks-rust/blob/0433b3ec09bcaa26f7460a50287b56c67b687a34/crates/shadowsocks-service/src/local/redir/udprelay/sys/unix/linux.rs#L56
-async fn create_udp_socket(addr: SocketAddr) -> io::Result<UdpListener> {
+async fn create_udp_socket(addr: SocketAddr) -> io::Result<TransparentUdp> {
     let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))?;
     set_socket_before_bind(&addr, &socket)?;
 
@@ -179,7 +179,7 @@ async fn create_udp_socket(addr: SocketAddr) -> io::Result<UdpListener> {
     socket.bind(&SockAddr::from(addr))?;
 
     let io = AsyncFd::new(socket.into())?;
-    Ok(UdpListener(io))
+    Ok(TransparentUdp(io))
 }
 
 fn set_socket_before_bind(addr: &SocketAddr, socket: &Socket) -> io::Result<()> {
@@ -324,7 +324,7 @@ fn recv_dest_from(
     }
 }
 
-impl UdpListener {
+impl TransparentUdp {
     async fn recv(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr, SocketAddr)> {
         loop {
             let mut guard = self.0.readable().await?;
