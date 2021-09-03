@@ -11,7 +11,7 @@ use rd_interface::{
     error::map_other,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
-    util::{connect_tcp, resolve_mapped_socket_addr},
+    util::{connect_tcp},
     Address, Context, Error, IServer, IntoAddress, IntoDyn, Net, Result,
 };
 use serde::Deserialize;
@@ -72,7 +72,6 @@ impl TProxyServer {
                     continue;
                 }
             };
-            let dst = resolve_mapped_socket_addr(dst);
 
             let payload = &buf[..size];
 
@@ -102,7 +101,6 @@ impl TProxyServer {
 
     async fn serve_connection(net: Net, socket: TcpStream, addr: SocketAddr) -> Result<()> {
         let target = socket.local_addr()?;
-        let target = resolve_mapped_socket_addr(target);
 
         let target_tcp = net
             .tcp_connect(&mut Context::from_socketaddr(addr), &target.into_address()?)
@@ -138,7 +136,10 @@ impl UdpTunnel {
                 Duration::from_secs(5),
                 net.udp_bind(
                     &mut Context::from_socketaddr(src),
-                    &"0.0.0.0:0".into_address()?,
+                    &match src {
+                        SocketAddr::V4(_) => "0.0.0.0:0".into_address()?,
+                        SocketAddr::V6(_) => "[::]:0".into_address()?,
+                    },
                 ),
             )
             .await
