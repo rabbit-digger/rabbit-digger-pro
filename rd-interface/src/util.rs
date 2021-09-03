@@ -10,7 +10,7 @@ use std::{
     collections::VecDeque,
     future::Future,
     io,
-    net::SocketAddr,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     pin::Pin,
     task::{self, Poll},
 };
@@ -186,4 +186,24 @@ pub async fn connect_udp(udp_channel: UdpChannel, udp: UdpSocket) -> crate::Resu
     };
     try_join(in_side, out_side).await?;
     Ok(())
+}
+
+/// Helper function for converting IPv4 mapped IPv6 address
+///
+/// This is the same as `Ipv6Addr::to_ipv4_mapped`, but it is still unstable in the current libstd
+fn to_ipv4_mapped(ipv6: &Ipv6Addr) -> Option<Ipv4Addr> {
+    match ipv6.octets() {
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, a, b, c, d] => Some(Ipv4Addr::new(a, b, c, d)),
+        _ => None,
+    }
+}
+
+pub fn resolve_mapped_socket_addr(addr: SocketAddr) -> SocketAddr {
+    if let SocketAddr::V6(ref a) = addr {
+        if let Some(v4) = to_ipv4_mapped(a.ip()) {
+            return SocketAddr::new(v4.into(), a.port());
+        }
+    }
+
+    return addr;
 }

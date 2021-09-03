@@ -11,7 +11,7 @@ use rd_interface::{
     error::map_other,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
-    util::connect_tcp,
+    util::{connect_tcp, resolve_mapped_socket_addr},
     Address, Context, Error, IServer, IntoAddress, IntoDyn, Net, Result,
 };
 use serde::Deserialize;
@@ -65,7 +65,15 @@ impl TProxyServer {
         let mark = self.cfg.mark;
 
         loop {
-            let (size, src, dst) = listener.recv(&mut buf).await?;
+            let (size, src, dst) = match listener.recv(&mut buf).await {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("UDP recv error: {:?}", e);
+                    continue;
+                }
+            };
+            let dst = resolve_mapped_socket_addr(dst);
+
             let payload = &buf[..size];
 
             let udp = nat
@@ -82,6 +90,8 @@ impl TProxyServer {
     async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
         loop {
             let (socket, addr) = listener.accept().await?;
+            let addr = resolve_mapped_socket_addr(addr);
+
             let net = self.net.clone();
             let _ = tokio::spawn(async move {
                 if let Err(e) = Self::serve_connection(net, socket, addr).await {
