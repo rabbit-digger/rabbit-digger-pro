@@ -90,7 +90,6 @@ impl TProxyServer {
     async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
         loop {
             let (socket, addr) = listener.accept().await?;
-            let addr = resolve_mapped_socket_addr(addr);
 
             let net = self.net.clone();
             let _ = tokio::spawn(async move {
@@ -103,6 +102,7 @@ impl TProxyServer {
 
     async fn serve_connection(net: Net, socket: TcpStream, addr: SocketAddr) -> Result<()> {
         let target = socket.local_addr()?;
+        let target = resolve_mapped_socket_addr(target);
 
         let target_tcp = net
             .tcp_connect(&mut Context::from_socketaddr(addr), &target.into_address()?)
