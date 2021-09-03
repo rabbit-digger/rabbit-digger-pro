@@ -11,7 +11,11 @@ net:
     server: 127.0.0.1:10800
 
 server:
-  tproxy:
+  tproxy4:
     type: tproxy
     bind: 0.0.0.0:19810
+    net: socks5
+  tproxy6:
+    type: tproxy
+    bind: 0.0.0.0:19811
     net: socks5
