@@ -121,6 +121,13 @@ impl Address {
         }
     }
 
+    pub fn to_any_addr_port(&self) -> Result<Self> {
+        match self {
+            Address::SocketAddr(addr) => Ok(Address::any_addr_port(addr)),
+            _ => Err(no_addr()),
+        }
+    }
+
     /// Converts to SocketAddr if Address can be convert to.
     /// Otherwise [AddrNotAvailable](std::io::ErrorKind::AddrNotAvailable) is returned.
     pub fn to_socket_addr(&self) -> Result<SocketAddr> {

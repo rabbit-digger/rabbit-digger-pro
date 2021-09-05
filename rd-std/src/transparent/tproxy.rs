@@ -136,10 +136,7 @@ impl UdpTunnel {
                 Duration::from_secs(5),
                 net.udp_bind(
                     &mut Context::from_socketaddr(src),
-                    &match src {
-                        SocketAddr::V4(_) => "0.0.0.0:0".into_address()?,
-                        SocketAddr::V6(_) => "[::]:0".into_address()?,
-                    },
+                    &Address::any_addr_port(&src),
                 ),
             )
             .await

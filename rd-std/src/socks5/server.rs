@@ -3,8 +3,7 @@ use parking_lot::RwLock;
 use rd_interface::{
     async_trait,
     util::{connect_tcp, connect_udp},
-    Address as RdAddr, Context, IServer, IUdpChannel, IntoAddress, IntoDyn, Net, Result, TcpStream,
-    UdpSocket,
+    Address as RdAddr, Context, IServer, IUdpChannel, IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
 use socks5_protocol::{
     Address, AuthMethod, AuthRequest, AuthResponse, Command, CommandReply, CommandRequest,
@@ -99,11 +98,10 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
-                // TODO: don't bind on 0.0.0.0
                 let udp = listen_net
                     .udp_bind(
                         &mut Context::from_socketaddr(addr),
-                        &"0.0.0.0:0".into_address()?,
+                        &RdAddr::any_addr_port(&addr),
                     )
                     .await?;
 
