@@ -2,7 +2,7 @@ use serde::{de, ser};
 use std::{
     fmt,
     io::{Error, ErrorKind, Result},
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     str::FromStr,
 };
 
@@ -109,6 +109,18 @@ impl From<(IpAddr, u16)> for Address {
 }
 
 impl Address {
+    /// Return `0.0.0.0:0` or `[::]:0` by given `addr` address family.
+    pub fn any_addr_port(addr: &SocketAddr) -> Self {
+        match addr {
+            SocketAddr::V4(_) => {
+                Address::SocketAddr(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0))
+            }
+            SocketAddr::V6(_) => {
+                Address::SocketAddr(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0))
+            }
+        }
+    }
+
     /// Converts to SocketAddr if Address can be convert to.
     /// Otherwise [AddrNotAvailable](std::io::ErrorKind::AddrNotAvailable) is returned.
     pub fn to_socket_addr(&self) -> Result<SocketAddr> {
@@ -188,6 +200,21 @@ mod tests {
     const IPV4_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4));
     const IPV6_ADDR: IpAddr = IpAddr::V6(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
     const DOMAIN: &'static str = "example.com";
+
+    #[test]
+    fn test_any_addr_port() {
+        let ipv4_addr = SocketAddr::new(IPV4_ADDR, 1234);
+        let ipv6_addr = SocketAddr::new(IPV6_ADDR, 1234);
+
+        assert_eq!(
+            Address::any_addr_port(&ipv4_addr),
+            "0.0.0.0:0".into_address().unwrap()
+        );
+        assert_eq!(
+            Address::any_addr_port(&ipv6_addr),
+            "[::]:0".into_address().unwrap()
+        );
+    }
 
     #[test]
     fn test_address_convert() {
