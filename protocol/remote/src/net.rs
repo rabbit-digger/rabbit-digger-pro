@@ -90,6 +90,14 @@ impl INet for RemoteNet {
     ) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
+
+    async fn lookup_host(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        _addr: &Address,
+    ) -> Result<Vec<SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
+    }
 }
 
 impl RemoteNet {

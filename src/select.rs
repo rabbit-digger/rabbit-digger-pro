@@ -40,6 +40,14 @@ impl INet for SelectNet {
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         self.0.udp_bind(ctx, addr).await
     }
+
+    async fn lookup_host(
+        &self,
+        ctx: &mut Context,
+        addr: &Address,
+    ) -> Result<Vec<std::net::SocketAddr>> {
+        self.0.lookup_host(ctx, addr).await
+    }
 }
 
 impl NetFactory for SelectNet {

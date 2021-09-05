@@ -123,4 +123,12 @@ impl INet for TrojanNet {
 
         Ok(udp.into_dyn())
     }
+
+    async fn lookup_host(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        _addr: &Address,
+    ) -> Result<Vec<std::net::SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
+    }
 }

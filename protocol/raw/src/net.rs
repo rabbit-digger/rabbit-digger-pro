@@ -6,6 +6,7 @@ use crate::{
 };
 use rd_interface::{
     async_trait, prelude::*, registry::NetFactory, Address, Context, Error, INet, IntoDyn, Result,
+    NOT_IMPLEMENTED,
 };
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use tokio::sync::Mutex;
@@ -98,5 +99,13 @@ impl INet for RawNet {
     ) -> Result<rd_interface::UdpSocket> {
         let udp = UdpSocketWrap(self.net.udp_bind(addr.to_socket_addr()?).await?);
         Ok(udp.into_dyn())
+    }
+
+    async fn lookup_host(
+        &self,
+        _ctx: &mut Context,
+        _addr: &Address,
+    ) -> Result<Vec<std::net::SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
     }
 }

@@ -46,6 +46,10 @@ impl INet for ObfsNet {
     async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
+
+    async fn lookup_host(&self, _ctx: &mut Context, _addr: &Address) -> Result<Vec<SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
+    }
 }
 
 struct ObfsTcpListener(TcpListener, BoxObfs);

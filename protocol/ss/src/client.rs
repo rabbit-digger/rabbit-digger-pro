@@ -84,4 +84,12 @@ impl INet for SSNet {
         let udp = WrapSSUdp::new(self.context.clone(), socket, &svr_cfg);
         Ok(udp.into_dyn())
     }
+
+    async fn lookup_host(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        _addr: &Address,
+    ) -> Result<Vec<std::net::SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
+    }
 }

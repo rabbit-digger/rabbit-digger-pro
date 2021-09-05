@@ -11,15 +11,11 @@ use rd_interface::{
     util::connect_tcp, Address, Context, Error, IServer, IntoAddress, Net, Result,
 };
 use smoltcp::{
-    phy::Checksum,
+    phy::{Checksum, ChecksumCapabilities},
     wire::{
-        EthernetFrame, EthernetProtocol, IpProtocol, IpVersion, Ipv4Address, Ipv4Packet, Ipv4Repr,
-        UdpPacket, UdpRepr,
+        EthernetAddress, EthernetFrame, EthernetProtocol, IpCidr, IpProtocol, IpVersion,
+        Ipv4Address, Ipv4Packet, Ipv4Repr, UdpPacket, UdpRepr,
     },
-};
-use smoltcp::{
-    phy::ChecksumCapabilities,
-    wire::{EthernetAddress, IpCidr},
 };
 use tokio::{
     select, spawn,
