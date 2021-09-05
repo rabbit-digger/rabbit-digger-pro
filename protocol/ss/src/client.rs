@@ -1,7 +1,7 @@
 use super::wrapper::{Cipher, WrapAddress, WrapSSTcp, WrapSSUdp};
 use rd_interface::{
-    async_trait, prelude::*, registry::NetRef, Address, Arc, INet, IntoAddress, IntoDyn, Result,
-    TcpListener, TcpStream, UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
+    async_trait, prelude::*, registry::NetRef, Address, Arc, INet, IntoDyn, Result, TcpListener,
+    TcpStream, UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
 };
 use shadowsocks::{
     config::{ServerConfig, ServerType},
@@ -66,11 +66,7 @@ impl INet for SSNet {
         Err(NOT_IMPLEMENTED)
     }
 
-    async fn udp_bind(
-        &self,
-        ctx: &mut rd_interface::Context,
-        _addr: &Address,
-    ) -> Result<UdpSocket> {
+    async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
         if !self.config.udp {
             return Err(NOT_ENABLED);
         }
@@ -78,8 +74,7 @@ impl INet for SSNet {
         let socket = self
             .config
             .net
-            // TODO: don't bind 0.0.0.0
-            .udp_bind(ctx, &"0.0.0.0:0".into_address()?)
+            .udp_bind(ctx, &addr.to_any_addr_port()?)
             .await?;
         let svr_cfg = ServerConfig::new(
             (cfg.server.host(), cfg.server.port()),

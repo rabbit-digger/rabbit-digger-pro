@@ -8,7 +8,7 @@ use futures::{future::ready, StreamExt};
 use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait, constant::UDP_BUFFER_SIZE, error::map_other, prelude::*, registry::ServerFactory,
-    util::connect_tcp, Context, Error, IServer, IntoAddress, Net, Result,
+    util::connect_tcp, Address, Context, Error, IServer, IntoAddress, Net, Result,
 };
 use smoltcp::{
     phy::Checksum,
@@ -301,7 +301,7 @@ impl UdpTunnel {
                 Duration::from_secs(5),
                 net.udp_bind(
                     &mut Context::from_socketaddr(src),
-                    &"0.0.0.0:0".into_address()?,
+                    &Address::any_addr_port(&src),
                 ),
             )
             .await
@@ -311,7 +311,7 @@ impl UdpTunnel {
                 while let Some((addr, packet)) = rx.recv().await {
                     udp.send_to(&packet, addr.into()).await?;
                 }
-                Ok(()) as Result<()>
+                Ok(())
             };
             let recv = async {
                 let mut buf = [0u8; UDP_BUFFER_SIZE];
@@ -323,15 +323,15 @@ impl UdpTunnel {
                     }
                 }
                 tracing::trace!("send_raw return error");
-                Ok(()) as Result<()>
+                Ok(())
             };
 
-            select! {
-                r = send => r?,
-                r = recv => r?,
-            }
+            let r: Result<()> = select! {
+                r = send => r,
+                r = recv => r,
+            };
 
-            Ok(()) as Result<()>
+            r
         });
         UdpTunnel { tx }
     }
