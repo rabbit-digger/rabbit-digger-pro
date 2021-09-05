@@ -9,6 +9,7 @@ pub struct CombineNet {
     tcp_connect: Net,
     tcp_bind: Net,
     udp_bind: Net,
+    lookup_host: Net,
 }
 
 #[async_trait]
@@ -24,6 +25,14 @@ impl INet for CombineNet {
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         self.udp_bind.udp_bind(ctx, addr).await
     }
+
+    async fn lookup_host(
+        &self,
+        ctx: &mut Context,
+        addr: &Address,
+    ) -> Result<Vec<std::net::SocketAddr>> {
+        self.lookup_host.lookup_host(ctx, addr).await
+    }
 }
 
 #[rd_config]
@@ -32,6 +41,7 @@ pub struct CombineNetConfig {
     tcp_connect: NetRef,
     tcp_bind: NetRef,
     udp_bind: NetRef,
+    lookup_host: NetRef,
 }
 
 impl NetFactory for CombineNet {
@@ -44,12 +54,14 @@ impl NetFactory for CombineNet {
             tcp_connect,
             tcp_bind,
             udp_bind,
+            lookup_host,
         }: Self::Config,
     ) -> Result<Self> {
         Ok(CombineNet {
             tcp_connect: tcp_connect.net(),
             tcp_bind: tcp_bind.net(),
             udp_bind: udp_bind.net(),
+            lookup_host: lookup_host.net(),
         })
     }
 }

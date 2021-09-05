@@ -8,7 +8,7 @@ use rd_interface::{
     async_trait,
     prelude::*,
     registry::{NetFactory, NetRef},
-    Address, Arc, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    Address, Arc, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 
 type Resolver =
@@ -94,6 +94,14 @@ impl INet for ResolveNet {
         let addr = addr.resolve(&*self.resolver).await?;
         let udp = self.config.net.udp_bind(ctx, &addr.into()).await?;
         Ok(Udp(udp, self.resolver.clone()).into_dyn())
+    }
+
+    async fn lookup_host(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        _addr: &Address,
+    ) -> Result<Vec<SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
     }
 }
 

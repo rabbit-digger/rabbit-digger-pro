@@ -68,6 +68,14 @@ impl INet for HttpClient {
     ) -> Result<rd_interface::UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
+
+    async fn lookup_host(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        _addr: &rd_interface::Address,
+    ) -> Result<Vec<SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
+    }
 }
 
 impl HttpClient {

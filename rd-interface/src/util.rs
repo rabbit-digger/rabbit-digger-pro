@@ -143,6 +143,10 @@ impl INet for NotImplementedNet {
     async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
         Err(NOT_IMPLEMENTED)
     }
+
+    async fn lookup_host(&self, _ctx: &mut Context, _addr: &Address) -> Result<Vec<SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
+    }
 }
 
 /// A new Net calls [`tcp_connect()`](crate::INet::tcp_connect()), [`tcp_bind()`](crate::INet::tcp_bind()), [`udp_bind()`](crate::INet::udp_bind()) from different Net.
@@ -150,6 +154,7 @@ pub struct CombineNet {
     pub tcp_connect: Net,
     pub tcp_bind: Net,
     pub udp_bind: Net,
+    pub lookup_host: Net,
 }
 
 #[async_trait]
@@ -164,6 +169,10 @@ impl INet for CombineNet {
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         self.udp_bind.udp_bind(ctx, addr).await
+    }
+
+    async fn lookup_host(&self, ctx: &mut Context, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.lookup_host.lookup_host(ctx, addr).await
     }
 }
 

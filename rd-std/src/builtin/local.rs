@@ -187,6 +187,17 @@ impl INet for LocalNet {
         )?;
         Ok(Udp(udp).into_dyn())
     }
+
+    async fn lookup_host(
+        &self,
+        _ctx: &mut rd_interface::Context,
+        addr: &Address,
+    ) -> Result<Vec<SocketAddr>> {
+        #[cfg(feature = "local_log")]
+        tracing::trace!("local::lookup_host {:?} {:?}", _ctx, addr);
+        let addr = addr.resolve(lookup_host).await?;
+        Ok(vec![addr])
+    }
 }
 
 impl NetFactory for LocalNet {

@@ -138,4 +138,12 @@ impl INet for RuleNet {
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         Ok(UdpRuleSocket::new(self.rule.clone(), ctx.clone(), addr.clone()).into_dyn())
     }
+
+    async fn lookup_host(
+        &self,
+        _ctx: &mut Context,
+        _addr: &Address,
+    ) -> Result<Vec<std::net::SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
+    }
 }
