@@ -23,7 +23,7 @@ impl ReverseLookup {
             _ => return,
         };
 
-        // It seems to be ok to asume that only one question is present
+        // It seems to be ok to assume that only one question is present
         // https://stackoverflow.com/questions/4082081/requesting-a-and-aaaa-records-in-single-dns-query/4083071#4083071
         let domain = packet.questions.first().unwrap().qname.to_string();
 
