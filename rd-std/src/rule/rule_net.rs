@@ -9,8 +9,7 @@ use std::time::Instant;
 use lru_time_cache::LruCache;
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, Address, Arc, Context, INet, IntoDyn, Net, Result, TcpListener, TcpStream,
-    UdpSocket, NOT_IMPLEMENTED,
+    async_trait, Address, Arc, Context, INet, IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
 
 pub struct RuleItem {
@@ -129,10 +128,6 @@ impl INet for RuleNet {
         }
 
         r
-    }
-
-    async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
-        Err(NOT_IMPLEMENTED)
     }
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {

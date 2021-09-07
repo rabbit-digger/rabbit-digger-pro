@@ -37,9 +37,6 @@ impl RunningNet {
             inner: Arc::new(RwLock::new(net)),
         }
     }
-    pub async fn net(&self) -> Net {
-        self.inner.read().await.clone()
-    }
 }
 
 #[async_trait]
@@ -55,6 +52,10 @@ impl INet for RunningNet {
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         self.inner.read().await.udp_bind(ctx, addr).await
+    }
+
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.inner.read().await.lookup_host(addr).await
     }
 }
 
@@ -81,9 +82,9 @@ impl INet for RunningServerNet {
             .map(|s| s.to_string())
             .unwrap_or_default();
 
-        tracing::info!("{:?} {} -> {}", &ctx.net_list(), &src, &addr,);
-
         let tcp = self.net.tcp_connect(ctx, &addr).await?;
+
+        tracing::info!("{:?} {} -> {}", &ctx.net_list(), &src, &addr);
         let tcp = WrapTcpStream::new(tcp, self.config.clone(), addr.clone());
         Ok(tcp.into_dyn())
     }
@@ -104,6 +105,10 @@ impl INet for RunningServerNet {
         addr: &Address,
     ) -> rd_interface::Result<UdpSocket> {
         self.net.udp_bind(ctx, addr).await
+    }
+
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.net.lookup_host(addr).await
     }
 }
 

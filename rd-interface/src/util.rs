@@ -3,9 +3,9 @@ use crate::{
         async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, Net, TcpListener, TcpStream,
         UdpChannel, UdpSocket,
     },
-    Address, Context, Result, NOT_IMPLEMENTED,
+    Address, Context, Result,
 };
-use futures_util::future::try_join;
+use futures_util::future::{try_join, try_select};
 use std::{
     collections::VecDeque,
     future::Future,
@@ -14,19 +14,40 @@ use std::{
     pin::Pin,
     task::{self, Poll},
 };
-use tokio::io::{AsyncReadExt, ReadBuf};
+use tokio::{
+    io::{copy, split, AsyncReadExt, AsyncWriteExt, ReadBuf},
+    pin,
+};
 
 pub use tokio::io::copy_bidirectional;
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Connect two `TcpStream`
+/// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
 pub async fn connect_tcp(
     t1: impl AsyncRead + AsyncWrite,
     t2: impl AsyncRead + AsyncWrite,
 ) -> io::Result<()> {
-    tokio::pin!(t1);
-    tokio::pin!(t2);
-    copy_bidirectional(&mut t1, &mut t2).await?;
+    let (mut read_1, mut write_1) = split(t1);
+    let (mut read_2, mut write_2) = split(t2);
+
+    let fut1 = async {
+        let r = copy(&mut read_1, &mut write_2).await;
+        write_2.shutdown().await?;
+        r
+    };
+    let fut2 = async {
+        let r = copy(&mut read_2, &mut write_1).await;
+        write_1.shutdown().await?;
+        r
+    };
+
+    pin!(fut1, fut2);
+
+    match try_select(fut1, fut2).await {
+        Ok(_) => {}
+        Err(e) => return Err(e.factor_first().0),
+    };
+
     Ok(())
 }
 
@@ -131,25 +152,14 @@ impl PeekableTcpStream {
 pub struct NotImplementedNet;
 
 #[async_trait]
-impl INet for NotImplementedNet {
-    async fn tcp_connect(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpStream> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
-        Err(NOT_IMPLEMENTED)
-    }
-}
+impl INet for NotImplementedNet {}
 
 /// A new Net calls [`tcp_connect()`](crate::INet::tcp_connect()), [`tcp_bind()`](crate::INet::tcp_bind()), [`udp_bind()`](crate::INet::udp_bind()) from different Net.
 pub struct CombineNet {
     pub tcp_connect: Net,
     pub tcp_bind: Net,
     pub udp_bind: Net,
+    pub lookup_host: Net,
 }
 
 #[async_trait]
@@ -164,6 +174,10 @@ impl INet for CombineNet {
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         self.udp_bind.udp_bind(ctx, addr).await
+    }
+
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.lookup_host.lookup_host(addr).await
     }
 }
 

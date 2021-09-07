@@ -1,6 +1,7 @@
 use rd_interface::{Registry, Result};
 
 pub mod builtin;
+pub mod dns;
 pub mod http;
 pub mod mixed;
 pub mod rule;
@@ -9,6 +10,7 @@ pub mod transparent;
 
 pub fn init(registry: &mut Registry) -> Result<()> {
     builtin::init(registry)?;
+    dns::init(registry)?;
     http::init(registry)?;
     mixed::init(registry)?;
     transparent::init(registry)?;

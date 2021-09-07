@@ -40,6 +40,9 @@ flate2 = "1.0.20"
 tar = "0.4.35"
 once_cell = "1.7.2"
 
+# dns
+dns-parser = "0.8"
+
 [features]
 default = ["http_server"]
 plugin = []

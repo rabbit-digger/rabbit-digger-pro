@@ -10,7 +10,7 @@ use socks5_protocol::{
     CommandResponse, Version,
 };
 use std::{
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::Arc,
 };
 use tokio::io::{split, AsyncWriteExt, BufWriter};
@@ -72,12 +72,7 @@ impl Socks5Server {
             }
             Command::UdpAssociate => {
                 let dst = match cmd_req.address {
-                    Address::SocketAddr(SocketAddr::V4(_)) => rd_interface::Address::SocketAddr(
-                        SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
-                    ),
-                    Address::SocketAddr(SocketAddr::V6(_)) => rd_interface::Address::SocketAddr(
-                        SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
-                    ),
+                    Address::SocketAddr(addr) => rd_interface::Address::any_addr_port(&addr),
                     _ => {
                         CommandResponse::reply_error(CommandReply::AddressTypeNotSupported)
                             .write(&mut tx)

@@ -15,10 +15,12 @@ type Resolver =
     Arc<dyn Fn(String, u16) -> BoxFuture<'static, io::Result<SocketAddr>> + Send + Sync>;
 pub struct Udp(UdpSocket, Resolver);
 
+// Resolves domain names to IP addresses before connecting.
 #[rd_config]
 #[derive(Debug)]
 pub struct ResolveConfig {
     net: NetRef,
+    resolve_net: NetRef,
     #[serde(default = "bool_true")]
     ipv4: bool,
     #[serde(default = "bool_true")]
@@ -36,15 +38,16 @@ pub struct ResolveNet {
 
 impl ResolveNet {
     pub fn new(config: ResolveConfig) -> ResolveNet {
-        use tokio::net::lookup_host;
-
         let (ipv4, ipv6) = (config.ipv4, config.ipv6);
+        let resolve_net = config.resolve_net.net();
 
         let resolver: Resolver = Arc::new(move |domain: String, port: u16| {
+            let resolve_net = resolve_net.clone();
             async move {
-                let domain = (domain.as_ref(), port);
-                lookup_host(domain)
+                resolve_net
+                    .lookup_host(&Address::Domain(domain, port))
                     .await?
+                    .into_iter()
                     .find(|i| (ipv4 && i.is_ipv4()) || (ipv6 && i.is_ipv6()))
                     .ok_or_else(|| io::Error::from(ErrorKind::AddrNotAvailable))
             }

@@ -11,7 +11,7 @@ use rd_interface::{
     error::map_other,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
-    util::{connect_tcp},
+    util::connect_tcp,
     Address, Context, Error, IServer, IntoAddress, IntoDyn, Net, Result,
 };
 use serde::Deserialize;
