@@ -33,7 +33,7 @@ if [ "$RD_DISABLE_IPV6" != "1" ]; then
    ip6tables -t mangle -A RD_OUTPUT -d ::1/128 -j RETURN
    ip6tables -t mangle -A RD_OUTPUT -d fc00::/7 -j RETURN
    ip6tables -t mangle -A RD_OUTPUT -d fe80::/10 -j RETURN
-   ip6tables -t mangle -A RD_OUTPUT -j RETURN -m mark --mark $RD_MARK
+   ip6tables -t mangle -A RD_OUTPUT -m mark --mark $RD_MARK -j RETURN
    ip6tables -t mangle -A RD_OUTPUT -p udp -j MARK --set-mark $RD_FW_MARK
    ip6tables -t mangle -A RD_OUTPUT -p tcp -j MARK --set-mark $RD_FW_MARK
 
@@ -42,12 +42,13 @@ if [ "$RD_DISABLE_IPV6" != "1" ]; then
    if [ -d /sys/class/net/$RD_INTERNAL_DEV ]; then
       ip6tables -t mangle -A RD_PREROUTING ! -i $RD_INTERNAL_DEV -j RETURN
    fi
+   ip6tables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
+   ip6tables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
    ip6tables -t mangle -A RD_PREROUTING -d ::1/128 -j RETURN
    ip6tables -t mangle -A RD_PREROUTING -d fc00::/7 -j RETURN
    ip6tables -t mangle -A RD_PREROUTING -d fe80::/10 -j RETURN
-   ip6tables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
-   ip6tables -t mangle -A RD_PREROUTING -j TPROXY -p udp --on-port $RD_PORT6 --tproxy-mark $RD_FW_MARK
-   ip6tables -t mangle -A RD_PREROUTING -j TPROXY -p tcp --on-port $RD_PORT6 --tproxy-mark $RD_FW_MARK
+   ip6tables -t mangle -A RD_PREROUTING -p udp -j TPROXY --on-port $RD_PORT6 --tproxy-mark $RD_FW_MARK
+   ip6tables -t mangle -A RD_PREROUTING -p tcp -j TPROXY --on-port $RD_PORT6 --tproxy-mark $RD_FW_MARK
 
    ip6tables -t mangle -A OUTPUT -j RD_OUTPUT
    ip6tables -t mangle -A PREROUTING -j RD_PREROUTING
@@ -68,7 +69,7 @@ iptables -t mangle -A RD_OUTPUT -d 172.16/12 -j RETURN
 iptables -t mangle -A RD_OUTPUT -d 192.168/16 -j RETURN
 iptables -t mangle -A RD_OUTPUT -d 224/4 -j RETURN
 iptables -t mangle -A RD_OUTPUT -d 240/4 -j RETURN
-iptables -t mangle -A RD_OUTPUT -j RETURN -m mark --mark $RD_MARK
+iptables -t mangle -A RD_OUTPUT -m mark --mark $RD_MARK -j RETURN
 iptables -t mangle -A RD_OUTPUT -p udp -j MARK --set-mark $RD_FW_MARK
 iptables -t mangle -A RD_OUTPUT -p tcp -j MARK --set-mark $RD_FW_MARK
 
@@ -77,6 +78,8 @@ iptables -t mangle -N RD_PREROUTING
 if [ -d /sys/class/net/$RD_INTERNAL_DEV ]; then
    iptables -t mangle -A RD_PREROUTING ! -i $RD_INTERNAL_DEV -j RETURN
 fi
+iptables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
+iptables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
 iptables -t mangle -A RD_PREROUTING -d 0/8 -j RETURN
 iptables -t mangle -A RD_PREROUTING -d 127/8 -j RETURN
 iptables -t mangle -A RD_PREROUTING -d 10/8 -j RETURN
@@ -85,9 +88,8 @@ iptables -t mangle -A RD_PREROUTING -d 172.16/12 -j RETURN
 iptables -t mangle -A RD_PREROUTING -d 192.168/16 -j RETURN
 iptables -t mangle -A RD_PREROUTING -d 224/4 -j RETURN
 iptables -t mangle -A RD_PREROUTING -d 240/4 -j RETURN
-iptables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
-iptables -t mangle -A RD_PREROUTING -j TPROXY -p udp --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
-iptables -t mangle -A RD_PREROUTING -j TPROXY -p tcp --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
+iptables -t mangle -A RD_PREROUTING -p udp -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
+iptables -t mangle -A RD_PREROUTING -p tcp -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
 
 iptables -t mangle -A OUTPUT -j RD_OUTPUT
 iptables -t mangle -A PREROUTING -j RD_PREROUTING
