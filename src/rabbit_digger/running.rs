@@ -85,9 +85,9 @@ impl INet for RunningServerNet {
             .map(|s| s.to_string())
             .unwrap_or_default();
 
-        tracing::info!("{:?} {} -> {}", &ctx.net_list(), &src, &addr,);
-
         let tcp = self.net.tcp_connect(ctx, &addr).await?;
+
+        tracing::info!("{:?} {} -> {}", &ctx.net_list(), &src, &addr);
         let tcp = WrapTcpStream::new(tcp, self.config.clone(), addr.clone());
         Ok(tcp.into_dyn())
     }
