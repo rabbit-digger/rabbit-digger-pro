@@ -44,16 +44,12 @@ impl INet for DNSNet {
         ctx: &mut Context,
         addr: &Address,
     ) -> Result<rd_interface::TcpListener> {
-        self.net.tcp_bind(ctx, &self.reverse_lookup(addr)).await
+        self.net.tcp_bind(ctx, addr).await
     }
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         let udp = self.net.udp_bind(ctx, &self.reverse_lookup(addr)).await?;
         Ok(MitmUdp(udp, self.rl.clone()).into_dyn())
-    }
-
-    async fn lookup_host(&self, ctx: &mut Context, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.net.lookup_host(ctx, addr).await
     }
 }
 
@@ -63,8 +59,10 @@ struct MitmUdp(UdpSocket, ReverseLookup);
 impl IUdpSocket for MitmUdp {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         let (size, from_addr) = self.0.recv_from(buf).await?;
-        let packet = &buf[..size];
-        self.1.record_packet(packet);
+        if from_addr.port() == 53 {
+            let packet = &buf[..size];
+            self.1.record_packet(packet);
+        }
         Ok((size, from_addr))
     }
 

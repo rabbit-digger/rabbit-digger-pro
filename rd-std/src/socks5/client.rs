@@ -80,13 +80,6 @@ impl INet for Socks5Client {
 
         Ok(Socks5TcpStream(socket).into_dyn())
     }
-    async fn tcp_bind(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &rd_interface::Address,
-    ) -> Result<rd_interface::TcpListener> {
-        Err(rd_interface::Error::NotImplemented)
-    }
 
     async fn udp_bind(
         &self,
@@ -102,14 +95,6 @@ impl INet for Socks5Client {
         let addr = resp.address.to_socket_addr().map_err(map_err)?;
 
         Ok(Socks5UdpSocket(client, socket, addr).into_dyn())
-    }
-
-    async fn lookup_host(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &Address,
-    ) -> Result<Vec<SocketAddr>> {
-        Err(NOT_IMPLEMENTED)
     }
 }
 

@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 
 pub use crate::Context;
+use crate::NOT_IMPLEMENTED;
 pub use crate::{Address, Error, Result};
 pub use async_trait::async_trait;
 pub use std::sync::Arc;
@@ -67,10 +68,18 @@ impl<T: IUdpSocket> IntoDyn<UdpSocket> for T {
 /// A Net.
 #[async_trait]
 pub trait INet: Unpin + Send + Sync {
-    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream>;
-    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener>;
-    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket>;
-    async fn lookup_host(&self, ctx: &mut Context, addr: &Address) -> Result<Vec<SocketAddr>>;
+    async fn tcp_connect(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpStream> {
+        Err(NOT_IMPLEMENTED)
+    }
+    async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
+        Err(NOT_IMPLEMENTED)
+    }
+    async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
+        Err(NOT_IMPLEMENTED)
+    }
+    async fn lookup_host(&self, _addr: &Address) -> Result<Vec<SocketAddr>> {
+        Err(NOT_IMPLEMENTED)
+    }
 }
 pub type Net = Arc<dyn INet>;
 

@@ -3,7 +3,7 @@ use crate::{
         async_trait, AsyncRead, AsyncWrite, INet, ITcpStream, Net, TcpListener, TcpStream,
         UdpChannel, UdpSocket,
     },
-    Address, Context, Result, NOT_IMPLEMENTED,
+    Address, Context, Result,
 };
 use futures_util::future::{try_join, try_select};
 use std::{
@@ -152,23 +152,7 @@ impl PeekableTcpStream {
 pub struct NotImplementedNet;
 
 #[async_trait]
-impl INet for NotImplementedNet {
-    async fn tcp_connect(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpStream> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn lookup_host(&self, _ctx: &mut Context, _addr: &Address) -> Result<Vec<SocketAddr>> {
-        Err(NOT_IMPLEMENTED)
-    }
-}
+impl INet for NotImplementedNet {}
 
 /// A new Net calls [`tcp_connect()`](crate::INet::tcp_connect()), [`tcp_bind()`](crate::INet::tcp_bind()), [`udp_bind()`](crate::INet::udp_bind()) from different Net.
 pub struct CombineNet {
@@ -192,8 +176,8 @@ impl INet for CombineNet {
         self.udp_bind.udp_bind(ctx, addr).await
     }
 
-    async fn lookup_host(&self, ctx: &mut Context, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.lookup_host.lookup_host(ctx, addr).await
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.lookup_host.lookup_host(addr).await
     }
 }
 

@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use rd_interface::{
     async_trait,
     prelude::*,
@@ -26,12 +28,8 @@ impl INet for CombineNet {
         self.udp_bind.udp_bind(ctx, addr).await
     }
 
-    async fn lookup_host(
-        &self,
-        ctx: &mut Context,
-        addr: &Address,
-    ) -> Result<Vec<std::net::SocketAddr>> {
-        self.lookup_host.lookup_host(ctx, addr).await
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.lookup_host.lookup_host(addr).await
     }
 }
 

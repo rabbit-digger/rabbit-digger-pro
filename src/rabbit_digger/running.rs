@@ -54,8 +54,8 @@ impl INet for RunningNet {
         self.inner.read().await.udp_bind(ctx, addr).await
     }
 
-    async fn lookup_host(&self, ctx: &mut Context, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.inner.read().await.lookup_host(ctx, addr).await
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.inner.read().await.lookup_host(addr).await
     }
 }
 
@@ -107,8 +107,8 @@ impl INet for RunningServerNet {
         self.net.udp_bind(ctx, addr).await
     }
 
-    async fn lookup_host(&self, ctx: &mut Context, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.net.lookup_host(ctx, addr).await
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.net.lookup_host(addr).await
     }
 }
 

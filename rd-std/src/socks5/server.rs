@@ -10,7 +10,7 @@ use socks5_protocol::{
     CommandResponse, Version,
 };
 use std::{
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::Arc,
 };
 use tokio::io::{split, AsyncWriteExt, BufWriter};

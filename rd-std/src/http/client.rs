@@ -52,30 +52,6 @@ impl INet for HttpClient {
         let _connect_resp = _connect_resp.await.map_err(map_err)?;
         Ok(HttpTcpStream(io).into_dyn())
     }
-
-    async fn tcp_bind(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &rd_interface::Address,
-    ) -> Result<rd_interface::TcpListener> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn udp_bind(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &rd_interface::Address,
-    ) -> Result<rd_interface::UdpSocket> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn lookup_host(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &rd_interface::Address,
-    ) -> Result<Vec<SocketAddr>> {
-        Err(NOT_IMPLEMENTED)
-    }
 }
 
 impl HttpClient {
