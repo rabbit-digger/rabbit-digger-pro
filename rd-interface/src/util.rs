@@ -5,7 +5,7 @@ use crate::{
     },
     Address, Context, Result, NOT_IMPLEMENTED,
 };
-use futures_util::future::try_join;
+use futures_util::future::{try_join, try_select};
 use std::{
     collections::VecDeque,
     future::Future,
@@ -14,19 +14,40 @@ use std::{
     pin::Pin,
     task::{self, Poll},
 };
-use tokio::io::{AsyncReadExt, ReadBuf};
+use tokio::{
+    io::{copy, split, AsyncReadExt, AsyncWriteExt, ReadBuf},
+    pin,
+};
 
 pub use tokio::io::copy_bidirectional;
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Connect two `TcpStream`
+/// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
 pub async fn connect_tcp(
     t1: impl AsyncRead + AsyncWrite,
     t2: impl AsyncRead + AsyncWrite,
 ) -> io::Result<()> {
-    tokio::pin!(t1);
-    tokio::pin!(t2);
-    copy_bidirectional(&mut t1, &mut t2).await?;
+    let (mut read_1, mut write_1) = split(t1);
+    let (mut read_2, mut write_2) = split(t2);
+
+    let fut1 = async {
+        let r = copy(&mut read_1, &mut write_2).await;
+        write_2.shutdown().await?;
+        r
+    };
+    let fut2 = async {
+        let r = copy(&mut read_2, &mut write_1).await;
+        write_1.shutdown().await?;
+        r
+    };
+
+    pin!(fut1, fut2);
+
+    match try_select(fut1, fut2).await {
+        Ok(_) => {}
+        Err(e) => return Err(e.factor_first().0),
+    };
+
     Ok(())
 }
 
