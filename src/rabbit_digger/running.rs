@@ -37,9 +37,6 @@ impl RunningNet {
             inner: Arc::new(RwLock::new(net)),
         }
     }
-    pub async fn net(&self) -> Net {
-        self.inner.read().await.clone()
-    }
 }
 
 #[async_trait]

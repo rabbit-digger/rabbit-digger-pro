@@ -428,15 +428,15 @@ async fn build_server(
                         &name
                     )
                 })?
-                .net()
-                .await;
+                .clone()
+                .into_dyn();
             let net = RunningServerNet::new(
                 net.get(&i.net)
                     .ok_or_else(|| {
                         anyhow!("Net {} is not loaded. Required by {:?}", &i.net, &name)
                     })?
-                    .net()
-                    .await,
+                    .clone()
+                    .into_dyn(),
                 conn_cfg.clone(),
             )
             .into_dyn();
