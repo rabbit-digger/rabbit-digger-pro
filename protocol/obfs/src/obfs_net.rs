@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use crate::{Obfs, ObfsType};
 use rd_interface::{
     async_trait, prelude::*, registry::NetRef, Address, Arc, Context, INet, ITcpListener, IntoDyn,
-    Net, Result, TcpListener, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    Net, Result, TcpListener, TcpStream,
 };
 
 type BoxObfs = Arc<dyn Obfs + Send + Sync + 'static>;
@@ -41,14 +41,6 @@ impl INet for ObfsNet {
     async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
         let listener = self.net.tcp_bind(ctx, addr).await?;
         Ok(ObfsTcpListener(listener, self.obfs.clone()).into_dyn())
-    }
-
-    async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn lookup_host(&self, _ctx: &mut Context, _addr: &Address) -> Result<Vec<SocketAddr>> {
-        Err(NOT_IMPLEMENTED)
     }
 }
 

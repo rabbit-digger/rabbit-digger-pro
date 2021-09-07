@@ -41,12 +41,8 @@ impl INet for SelectNet {
         self.0.udp_bind(ctx, addr).await
     }
 
-    async fn lookup_host(
-        &self,
-        ctx: &mut Context,
-        addr: &Address,
-    ) -> Result<Vec<std::net::SocketAddr>> {
-        self.0.lookup_host(ctx, addr).await
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<std::net::SocketAddr>> {
+        self.0.lookup_host(addr).await
     }
 }
 

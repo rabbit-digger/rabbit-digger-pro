@@ -3,7 +3,7 @@ use std::io::{Cursor, Write};
 use crate::tls::{TlsConnector, TlsConnectorConfig};
 use rd_interface::{
     async_trait, prelude::*, registry::NetRef, Address as RdAddress, Address, INet, IntoDyn, Net,
-    Result, TcpListener, TcpStream, UdpSocket, NOT_ENABLED, NOT_IMPLEMENTED,
+    Result, TcpStream, UdpSocket, NOT_ENABLED,
 };
 use sha2::{Digest, Sha224};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
@@ -99,14 +99,6 @@ impl INet for TrojanNet {
         Ok(tcp.into_dyn())
     }
 
-    async fn tcp_bind(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &RdAddress,
-    ) -> Result<TcpListener> {
-        Err(NOT_IMPLEMENTED)
-    }
-
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
@@ -122,13 +114,5 @@ impl INet for TrojanNet {
         let udp = udp::TrojanUdp::new(stream, head);
 
         Ok(udp.into_dyn())
-    }
-
-    async fn lookup_host(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &Address,
-    ) -> Result<Vec<std::net::SocketAddr>> {
-        Err(NOT_IMPLEMENTED)
     }
 }
