@@ -3,7 +3,6 @@ use std::net::SocketAddr;
 use crate::protocol::{Channel, CommandRequest, CommandResponse, Protocol};
 use rd_interface::{
     async_trait, Address, Arc, Error, INet, ITcpListener, IntoDyn, Result, TcpListener, TcpStream,
-    UdpSocket, NOT_IMPLEMENTED,
 };
 use tokio::sync::Mutex;
 
@@ -81,14 +80,6 @@ impl INet for RemoteNet {
             addr,
         }
         .into_dyn())
-    }
-
-    async fn udp_bind(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &Address,
-    ) -> Result<UdpSocket> {
-        Err(NOT_IMPLEMENTED)
     }
 }
 
