@@ -1,20 +1,22 @@
-use std::{net::IpAddr, time::Duration};
+use std::{net::IpAddr, sync::Arc, time::Duration};
 
 use dns_parser::{Packet, RData};
 use lru_time_cache::LruCache;
 use parking_lot::Mutex;
 
+
+#[derive(Clone)]
 pub struct ReverseLookup {
-    records: Mutex<LruCache<IpAddr, String>>,
+    records: Arc<Mutex<LruCache<IpAddr, String>>>,
 }
 
 impl ReverseLookup {
     pub fn new() -> ReverseLookup {
         ReverseLookup {
-            records: Mutex::new(LruCache::with_expiry_duration_and_capacity(
+            records: Arc::new(Mutex::new(LruCache::with_expiry_duration_and_capacity(
                 Duration::from_secs(10 * 60),
                 1024,
-            )),
+            ))),
         }
     }
     pub fn record_packet(&self, packet: &[u8]) {

@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
 
 use super::service::ReverseLookup;
 use rd_interface::{
@@ -7,14 +7,14 @@ use rd_interface::{
 
 pub struct DNSNet {
     net: Net,
-    rl: Arc<ReverseLookup>,
+    rl: ReverseLookup,
 }
 
 impl DNSNet {
     pub fn new(net: Net) -> Self {
         Self {
             net,
-            rl: Arc::new(ReverseLookup::new()),
+            rl: ReverseLookup::new(),
         }
     }
     fn reverse_lookup(&self, addr: &Address) -> Address {
@@ -57,7 +57,7 @@ impl INet for DNSNet {
     }
 }
 
-struct MitmUdp(UdpSocket, Arc<ReverseLookup>);
+struct MitmUdp(UdpSocket, ReverseLookup);
 
 #[async_trait]
 impl IUdpSocket for MitmUdp {
