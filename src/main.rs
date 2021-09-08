@@ -134,9 +134,11 @@ async fn main(args: Args) -> Result<()> {
 
     cfg_if! {
         if #[cfg(feature = "console")] {
-            let (layer, server) = console_subscriber::TasksLayer::new();
+            let (layer, server) = console_subscriber::TasksLayer::builder().with_default_env().build();
             tokio::spawn(server.serve());
-            let filter = filter.add_directive("tokio=trace".parse()?);
+            let filter = filter
+                .add_directive("tokio=trace".parse()?)
+                .add_directive("runtime=trace".parse()?);
             let tr = tr.with(layer);
         }
     }
