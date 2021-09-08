@@ -9,6 +9,7 @@ RD_FW_MARK="${RD_FW_MARK:=0xfe}"
 RD_CT_MARK="${RD_CT_MARK:=0x10}"
 RD_INTERNAL_DEV="${RD_INTERNAL_DEV:=br-lan}"
 RD_DISABLE_IPV6="${RD_DISABLE_IPV6:=0}"
+RD_EXCLUDE_IP="$RD_EXCLUDE_IP"
 
 if [ "$(id -u)" != "0" ]; then
    echo "This script must be run as root" 1>&2
@@ -42,6 +43,10 @@ if [ "$RD_DISABLE_IPV6" != "1" ]; then
    if [ -d /sys/class/net/$RD_INTERNAL_DEV ]; then
       ip6tables -t mangle -A RD_PREROUTING ! -i $RD_INTERNAL_DEV -j RETURN
    fi
+   # exclude list
+   for i in ${RD_EXCLUDE_IP//,/ }; do
+      ip6tables -t mangle -A RD_PREROUTING -s $i -j RETURN 2>/dev/null || true
+   done
    ip6tables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
    ip6tables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
    ip6tables -t mangle -A RD_PREROUTING -d ::1/128 -j RETURN
@@ -78,6 +83,10 @@ iptables -t mangle -N RD_PREROUTING
 if [ -d /sys/class/net/$RD_INTERNAL_DEV ]; then
    iptables -t mangle -A RD_PREROUTING ! -i $RD_INTERNAL_DEV -j RETURN
 fi
+# exclude list
+for i in ${RD_EXCLUDE_IP//,/ }; do
+   iptables -t mangle -A RD_PREROUTING -s $i -j RETURN 2>/dev/null || true
+done
 iptables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
 iptables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
 iptables -t mangle -A RD_PREROUTING -d 0/8 -j RETURN
