@@ -56,6 +56,7 @@ impl SSServer {
             net,
         }
     }
+    #[tracing::instrument(err, skip(cfg, context, socket, net))]
     async fn serve_connection(
         cfg: Arc<SSServerConfig>,
         context: Arc<Context>,
