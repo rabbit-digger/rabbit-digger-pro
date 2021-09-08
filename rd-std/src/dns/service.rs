@@ -4,7 +4,6 @@ use dns_parser::{Packet, RData};
 use lru_time_cache::LruCache;
 use parking_lot::Mutex;
 
-
 #[derive(Clone)]
 pub struct ReverseLookup {
     records: Arc<Mutex<LruCache<IpAddr, String>>>,

@@ -10,6 +10,7 @@ use parking_lot::Mutex;
 use rd_interface::{
     async_trait, Address, Arc, Context, INet, IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
+use tracing::instrument;
 
 pub struct RuleItem {
     pub target_name: String,
@@ -50,6 +51,7 @@ impl Rule {
 
         Ok(Rule { rule, cache })
     }
+    #[instrument(skip(self))]
     pub async fn get_rule(&self, ctx: &Context, target: &Address) -> Result<&RuleItem> {
         // let start = Instant::now();
         let src = ctx
