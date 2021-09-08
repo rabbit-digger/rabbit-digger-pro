@@ -20,6 +20,7 @@ impl HttpSocks5Server {
             socks5_server: Socks5Server::new(listen_net.clone(), net.clone()),
         }
     }
+    #[tracing::instrument(err, skip(self, socket))]
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let buf = &mut [0u8; 1];
         let mut socket = PeekableTcpStream::new(socket);

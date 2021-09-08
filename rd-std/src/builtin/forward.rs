@@ -39,6 +39,7 @@ impl IServer for ForwardNet {
 }
 
 impl ForwardNet {
+    #[tracing::instrument(err, skip(cfg, net, socket))]
     async fn serve_connection(
         cfg: Arc<ForwardNetConfig>,
         socket: TcpStream,
