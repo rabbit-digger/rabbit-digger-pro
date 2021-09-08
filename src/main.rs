@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use cfg_if::cfg_if;
 use futures::{pin_mut, stream::TryStreamExt};
 use rabbit_digger::{RabbitDigger, RabbitDiggerBuilder};
 #[cfg(feature = "api_server")]
@@ -128,21 +129,34 @@ async fn main(args: Args) -> Result<()> {
             "rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace,raw=trace",
         )
     }
-    #[cfg(feature = "console")]
-    let (layer, server) = console_subscriber::TasksLayer::new();
     let filter = EnvFilter::from_default_env();
-    #[cfg(feature = "console")]
-    let filter = filter.add_directive("tokio=trace".parse()?);
 
     let t = tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter);
-    #[cfg(feature = "console")]
-    let t = t.with(layer);
-    t.init();
 
-    #[cfg(feature = "console")]
-    tokio::spawn(server.serve());
+    cfg_if! {
+        if #[cfg(feature = "console")] {
+            let (layer, server) = console_subscriber::TasksLayer::new();
+            tokio::spawn(server.serve());
+            let filter = filter.add_directive("tokio=trace".parse()?);
+            let t = t.with(layer);
+        }
+    }
+
+    cfg_if! {
+        if #[cfg(feature = "telemetry")] {
+            let tracer = opentelemetry_jaeger::new_pipeline()
+                .with_service_name("rabbit_digger_pro")
+                .install_batch(opentelemetry::runtime::Tokio)?;
+            // only for debug
+            // let tracer = opentelemetry::sdk::export::trace::stdout::new_pipeline().install_simple();
+            let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+            let t = t.with(opentelemetry);
+        }
+    }
+
+    t.init();
 
     match &args.cmd {
         Some(Command::GenerateSchema { path }) => {
