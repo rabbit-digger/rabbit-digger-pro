@@ -135,8 +135,6 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpStream> {
-        #[cfg(feature = "local_log")]
-        tracing::trace!("local::tcp_connect {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
 
         let socket = match addr {
@@ -168,8 +166,6 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpListener> {
-        #[cfg(feature = "local_log")]
-        tracing::trace!("local::tcp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
         let listener = net::TcpListener::bind(addr).await?;
         if let Some(ttl) = self.0.ttl {
@@ -184,8 +180,6 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<UdpSocket> {
-        #[cfg(feature = "local_log")]
-        tracing::trace!("local::udp_bind {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
         let udp = net::UdpSocket::bind(addr).await?;
         if let Some(ttl) = self.0.ttl {
@@ -201,8 +195,6 @@ impl INet for LocalNet {
 
     #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        #[cfg(feature = "local_log")]
-        tracing::trace!("local::lookup_host {:?} {:?}", _ctx, addr);
         let addr = addr.resolve(lookup_host).await?;
         Ok(vec![addr])
     }

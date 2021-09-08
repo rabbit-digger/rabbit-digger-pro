@@ -103,7 +103,7 @@ impl RabbitDigger {
             // Failed only when no receiver
             sender.send(Arc::new(events)).ok();
         }
-        tracing::trace!("recv_event task exited");
+        tracing::warn!("recv_event task exited");
     }
     async fn new(plugin_loader: &PluginLoader) -> Result<RabbitDigger> {
         let (sender, _) = broadcast::channel(16);

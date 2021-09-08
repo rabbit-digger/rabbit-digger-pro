@@ -53,7 +53,6 @@ impl Rule {
     }
     #[instrument(skip(self), err)]
     pub async fn get_rule(&self, ctx: &Context, target: &Address) -> Result<&RuleItem> {
-        // let start = Instant::now();
         let src = ctx
             .get_source_addr()
             .map(|s| s.to_string())
@@ -63,28 +62,14 @@ impl Rule {
         // hit cache
         if let Some(i) = self.cache.lock().get(&match_context).copied() {
             let rule = &self.rule[i];
-            // tracing::trace!(
-            //     "[{}] {} -> {} matched rule: {:?} ({:?})",
-            //     &rule.target_name,
-            //     &src,
-            //     &target,
-            //     &rule.matcher,
-            //     start.elapsed(),
-            // );
+            tracing::trace!(matcher = ?rule.matcher, hit_cache = true, "matched rule");
             return Ok(rule);
         }
 
         for (i, rule) in self.rule.iter().enumerate() {
             if rule.matcher.match_rule(&match_context).await {
                 self.cache.lock().insert(match_context, i);
-                // tracing::trace!(
-                //     "[{}] {} -> {} matched rule: {:?} ({:?})",
-                //     &rule.target_name,
-                //     &src,
-                //     &target,
-                //     &rule.matcher,
-                //     start.elapsed(),
-                // );
+                tracing::trace!(matcher = ?rule.matcher, hit_cache = false, "matched rule");
                 return Ok(&rule);
             }
         }

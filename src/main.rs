@@ -20,7 +20,7 @@ struct Args {
 
 async fn real_main(args: Args) -> Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "rabbit_digger=trace")
+        std::env::set_var("RUST_LOG", "rabbit_digger=debug")
     }
     tracing_subscriber::fmt::init();
 
