@@ -44,11 +44,11 @@ if [ "$RD_DISABLE_IPV6" != "1" ]; then
       ip6tables -t mangle -A RD_PREROUTING ! -i $RD_INTERNAL_DEV -j RETURN
    fi
    # exclude list
-   for i in ${RD_EXCLUDE_IP//,/ }; do
+   for i in $(echo $RD_EXCLUDE_IP | tr "," "\n"); do
       ip6tables -t mangle -A RD_PREROUTING -s $i -j RETURN 2>/dev/null || true
    done
    ip6tables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
-   ip6tables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
+   ip6tables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT6 --tproxy-mark $RD_FW_MARK
    ip6tables -t mangle -A RD_PREROUTING -d ::1/128 -j RETURN
    ip6tables -t mangle -A RD_PREROUTING -d fc00::/7 -j RETURN
    ip6tables -t mangle -A RD_PREROUTING -d fe80::/10 -j RETURN
@@ -84,7 +84,7 @@ if [ -d /sys/class/net/$RD_INTERNAL_DEV ]; then
    iptables -t mangle -A RD_PREROUTING ! -i $RD_INTERNAL_DEV -j RETURN
 fi
 # exclude list
-for i in ${RD_EXCLUDE_IP//,/ }; do
+for i in $(echo $RD_EXCLUDE_IP | tr "," "\n"); do
    iptables -t mangle -A RD_PREROUTING -s $i -j RETURN 2>/dev/null || true
 done
 iptables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
