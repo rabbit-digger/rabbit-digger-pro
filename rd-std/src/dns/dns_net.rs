@@ -22,7 +22,11 @@ impl DNSNet {
             Address::SocketAddr(sa) => self
                 .rl
                 .reverse_lookup(sa.ip())
-                .map(|name| Address::Domain(name, sa.port()))
+                .map(|name| {
+                    let domain = Address::Domain(name, sa.port());
+                    tracing::trace!(?domain, "recovered domain");
+                    domain
+                })
                 .unwrap_or_else(|| addr.clone()),
             d => d.clone(),
         }
