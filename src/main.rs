@@ -126,21 +126,18 @@ async fn main(args: Args) -> Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug",
+            "rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace,raw=trace",
         )
     }
     let filter = EnvFilter::from_default_env();
-
-    let t = tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(filter);
+    let tr = tracing_subscriber::registry();
 
     cfg_if! {
         if #[cfg(feature = "console")] {
             let (layer, server) = console_subscriber::TasksLayer::new();
             tokio::spawn(server.serve());
             let filter = filter.add_directive("tokio=trace".parse()?);
-            let t = t.with(layer);
+            let tr = tr.with(layer);
         }
     }
 
@@ -152,11 +149,15 @@ async fn main(args: Args) -> Result<()> {
             // only for debug
             // let tracer = opentelemetry::sdk::export::trace::stdout::new_pipeline().install_simple();
             let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-            let t = t.with(opentelemetry);
+            let tr = tr.with(opentelemetry);
         }
     }
 
-    t.init();
+    tr.with(filter)
+        .with(tracing_subscriber::fmt::layer().with_writer(
+            std::io::stdout.with_filter(|meta| meta.level() != &tracing::Level::TRACE),
+        ))
+        .init();
 
     match &args.cmd {
         Some(Command::GenerateSchema { path }) => {
