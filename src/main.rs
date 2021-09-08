@@ -126,7 +126,7 @@ async fn main(args: Args) -> Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace,raw=trace",
+            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug",
         )
     }
     let filter = EnvFilter::from_default_env();
