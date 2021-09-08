@@ -51,23 +51,23 @@ impl Debug for RunningNet {
 
 #[async_trait]
 impl INet for RunningNet {
-    #[instrument]
+    #[instrument(err)]
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         ctx.append_net(&self.name);
         self.inner.read().await.tcp_connect(ctx, addr).await
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
         self.inner.read().await.tcp_bind(ctx, addr).await
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         self.inner.read().await.udp_bind(ctx, addr).await
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         self.inner.read().await.lookup_host(addr).await
     }
@@ -86,7 +86,7 @@ impl RunningServerNet {
 
 #[async_trait]
 impl INet for RunningServerNet {
-    #[instrument(skip(self))]
+    #[instrument(err, skip(self))]
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
@@ -105,7 +105,7 @@ impl INet for RunningServerNet {
     }
 
     // TODO: wrap TcpListener
-    #[instrument(skip(self))]
+    #[instrument(err, skip(self))]
     async fn tcp_bind(
         &self,
         ctx: &mut rd_interface::Context,
@@ -115,7 +115,7 @@ impl INet for RunningServerNet {
     }
 
     // TODO: wrap UdpSocket
-    #[instrument(skip(self))]
+    #[instrument(err, skip(self))]
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
@@ -124,7 +124,7 @@ impl INet for RunningServerNet {
         self.net.udp_bind(ctx, addr).await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(err, skip(self))]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         self.net.lookup_host(addr).await
     }

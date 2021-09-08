@@ -51,7 +51,7 @@ impl Rule {
 
         Ok(Rule { rule, cache })
     }
-    #[instrument(skip(self))]
+    #[instrument(skip(self), err)]
     pub async fn get_rule(&self, ctx: &Context, target: &Address) -> Result<&RuleItem> {
         // let start = Instant::now();
         let src = ctx

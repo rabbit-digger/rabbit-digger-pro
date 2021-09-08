@@ -42,7 +42,7 @@ impl std::fmt::Debug for LocalNet {
     }
 }
 
-#[instrument]
+#[instrument(err)]
 async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
     use tokio::net::lookup_host;
 
@@ -72,7 +72,6 @@ impl CompatTcp {
 
 #[async_trait]
 impl rd_interface::ITcpListener for Listener {
-    #[instrument(skip(self))]
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
         let (socket, addr) = self.0.accept().await?;
         if let Some(ttl) = self.1.ttl {
@@ -84,7 +83,6 @@ impl rd_interface::ITcpListener for Listener {
         Ok((CompatTcp::new(socket).into_dyn(), addr))
     }
 
-    #[instrument(skip(self))]
     async fn local_addr(&self) -> Result<SocketAddr> {
         self.0.local_addr().map_err(Into::into)
     }
@@ -131,7 +129,7 @@ pub(crate) fn set_mark(socket: libc::c_int, mark: Option<u32>) -> Result<()> {
 
 #[async_trait]
 impl INet for LocalNet {
-    #[instrument]
+    #[instrument(err)]
     async fn tcp_connect(
         &self,
         _ctx: &mut rd_interface::Context,
@@ -164,7 +162,7 @@ impl INet for LocalNet {
         Ok(CompatTcp::new(tcp).into_dyn())
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn tcp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
@@ -180,7 +178,7 @@ impl INet for LocalNet {
         Ok(Listener(listener, self.0.clone()).into_dyn())
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn udp_bind(
         &self,
         _ctx: &mut rd_interface::Context,
@@ -201,7 +199,7 @@ impl INet for LocalNet {
         Ok(Udp(udp).into_dyn())
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         #[cfg(feature = "local_log")]
         tracing::trace!("local::lookup_host {:?} {:?}", _ctx, addr);
