@@ -1,6 +1,6 @@
 // UDP: https://github.com/shadowsocks/shadowsocks-rust/blob/0433b3ec09bcaa26f7460a50287b56c67b687a34/crates/shadowsocks-service/src/local/redir/udprelay/sys/unix/linux.rs#L56
 
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use super::socket::{create_tcp_listener, TransparentUdp};
 use crate::builtin::local::CompatTcp;
@@ -62,7 +62,7 @@ impl TProxyServer {
             Duration::from_secs(30),
             128,
         );
-        let mark = self.cfg.mark;
+        let cache = Arc::new(TransparentUdpCache::new(self.cfg.mark));
 
         loop {
             let (size, src, dst) = match listener.recv(&mut buf).await {
@@ -77,7 +77,7 @@ impl TProxyServer {
 
             let udp = nat
                 .entry(src)
-                .or_insert_with(|| UdpTunnel::new(net.clone(), src, mark));
+                .or_insert_with(|| UdpTunnel::new(net.clone(), src, cache.clone()));
 
             if let Err(e) = udp.send_to(payload, dst).await {
                 tracing::error!("Udp send_to {:?}", e);
@@ -124,13 +124,50 @@ impl ServerFactory for TProxyServer {
     }
 }
 
+struct TransparentUdpCache {
+    mark: Option<u32>,
+    cache: Mutex<LruCache<SocketAddr, TransparentUdp>>,
+}
+
+impl TransparentUdpCache {
+    fn new(mark: Option<u32>) -> Self {
+        TransparentUdpCache {
+            mark,
+            cache: Mutex::new(LruCache::with_expiry_duration_and_capacity(
+                Duration::from_secs(30),
+                128,
+            )),
+        }
+    }
+    async fn send_to(
+        &self,
+        from_addr: SocketAddr,
+        to_addr: SocketAddr,
+        buf: &[u8],
+    ) -> Result<usize> {
+        let mut cache = self.cache.lock().await;
+        let back_udp = match cache.get(&from_addr) {
+            Some(udp) => udp,
+            None => {
+                let udp = TransparentUdp::bind_any(from_addr, self.mark).await?;
+                cache.insert(from_addr, udp);
+                cache
+                    .get(&from_addr)
+                    .expect("impossible: failed to get by from_addr")
+            }
+        };
+
+        Ok(back_udp.send_to(buf, to_addr).await?)
+    }
+}
+
 struct UdpTunnel {
     tx: Sender<(SocketAddr, Vec<u8>)>,
     handle: Mutex<Option<JoinHandle<Result<()>>>>,
 }
 
 impl UdpTunnel {
-    fn new(net: Net, src: SocketAddr, mark: Option<u32>) -> UdpTunnel {
+    fn new(net: Net, src: SocketAddr, cache: Arc<TransparentUdpCache>) -> UdpTunnel {
         let (tx, mut rx) = unbounded_channel::<(SocketAddr, Vec<u8>)>();
         let handle = tokio::spawn(async move {
             let udp = timeout(
@@ -154,9 +191,7 @@ impl UdpTunnel {
                 loop {
                     let (size, addr) = udp.recv_from(&mut buf).await?;
 
-                    // TODO: cache sockets here.
-                    let back_udp = TransparentUdp::bind_any(addr, mark).await?;
-                    back_udp.send_to(&buf[..size], src).await?;
+                    cache.send_to(addr, src, &buf[..size]).await?;
                 }
             };
 
