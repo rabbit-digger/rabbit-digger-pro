@@ -11,7 +11,6 @@ pub struct HttpServer {
 }
 
 impl HttpServer {
-    #[tracing::instrument(err, skip(self, socket))]
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let net = self.net.clone();
 

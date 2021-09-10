@@ -26,7 +26,6 @@ pub struct Socks5Server {
 }
 
 impl Socks5Server {
-    #[tracing::instrument(err, skip(self, socket))]
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
         let Socks5ServerConfig { net, listen_net } = &*self.cfg;

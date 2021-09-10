@@ -99,7 +99,6 @@ impl TProxyServer {
         }
     }
 
-    #[tracing::instrument(err, skip(net, socket))]
     async fn serve_connection(net: Net, socket: TcpStream, addr: SocketAddr) -> Result<()> {
         let target = socket.local_addr()?;
 
