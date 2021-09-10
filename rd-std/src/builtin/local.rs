@@ -1,13 +1,14 @@
 use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
+    time::Duration,
 };
 
 use rd_interface::{
     async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, INet, IntoDyn,
     Result, TcpListener, TcpStream, UdpSocket,
 };
-use tokio::net;
+use tokio::{net, time::timeout};
 use tracing::instrument;
 
 #[rd_config]
@@ -23,6 +24,9 @@ pub struct LocalNetConfig {
 
     /// set SO_MARK on linux
     pub mark: Option<u32>,
+
+    /// timeout of TCP connect, in seconds.
+    pub connect_timeout: Option<u64>,
 }
 
 pub struct LocalNet(LocalNetConfig);
@@ -148,7 +152,10 @@ impl INet for LocalNet {
             self.0.mark,
         )?;
 
-        let tcp = socket.connect(addr).await?;
+        let tcp = match self.0.connect_timeout {
+            None => socket.connect(addr).await?,
+            Some(secs) => timeout(Duration::from_secs(secs), socket.connect(addr)).await??,
+        };
 
         if let Some(ttl) = self.0.ttl {
             tcp.set_ttl(ttl)?;

@@ -8,7 +8,6 @@ use crate::{
 use futures_util::future::{try_join, try_select};
 use std::{
     collections::VecDeque,
-    future::Future,
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     pin::Pin,
@@ -18,9 +17,6 @@ use tokio::{
     io::{copy, split, AsyncReadExt, AsyncWriteExt, ReadBuf},
     pin,
 };
-
-pub use tokio::io::copy_bidirectional;
-pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
 pub async fn connect_tcp(
