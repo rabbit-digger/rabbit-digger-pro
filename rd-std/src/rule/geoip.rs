@@ -6,7 +6,6 @@ use super::matcher::{MatchContext, Matcher, MaybeAsync};
 use flate2::read::GzDecoder;
 use maxminddb::geoip2;
 use once_cell::sync::OnceCell;
-use rd_interface::Address;
 use tar::Archive;
 
 // Update this when blob is updated
@@ -61,14 +60,9 @@ impl GeoIpMatcher {
 
 impl Matcher for GeoIpMatcher {
     fn match_rule(&self, match_context: &MatchContext) -> MaybeAsync<bool> {
-        let addr = match_context.address();
-        match addr {
-            Address::SocketAddr(addr) => self.test(addr.ip()),
-            // if it's a domain, try to parse it to SocketAddr.
-            Address::Domain(_, _) => match addr.to_socket_addr() {
-                Ok(addr) => self.test(addr.ip()),
-                Err(_) => false,
-            },
+        match match_context.get_socket_addr() {
+            Some(addr) => self.test(addr.ip()),
+            None => false,
         }
         .into()
     }
@@ -86,18 +80,24 @@ mod tests {
         };
         assert!(
             matcher
-                .match_rule(&MatchContext::from_context_address(
-                    &Context::new(),
-                    &Address::SocketAddr("114.114.114.114:53".parse().unwrap())
-                ))
+                .match_rule(
+                    &MatchContext::from_context_address(
+                        &Context::new(),
+                        &Address::SocketAddr("114.114.114.114:53".parse().unwrap())
+                    )
+                    .unwrap()
+                )
                 .await
         );
         assert!(
             !matcher
-                .match_rule(&MatchContext::from_context_address(
-                    &Context::new(),
-                    &Address::SocketAddr("1.1.1.1:53".parse().unwrap())
-                ))
+                .match_rule(
+                    &MatchContext::from_context_address(
+                        &Context::new(),
+                        &Address::SocketAddr("1.1.1.1:53".parse().unwrap())
+                    )
+                    .unwrap()
+                )
                 .await
         );
     }

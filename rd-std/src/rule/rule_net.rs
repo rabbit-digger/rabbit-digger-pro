@@ -57,7 +57,7 @@ impl Rule {
             .get_source_addr()
             .map(|s| s.to_string())
             .unwrap_or_default();
-        let match_context = MatchContext::from_context_address(ctx, target);
+        let match_context = MatchContext::from_context_address(ctx, target)?;
 
         // hit cache
         if let Some(i) = self.cache.lock().get(&match_context).copied() {

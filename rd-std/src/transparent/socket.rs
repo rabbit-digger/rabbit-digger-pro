@@ -54,8 +54,7 @@ pub async fn create_tcp_listener(addr: SocketAddr) -> io::Result<TcpListener> {
 
     // bind, listen as original
     socket.bind(addr)?;
-    // listen backlogs = 1024 as mio's default
-    socket.listen(1024)
+    socket.listen(128)
 }
 
 pub struct TransparentUdp(AsyncFd<UdpSocket>);

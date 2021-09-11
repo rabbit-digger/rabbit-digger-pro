@@ -3,7 +3,6 @@ use std::convert::TryFrom;
 use super::config::{DomainMatcher, DomainMatcherMethod as Method};
 use super::matcher::{MatchContext, Matcher, MaybeAsync};
 use anyhow::Result;
-use rd_interface::Address;
 
 impl TryFrom<String> for Method {
     type Error = anyhow::Error;
@@ -30,10 +29,10 @@ impl DomainMatcher {
 
 impl Matcher for DomainMatcher {
     fn match_rule(&self, match_context: &MatchContext) -> MaybeAsync<bool> {
-        match match_context.address() {
-            Address::Domain(domain, _) => self.test(domain),
+        match match_context.get_domain() {
+            Some((domain, _)) => self.test(domain),
             // if it's not a domain, pass it.
-            _ => false,
+            None => false,
         }
         .into()
     }

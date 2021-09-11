@@ -1,6 +1,6 @@
 use crate::Value;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, fmt::Debug, net::SocketAddr};
+use std::{collections::HashMap, fmt, net::SocketAddr};
 use thiserror::Error;
 
 /// Context error
@@ -20,12 +20,28 @@ pub trait CommonField: DeserializeOwned + Serialize + 'static {
 
 /// A context stores a source endpoint, a process info and other any values
 /// during connecting.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Context {
     source_address: Option<SocketAddr>,
 
     data: HashMap<String, Value>,
     net_list: Vec<String>,
+}
+
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut s = f.debug_struct("Context");
+        if self.source_address.is_some() {
+            s.field("source_address", &self.source_address);
+        }
+        for (key, value) in &self.data {
+            s.field(key, value);
+        }
+        if self.net_list.len() > 0 {
+            s.field("net_list", &self.net_list);
+        }
+        s.finish()
+    }
 }
 
 impl Default for Context {
@@ -63,9 +79,12 @@ impl Context {
         Ok(())
     }
     /// Returns a value corresponding to the key.
-    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<T> {
-        let value = self.data.get(key).ok_or(Error::NonExist)?;
-        Ok(serde_json::from_value(value.clone())?)
+    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
+        let value = self.data.get(key);
+        value
+            .map(|v| serde_json::from_value(v.clone()))
+            .transpose()
+            .map_err(Into::into)
     }
     /// Inserts a key-value pair into the context.
     pub fn insert_value(&mut self, key: String, value: Value) {
@@ -88,7 +107,7 @@ impl Context {
         self.insert(T::KEY.to_string(), value)
     }
     /// Returns a value corresponding to the key.
-    pub fn get_common<T: CommonField>(&self) -> Result<T> {
+    pub fn get_common<T: CommonField>(&self) -> Result<Option<T>> {
         self.get(T::KEY)
     }
     /// Add net to net_list
@@ -105,6 +124,7 @@ impl Context {
 pub mod common_field {
     use super::CommonField;
     use serde::{Deserialize, Serialize};
+    use std::net::SocketAddr;
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct ProcessInfo {
@@ -113,5 +133,12 @@ pub mod common_field {
 
     impl CommonField for ProcessInfo {
         const KEY: &'static str = "process_info";
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct OriginSocketAddr(pub SocketAddr);
+
+    impl CommonField for OriginSocketAddr {
+        const KEY: &'static str = "origin_socket_addr";
     }
 }
