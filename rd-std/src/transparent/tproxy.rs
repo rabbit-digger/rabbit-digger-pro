@@ -3,7 +3,7 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use super::socket::{create_tcp_listener, TransparentUdp};
-use crate::builtin::local::CompatTcp;
+use crate::{builtin::local::CompatTcp, util::connect_tcp};
 use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
@@ -11,7 +11,6 @@ use rd_interface::{
     error::map_other,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
-    util::connect_tcp,
     Address, Context, Error, IServer, IntoAddress, IntoDyn, Net, Result,
 };
 use serde::Deserialize;

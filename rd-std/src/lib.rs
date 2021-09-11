@@ -7,6 +7,7 @@ pub mod mixed;
 pub mod rule;
 pub mod socks5;
 pub mod transparent;
+pub mod util;
 
 pub fn init(registry: &mut Registry) -> Result<()> {
     builtin::init(registry)?;

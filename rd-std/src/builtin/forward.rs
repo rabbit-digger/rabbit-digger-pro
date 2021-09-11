@@ -1,8 +1,9 @@
 use std::net::SocketAddr;
 
+use crate::util::connect_tcp;
 use rd_interface::{
-    async_trait, prelude::*, registry::ServerFactory, util::connect_tcp, Address, Arc, Context,
-    IServer, Net, Result, TcpListener, TcpStream,
+    async_trait, prelude::*, registry::ServerFactory, Address, Arc, Context, IServer, Net, Result,
+    TcpListener, TcpStream,
 };
 
 #[rd_config]

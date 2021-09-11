@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use rabbit_digger::{config::Config, rabbit_digger::RabbitDiggerBuilder};
+use rabbit_digger::{config::Config, RabbitDiggerBuilder};
 use structopt::StructOpt;
 use tokio::fs::read_to_string;
 
