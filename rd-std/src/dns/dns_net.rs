@@ -2,7 +2,8 @@ use std::net::SocketAddr;
 
 use super::service::ReverseLookup;
 use rd_interface::{
-    async_trait, Address, Context, INet, IUdpSocket, IntoDyn, Net, Result, UdpSocket,
+    async_trait, context::common_field::OriginSocketAddr, Address, Context, INet, IUdpSocket,
+    IntoDyn, Net, Result, UdpSocket,
 };
 
 pub struct DNSNet {
@@ -17,13 +18,15 @@ impl DNSNet {
             rl: ReverseLookup::new(),
         }
     }
-    fn reverse_lookup(&self, addr: &Address) -> Address {
+    fn reverse_lookup(&self, ctx: &mut Context, addr: &Address) -> Address {
         match addr {
             Address::SocketAddr(sa) => self
                 .rl
                 .reverse_lookup(sa.ip())
                 .map(|name| {
                     let domain = Address::Domain(name, sa.port());
+                    ctx.insert_common(OriginSocketAddr(*sa))
+                        .expect("Failed to insert origin socketaddr");
                     tracing::trace!(?domain, "recovered domain");
                     domain
                 })
@@ -40,7 +43,8 @@ impl INet for DNSNet {
         ctx: &mut Context,
         addr: &Address,
     ) -> Result<rd_interface::TcpStream> {
-        self.net.tcp_connect(ctx, &self.reverse_lookup(addr)).await
+        let addr = &self.reverse_lookup(ctx, addr);
+        self.net.tcp_connect(ctx, addr).await
     }
 
     async fn tcp_bind(
@@ -52,7 +56,7 @@ impl INet for DNSNet {
     }
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        let udp = self.net.udp_bind(ctx, &self.reverse_lookup(addr)).await?;
+        let udp = self.net.udp_bind(ctx, addr).await?;
         Ok(MitmUdp(udp, self.rl.clone()).into_dyn())
     }
 }
