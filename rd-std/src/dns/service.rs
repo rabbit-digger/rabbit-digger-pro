@@ -14,7 +14,7 @@ impl ReverseLookup {
         ReverseLookup {
             records: Arc::new(Mutex::new(LruCache::with_expiry_duration_and_capacity(
                 Duration::from_secs(10 * 60),
-                1024,
+                128,
             ))),
         }
     }

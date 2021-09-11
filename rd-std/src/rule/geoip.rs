@@ -71,7 +71,7 @@ impl Matcher for GeoIpMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rd_interface::Context;
+    use rd_interface::{Address, Context};
 
     #[tokio::test]
     async fn test_cn() {

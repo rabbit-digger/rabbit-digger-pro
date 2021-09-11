@@ -121,7 +121,7 @@ pub struct RuleNetConfig {
 }
 
 fn default_lru_cache_size() -> usize {
-    128
+    32
 }
 
 impl matcher::Matcher for Matcher {
