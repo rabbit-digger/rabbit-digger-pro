@@ -6,11 +6,20 @@ use serde::Serialize;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
+pub struct NewTcp {
+    pub addr: Address,
+    pub net_list: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub enum EventType {
-    NewTcp(Address),
+    NewTcp(NewTcp),
+    NewUdp(Address),
     CloseConnection,
     Outbound(usize),
     Inbound(usize),
+    UdpOutbound(Address, usize),
+    UdpInbound(Address, usize),
 }
 
 #[derive(Debug, Serialize)]

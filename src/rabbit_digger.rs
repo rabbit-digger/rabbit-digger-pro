@@ -431,6 +431,7 @@ async fn build_server(
                 .clone()
                 .into_dyn();
             let net = RunningServerNet::new(
+                name.clone(),
                 net.get(&i.net)
                     .ok_or_else(|| {
                         anyhow!("Net {} is not loaded. Required by {:?}", &i.net, &name)

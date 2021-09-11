@@ -1,6 +1,6 @@
 use crate::Value;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, fmt, net::SocketAddr};
+use std::{collections::HashMap, fmt, mem::replace, net::SocketAddr};
 use thiserror::Error;
 
 /// Context error
@@ -31,14 +31,11 @@ pub struct Context {
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("Context");
-        if self.source_address.is_some() {
-            s.field("source_address", &self.source_address);
+        if let Some(v) = &self.source_address {
+            s.field("source_address", v);
         }
         for (key, value) in &self.data {
             s.field(key, value);
-        }
-        if self.net_list.len() > 0 {
-            s.field("net_list", &self.net_list);
         }
         s.finish()
     }
@@ -117,6 +114,10 @@ impl Context {
     /// Get net_list
     pub fn net_list(&self) -> &Vec<String> {
         &self.net_list
+    }
+    /// Take net_list
+    pub fn take_net_list(&mut self) -> Vec<String> {
+        replace(&mut self.net_list, Vec::new())
     }
 }
 

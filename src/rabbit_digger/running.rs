@@ -8,8 +8,8 @@ use std::{
 };
 
 use rd_interface::{
-    async_trait, Address, Arc, AsyncRead, AsyncWrite, Context, INet, IntoDyn, Net, ReadBuf, Result,
-    TcpListener, TcpStream, UdpSocket, Value,
+    async_trait, Address, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net,
+    ReadBuf, Result, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
     sync::{RwLock, Semaphore},
@@ -21,7 +21,7 @@ use crate::Registry;
 
 use super::{
     connection::{Connection, ConnectionConfig},
-    event::EventType,
+    event::{EventType, NewTcp},
 };
 
 #[derive(Clone)]
@@ -59,11 +59,13 @@ impl INet for RunningNet {
 
     #[instrument(err)]
     async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
+        ctx.append_net(&self.name);
         self.inner.read().await.tcp_bind(ctx, addr).await
     }
 
     #[instrument(err)]
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
+        ctx.append_net(&self.name);
         self.inner.read().await.udp_bind(ctx, addr).await
     }
 
@@ -74,13 +76,18 @@ impl INet for RunningNet {
 }
 
 pub struct RunningServerNet {
+    server_name: String,
     net: Net,
     config: ConnectionConfig,
 }
 
 impl RunningServerNet {
-    pub fn new(net: Net, config: ConnectionConfig) -> RunningServerNet {
-        RunningServerNet { net, config }
+    pub fn new(server_name: String, net: Net, config: ConnectionConfig) -> RunningServerNet {
+        RunningServerNet {
+            server_name,
+            net,
+            config,
+        }
     }
 }
 
@@ -92,15 +99,19 @@ impl INet for RunningServerNet {
         ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> rd_interface::Result<TcpStream> {
-        let src = ctx
-            .get_source_addr()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+        ctx.append_net(self.server_name.clone());
 
         let tcp = self.net.tcp_connect(ctx, &addr).await?;
 
-        tracing::info!("{:?} {} -> {}", &ctx.net_list(), &src, &addr);
-        let tcp = WrapTcpStream::new(tcp, self.config.clone(), addr.clone());
+        tracing::info!(target: "rabbit_digger", "Connected");
+        let tcp = WrapTcpStream::new(
+            tcp,
+            self.config.clone(),
+            NewTcp {
+                addr: addr.clone(),
+                net_list: ctx.take_net_list(),
+            },
+        );
         Ok(tcp.into_dyn())
     }
 
@@ -111,6 +122,8 @@ impl INet for RunningServerNet {
         ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> rd_interface::Result<TcpListener> {
+        ctx.append_net(self.server_name.clone());
+
         self.net.tcp_bind(ctx, addr).await
     }
 
@@ -121,12 +134,52 @@ impl INet for RunningServerNet {
         ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> rd_interface::Result<UdpSocket> {
-        self.net.udp_bind(ctx, addr).await
+        ctx.append_net(self.server_name.clone());
+
+        let udp = WrapUdpSocket::new(
+            self.net.udp_bind(ctx, addr).await?,
+            self.config.clone(),
+            addr.clone(),
+        );
+        Ok(udp.into_dyn())
     }
 
     #[instrument(err, skip(self))]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         self.net.lookup_host(addr).await
+    }
+}
+
+pub struct WrapUdpSocket {
+    inner: UdpSocket,
+    conn: Connection,
+}
+
+impl WrapUdpSocket {
+    pub fn new(inner: UdpSocket, config: ConnectionConfig, addr: Address) -> WrapUdpSocket {
+        WrapUdpSocket {
+            inner,
+            conn: Connection::new(config, EventType::NewUdp(addr)),
+        }
+    }
+}
+
+#[async_trait]
+impl IUdpSocket for WrapUdpSocket {
+    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        let (size, addr) = self.inner.recv_from(buf).await?;
+        self.conn.send(EventType::UdpInbound(addr.into(), size));
+        Ok((size, addr))
+    }
+
+    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
+        self.conn
+            .send(EventType::UdpOutbound(addr.clone(), buf.len()));
+        self.inner.send_to(buf, addr).await
+    }
+
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        self.inner.local_addr().await
     }
 }
 
@@ -136,10 +189,10 @@ pub struct WrapTcpStream {
 }
 
 impl WrapTcpStream {
-    pub fn new(inner: TcpStream, config: ConnectionConfig, addr: Address) -> WrapTcpStream {
+    pub fn new(inner: TcpStream, config: ConnectionConfig, new_tcp: NewTcp) -> WrapTcpStream {
         WrapTcpStream {
             inner,
-            conn: Connection::new(config, EventType::NewTcp(addr)),
+            conn: Connection::new(config, EventType::NewTcp(new_tcp)),
         }
     }
 }
