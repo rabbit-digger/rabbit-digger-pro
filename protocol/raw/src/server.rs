@@ -8,8 +8,9 @@ use futures::{future::ready, StreamExt};
 use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait, constant::UDP_BUFFER_SIZE, error::map_other, prelude::*, registry::ServerFactory,
-    util::connect_tcp, Address, Context, Error, IServer, IntoAddress, Net, Result,
+    Address, Context, Error, IServer, IntoAddress, Net, Result,
 };
+use rd_std::util::connect_tcp;
 use smoltcp::{
     phy::{Checksum, ChecksumCapabilities},
     wire::{

@@ -1,9 +1,8 @@
 use std::net::SocketAddr;
 
 use super::wrapper::{Cipher, CryptoStream};
-use rd_interface::{
-    async_trait, prelude::*, util::connect_tcp, Address, Arc, IServer, Net, Result, TcpStream,
-};
+use rd_interface::{async_trait, prelude::*, Address, Arc, IServer, Net, Result, TcpStream};
+use rd_std::util::connect_tcp;
 use shadowsocks::{config::ServerType, context::Context, ServerConfig};
 use socks5_protocol::Address as S5Addr;
 

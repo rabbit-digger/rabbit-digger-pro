@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.4" }
+rd-std = { path = "../../rabbit-digger/rd-std/", version = "0.1" }
 # rd-interface = "0.3"
 shadowsocks = { version = "1.10.3", features = [ "stream-cipher", "aead-cipher-extra" ] }
 serde = "1.0"

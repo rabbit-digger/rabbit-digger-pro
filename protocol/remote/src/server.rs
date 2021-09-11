@@ -2,9 +2,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::protocol::{Channel, CommandRequest, CommandResponse, Protocol};
 use dashmap::DashMap;
-use rd_interface::{
-    async_trait, util::connect_tcp, Arc, Context, Error, IServer, Net, Result, TcpStream,
-};
+use rd_interface::{async_trait, Arc, Context, Error, IServer, Net, Result, TcpStream};
+use rd_std::util::connect_tcp;
 
 #[derive(Clone)]
 struct Map(Arc<(DashMap<u32, TcpStream>, AtomicU32)>);

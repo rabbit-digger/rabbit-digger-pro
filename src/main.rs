@@ -120,7 +120,7 @@ async fn real_main(args: Args) -> Result<()> {
 }
 
 #[paw::main]
-#[tokio::main]
+#[tokio::main(worker_threads = 2)]
 async fn main(args: Args) -> Result<()> {
     use tracing_subscriber::{layer::SubscriberExt, prelude::*, EnvFilter};
     if std::env::var_os("RUST_LOG").is_none() {
