@@ -183,7 +183,7 @@ impl IUdpSocket for WrapSSUdp {
 
     async fn recv_from(&self, recv_buf: &mut [u8]) -> rd_interface::Result<(usize, SocketAddr)> {
         // Waiting for response from server SERVER -> CLIENT
-        let (recv_n, target_addr) = self.socket.recv_from(recv_buf).await?;
+        let (recv_n, _target_addr) = self.socket.recv_from(recv_buf).await?;
         let (n, addr) = decrypt_payload(
             &self.context,
             self.method,
@@ -191,14 +191,6 @@ impl IUdpSocket for WrapSSUdp {
             &mut recv_buf[..recv_n],
         )
         .await?;
-
-        tracing::trace!(
-            "UDP server client receive from {}, addr {}, packet length {} bytes, payload length {} bytes",
-            target_addr,
-            addr,
-            recv_n,
-            n,
-        );
 
         Ok((
             n,
@@ -219,13 +211,6 @@ impl IUdpSocket for WrapSSUdp {
             &addr,
             payload,
             &mut send_buf,
-        );
-
-        tracing::trace!(
-            "UDP server client send to, addr {}, payload length {} bytes, packet length {} bytes",
-            addr,
-            payload.len(),
-            send_buf.len()
         );
 
         let send_len = self
