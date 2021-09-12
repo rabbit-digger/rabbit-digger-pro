@@ -53,10 +53,6 @@ impl Rule {
     }
     #[instrument(skip(self), err)]
     pub async fn get_rule(&self, ctx: &Context, target: &Address) -> Result<&RuleItem> {
-        let src = ctx
-            .get_source_addr()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
         let match_context = MatchContext::from_context_address(ctx, target)?;
 
         // hit cache
@@ -74,7 +70,7 @@ impl Rule {
             }
         }
 
-        tracing::trace!("{} -> {} not matched, reject", src, target);
+        tracing::trace!("Not matched, reject");
         Err(rd_interface::Error::IO(
             io::ErrorKind::ConnectionRefused.into(),
         ))
@@ -96,24 +92,12 @@ impl RuleNet {
 #[async_trait]
 impl INet for RuleNet {
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        let src = ctx
-            .get_source_addr()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-
-        let r = self
-            .rule
+        self.rule
             .get_rule(ctx, &addr)
             .await?
             .target
             .tcp_connect(ctx, addr)
-            .await;
-
-        if let Err(e) = &r {
-            tracing::error!("{} -> {} Failed to connect: {:?}", &src, addr, e);
-        }
-
-        r
+            .await
     }
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
