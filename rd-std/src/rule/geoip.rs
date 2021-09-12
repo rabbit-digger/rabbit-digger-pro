@@ -11,9 +11,9 @@ use tar::Archive;
 // Update this when blob is updated
 static GEOIP_TAR_GZ: &[u8] = include_bytes!("../../../blob/GeoLite2-Country_20210622.tar.gz");
 static MMDB_PATH: &str = "GeoLite2-Country_20210622/GeoLite2-Country.mmdb";
-static GEOIP_DB: OnceCell<maxminddb::Reader<Vec<u8>>> = OnceCell::new();
+static GEOIP_DB: OnceCell<maxminddb::Reader<Box<[u8]>>> = OnceCell::new();
 
-pub fn get_reader() -> &'static maxminddb::Reader<Vec<u8>> {
+pub fn get_reader() -> &'static maxminddb::Reader<Box<[u8]>> {
     // TODO: don't use expect
     GEOIP_DB.get_or_init(|| {
         let tar = GzDecoder::new(GEOIP_TAR_GZ);
@@ -26,6 +26,7 @@ pub fn get_reader() -> &'static maxminddb::Reader<Vec<u8>> {
         let mut mmdb_buf = Vec::new();
         mmdb.read_to_end(&mut mmdb_buf)
             .expect("Failed to read mmdb");
+        let mmdb_buf = mmdb_buf.into_boxed_slice();
         let reader =
             maxminddb::Reader::from_source(mmdb_buf).expect("Failed to read mmdb from source");
         reader
