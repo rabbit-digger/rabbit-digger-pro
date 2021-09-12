@@ -1,9 +1,9 @@
 use super::common::{pack_udp, parse_udp, sa2ra};
-use crate::util::connect_tcp;
+use crate::util::{connect_tcp, connect_udp};
 use parking_lot::RwLock;
 use rd_interface::{
-    async_trait, util::connect_udp, Address as RdAddr, Context, IServer, IUdpChannel, IntoDyn, Net,
-    Result, TcpStream, UdpSocket,
+    async_trait, Address as RdAddr, Context, IServer, IUdpChannel, IntoDyn, Net, Result, TcpStream,
+    UdpSocket,
 };
 use socks5_protocol::{
     Address, AuthMethod, AuthRequest, AuthResponse, Command, CommandReply, CommandRequest,
