@@ -9,6 +9,7 @@ use rabbit_digger::{
     },
     util::topological_sort,
 };
+use rd_interface::config::NetRef;
 use serde::Deserialize;
 use serde_json::{from_value, json, Value};
 
@@ -140,7 +141,7 @@ impl Clash {
         let item = match rule_type {
             "DOMAIN-SUFFIX" | "DOMAIN-KEYWORD" | "DOMAIN" => {
                 let domain = ps_next()?.to_string();
-                let target = self.get_target(ps_next()?)?.into();
+                let target = NetRef::new(self.get_target(ps_next()?)?.into());
                 let method = match rule_type {
                     "DOMAIN-SUFFIX" => DomainMatcherMethod::Suffix,
                     "DOMAIN-KEYWORD" => DomainMatcherMethod::Keyword,
@@ -154,7 +155,7 @@ impl Clash {
             }
             "IP-CIDR" | "IP-CIDR6" => {
                 let ip_cidr = ps_next()?.to_string();
-                let target = self.get_target(ps_next()?)?.into();
+                let target = NetRef::new(self.get_target(ps_next()?)?.into());
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::IpCidr(IpCidrMatcher {
@@ -163,7 +164,7 @@ impl Clash {
                 }
             }
             "MATCH" => {
-                let target = self.get_target(ps_next()?)?.into();
+                let target = NetRef::new(self.get_target(ps_next()?)?.into());
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::Any(AnyMatcher {}),
@@ -171,7 +172,7 @@ impl Clash {
             }
             "GEOIP" => {
                 let region = ps_next()?.to_string();
-                let target = self.get_target(ps_next()?)?.into();
+                let target = NetRef::new(self.get_target(ps_next()?)?.into());
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::GeoIp(GeoIpMatcher { country: region }),

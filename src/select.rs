@@ -21,8 +21,8 @@ impl SelectNet {
         }
         let index = config.selected.min(config.list.len() - 1);
         let net = &config.list[index];
-        tracing::trace!("selected net: {}", net.name());
-        let net = net.net();
+        tracing::trace!("selected net: {}", net.represent());
+        let net = (**net).clone();
         Ok(SelectNet(net))
     }
 }

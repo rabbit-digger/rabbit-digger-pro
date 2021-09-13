@@ -25,7 +25,7 @@ impl NetFactory for RemoteNet {
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        let protocol = get_protocol(config.net.net(), config.config)?;
+        let protocol = get_protocol((*config.net).clone(), config.config)?;
         Ok(RemoteNet::new(protocol))
     }
 }

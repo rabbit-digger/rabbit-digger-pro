@@ -25,7 +25,7 @@ pub struct ObfsNet {
 impl ObfsNet {
     pub fn new(config: ObfsNetConfig) -> Result<Self> {
         Ok(ObfsNet {
-            net: config.net.net(),
+            net: (*config.net).clone(),
             obfs: Arc::new(config.obfs_type),
         })
     }

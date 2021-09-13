@@ -29,7 +29,7 @@ impl TrojanNet {
 
         let password = hex::encode(Sha224::digest(config.password.as_bytes()));
         Ok(TrojanNet {
-            net: config.net.net(),
+            net: (*config.net).clone(),
             server,
             connector,
             password,
