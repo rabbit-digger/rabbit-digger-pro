@@ -1,10 +1,8 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait,
-    prelude::*,
-    registry::{NetFactory, NetRef},
-    Address, Context, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, config::NetRef, prelude::*, registry::NetFactory, Address, Context, INet, Net,
+    Result, TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct CombineNet {
@@ -56,10 +54,10 @@ impl NetFactory for CombineNet {
         }: Self::Config,
     ) -> Result<Self> {
         Ok(CombineNet {
-            tcp_connect: tcp_connect.net(),
-            tcp_bind: tcp_bind.net(),
-            udp_bind: udp_bind.net(),
-            lookup_host: lookup_host.net(),
+            tcp_connect: (*tcp_connect).clone(),
+            tcp_bind: (*tcp_bind).clone(),
+            udp_bind: (*udp_bind).clone(),
+            lookup_host: (*lookup_host).clone(),
         })
     }
 }

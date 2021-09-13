@@ -39,7 +39,7 @@ pub struct ResolveNet {
 impl ResolveNet {
     pub fn new(config: ResolveConfig) -> ResolveNet {
         let (ipv4, ipv6) = (config.ipv4, config.ipv6);
-        let resolve_net = config.resolve_net.net();
+        let resolve_net = (*config.resolve_net).clone();
 
         let resolver: Resolver = Arc::new(move |domain: String, port: u16| {
             let resolve_net = resolve_net.clone();

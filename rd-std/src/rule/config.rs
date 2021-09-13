@@ -2,9 +2,9 @@ use std::{fmt, str::FromStr};
 
 use super::matcher::{self, MatchContext};
 use rd_interface::{
+    config::NetRef,
     impl_empty_config,
     prelude::*,
-    registry::NetRef,
     schemars::{
         schema::{InstanceType, SchemaObject},
         JsonSchema,

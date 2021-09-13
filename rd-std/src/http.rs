@@ -32,7 +32,7 @@ impl NetFactory for HttpClient {
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        Ok(HttpClient::new(config.net.net(), config.server))
+        Ok(HttpClient::new((*config.net).clone(), config.server))
     }
 }
 

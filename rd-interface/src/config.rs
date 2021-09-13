@@ -1,4 +1,5 @@
-use crate::{self as rd_interface, Address};
+use crate::{self as rd_interface, Address, Net};
+use resolvable::{Resolvable, ResolvableSchema};
 use schemars::{
     schema::{InstanceType, Metadata, SchemaObject},
     JsonSchema,
@@ -7,10 +8,34 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 
-use crate::{
-    registry::{NetMap, NetRef},
-    Result,
-};
+use crate::{registry::NetMap, Result};
+
+mod resolvable;
+
+#[derive(Clone)]
+pub struct NetSchema;
+impl JsonSchema for NetSchema {
+    fn schema_name() -> String {
+        "NetRef".into()
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        gen.subschema_for::<String>()
+    }
+}
+
+impl ResolvableSchema for NetSchema {
+    type Represent = String;
+    type Value = Net;
+}
+
+pub type NetRef = Resolvable<NetSchema>;
+
+impl Default for NetRef {
+    fn default() -> Self {
+        NetRef::new("local".into())
+    }
+}
 
 pub trait Visitor {
     fn visit_net_ref(&mut self, _net_ref: &mut NetRef) -> Result<()> {
@@ -28,10 +53,10 @@ pub trait Config {
             fn visit_net_ref(&mut self, net_ref: &mut NetRef) -> Result<()> {
                 let net = self
                     .0
-                    .get(net_ref.name())
-                    .ok_or_else(|| crate::Error::NotFound(net_ref.name().to_string()))?
+                    .get(net_ref.represent())
+                    .ok_or_else(|| crate::Error::NotFound(net_ref.represent().to_string()))?
                     .clone();
-                net_ref.set_net(net);
+                net_ref.set_value(net);
                 Ok(())
             }
         }
@@ -46,7 +71,7 @@ pub trait Config {
 
         impl<'a> Visitor for GetDependencyVisitor<'a> {
             fn visit_net_ref(&mut self, net_ref: &mut NetRef) -> Result<()> {
-                self.0.insert(net_ref.name().to_string());
+                self.0.insert(net_ref.represent().to_string());
                 Ok(())
             }
         }
@@ -175,7 +200,7 @@ mod tests {
 
         let mut test: TestConfig = serde_json::from_str(r#"{ "net": ["test"] }"#).unwrap();
 
-        assert_eq!(test.net[0].name(), "test");
+        assert_eq!(test.net[0].represent(), "test");
 
         let mut net_map = NetMap::new();
         let noop = NotImplementedNet.into_dyn();

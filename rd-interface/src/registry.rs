@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 
-pub use self::net_ref::NetRef;
+pub use crate::config::NetRef;
 use crate::{config::Config, INet, IServer, IntoDyn, Net, Result, Server};
 pub use schemars::JsonSchema;
 use schemars::{schema::RootSchema, schema_for};
@@ -8,8 +8,6 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 pub type NetMap = BTreeMap<String, Net>;
-
-mod net_ref;
 
 pub struct Registry {
     pub net: BTreeMap<String, NetResolver>,

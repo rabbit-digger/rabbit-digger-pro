@@ -1,10 +1,8 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait,
-    prelude::*,
-    registry::{NetFactory, NetRef},
-    Address, Context, INet, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, config::NetRef, prelude::*, registry::NetFactory, Address, Context, INet, Result,
+    TcpListener, TcpStream, UdpSocket,
 };
 
 pub struct AliasNet(rd_interface::Net);
@@ -46,6 +44,6 @@ impl NetFactory for AliasNet {
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        Ok(AliasNet::new(config.net.net()))
+        Ok(AliasNet::new((*config.net).clone()))
     }
 }

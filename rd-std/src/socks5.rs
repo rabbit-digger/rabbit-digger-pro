@@ -33,7 +33,7 @@ impl NetFactory for Socks5Client {
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        Ok(Socks5Client::new(config.net.net(), config.server))
+        Ok(Socks5Client::new((*config.net).clone(), config.server))
     }
 }
 

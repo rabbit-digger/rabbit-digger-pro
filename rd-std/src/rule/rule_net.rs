@@ -41,8 +41,8 @@ impl Rule {
             .map(|config::RuleItem { target, matcher }| {
                 Ok(RuleItem {
                     matcher,
-                    target: target.net(),
-                    target_name: target.name().to_string(),
+                    target: (*target).clone(),
+                    target_name: target.represent().to_string(),
                 })
             })
             .collect::<Result<Vec<_>>>()?;

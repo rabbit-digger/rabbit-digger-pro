@@ -22,7 +22,7 @@ impl NetFactory for DNSNet {
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        Ok(DNSNet::new(config.net.net()))
+        Ok(DNSNet::new((*config.net).clone()))
     }
 }
 
