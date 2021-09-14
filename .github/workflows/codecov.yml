@@ -24,7 +24,7 @@ jobs:
           version: "0.18.0"
           args: --features tracing-subscriber,raw --workspace
       - name: Upload to codecov.io
-        uses: codecov/codecov-action@v1.0.2
+        uses: codecov/codecov-action@v2.1.0
         with:
           token: ${{secrets.CODECOV_TOKEN}}
       - name: Archive code coverage results
