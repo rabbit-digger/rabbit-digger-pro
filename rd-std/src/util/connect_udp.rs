@@ -1,7 +1,13 @@
-use rd_interface::{constant::UDP_BUFFER_SIZE, Result, UdpChannel, UdpSocket};
+use rd_interface::{constant::UDP_BUFFER_SIZE, Context, Result, UdpChannel, UdpSocket};
 use tokio::select;
+use tracing::instrument;
 
-pub async fn connect_udp(udp_channel: UdpChannel, udp: UdpSocket) -> Result<()> {
+#[instrument(err, skip(udp_channel, udp), fields(ctx = ?_ctx))]
+pub async fn connect_udp(
+    _ctx: &mut Context,
+    udp_channel: UdpChannel,
+    udp: UdpSocket,
+) -> Result<()> {
     let send = async {
         let mut buf = [0u8; UDP_BUFFER_SIZE];
         while let Ok((size, addr)) = udp_channel.recv_send_to(&mut buf).await {

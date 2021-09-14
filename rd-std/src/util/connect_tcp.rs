@@ -7,6 +7,7 @@ use std::{
 
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tracing::instrument;
 
 #[derive(Debug)]
 pub(super) struct CopyBuffer {
@@ -166,7 +167,12 @@ where
 }
 
 /// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
-pub async fn connect_tcp<A, B>(mut a: A, mut b: B) -> Result<(), std::io::Error>
+#[instrument(err, skip(a, b), fields(ctx = ?_ctx))]
+pub async fn connect_tcp<A, B>(
+    _ctx: &mut rd_interface::Context,
+    mut a: A,
+    mut b: B,
+) -> Result<(), std::io::Error>
 where
     A: AsyncRead + AsyncWrite + Unpin,
     B: AsyncRead + AsyncWrite + Unpin,

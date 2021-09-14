@@ -46,10 +46,9 @@ impl ForwardNet {
         net: Net,
         addr: SocketAddr,
     ) -> Result<()> {
-        let target = net
-            .tcp_connect(&mut Context::from_socketaddr(addr), &cfg.target)
-            .await?;
-        connect_tcp(socket, target).await?;
+        let ctx = &mut Context::from_socketaddr(addr);
+        let target = net.tcp_connect(ctx, &cfg.target).await?;
+        connect_tcp(ctx, socket, target).await?;
         Ok(())
     }
     pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {

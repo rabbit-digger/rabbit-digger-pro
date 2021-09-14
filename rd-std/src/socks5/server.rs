@@ -49,10 +49,8 @@ impl Socks5Server {
         match cmd_req.command {
             Command::Connect => {
                 let dst = sa2ra(cmd_req.address);
-                let out = match net
-                    .tcp_connect(&mut Context::from_socketaddr(addr), &dst)
-                    .await
-                {
+                let ctx = &mut Context::from_socketaddr(addr);
+                let out = match net.tcp_connect(ctx, &dst).await {
                     Ok(socket) => socket,
                     Err(e) => {
                         CommandResponse::error(e).write(&mut tx).await?;
@@ -67,7 +65,7 @@ impl Socks5Server {
 
                 let socket = rx.unsplit(tx.into_inner());
 
-                connect_tcp(out, socket).await?;
+                connect_tcp(ctx, out, socket).await?;
             }
             Command::UdpAssociate => {
                 let dst = match cmd_req.address {
@@ -81,10 +79,8 @@ impl Socks5Server {
                         return Ok(());
                     }
                 };
-                let out = match net
-                    .udp_bind(&mut Context::from_socketaddr(addr), &dst)
-                    .await
-                {
+                let ctx = &mut Context::from_socketaddr(addr);
+                let out = match net.udp_bind(ctx, &dst).await {
                     Ok(socket) => socket,
                     Err(e) => {
                         CommandResponse::error(e).write(&mut tx).await?;
@@ -117,7 +113,7 @@ impl Socks5Server {
                 let socket = rx.unsplit(tx.into_inner());
 
                 let udp_channel = Socks5UdpSocket(udp, socket, RwLock::new(None));
-                connect_udp(udp_channel.into_dyn(), out).await?;
+                connect_udp(ctx, udp_channel.into_dyn(), out).await?;
             }
             _ => {
                 return Ok(());

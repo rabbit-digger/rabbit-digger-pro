@@ -109,7 +109,7 @@ impl INet for RunningServerNet {
             self.config.clone(),
             NewTcp {
                 addr: addr.clone(),
-                net_list: ctx.take_net_list(),
+                net_list: ctx.net_list().clone(),
             },
         );
         Ok(tcp.into_dyn())
