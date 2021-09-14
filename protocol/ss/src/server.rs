@@ -68,16 +68,17 @@ impl SSServer {
             CryptoStream::from_stream(context, socket, cfg.cipher.into(), svr_cfg.key());
         let target = S5Addr::read(&mut socket).await.map_err(|e| e.to_io_err())?;
 
+        let ctx = &mut rd_interface::Context::from_socketaddr(addr);
         let target = net
             .tcp_connect(
-                &mut rd_interface::Context::from_socketaddr(addr),
+                ctx,
                 &match target {
                     S5Addr::Domain(d, p) => Address::Domain(d, p),
                     S5Addr::SocketAddr(s) => Address::SocketAddr(s),
                 },
             )
             .await?;
-        connect_tcp(socket, target).await?;
+        connect_tcp(ctx, socket, target).await?;
         Ok(())
     }
 }

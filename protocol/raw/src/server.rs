@@ -132,13 +132,11 @@ impl RawServer {
             if let Some(orig_addr) = orig_addr {
                 let net = self.net.clone();
                 spawn(async move {
+                    let ctx = &mut Context::from_socketaddr(addr);
                     let target = net
-                        .tcp_connect(
-                            &mut Context::from_socketaddr(addr),
-                            &SocketAddr::from(orig_addr).into_address()?,
-                        )
+                        .tcp_connect(ctx, &SocketAddr::from(orig_addr).into_address()?)
                         .await?;
-                    connect_tcp(tcp, target).await?;
+                    connect_tcp(ctx, tcp, target).await?;
                     Ok(()) as Result<()>
                 });
             }

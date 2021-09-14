@@ -44,8 +44,9 @@ async fn process_channel(mut channel: Channel, net: Net, map: Map) -> Result<()>
 
     match req {
         CommandRequest::TcpConnect { address } => {
-            let target = net.tcp_connect(&mut Context::new(), &address).await?;
-            connect_tcp(target, channel.into_inner()).await?;
+            let ctx = &mut Context::new();
+            let target = net.tcp_connect(ctx, &address).await?;
+            connect_tcp(ctx, target, channel.into_inner()).await?;
         }
         CommandRequest::TcpBind { address } => {
             let listener = net.tcp_bind(&mut Context::new(), &address).await?;
@@ -65,7 +66,7 @@ async fn process_channel(mut channel: Channel, net: Net, map: Map) -> Result<()>
             let target = map
                 .get(id)
                 .ok_or_else(|| Error::Other("ID is not found".into()))?;
-            connect_tcp(target, channel.into_inner()).await?;
+            connect_tcp(&mut Context::new(), target, channel.into_inner()).await?;
         }
     }
 

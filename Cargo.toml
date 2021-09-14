@@ -36,7 +36,7 @@ remote = { path = "./protocol/remote", optional = true }
 raw = { path = "./protocol/raw", optional = true }
 obfs = { path = "./protocol/obfs", optional = true }
 
-console-subscriber = { git = "https://github.com/tokio-rs/console", rev = "de34605fff39ec9a0656766da6bf724c8062010f", optional = true }
+console-subscriber = { git = "https://github.com/tokio-rs/console", rev = "7534b3463c6f74e26d4a6d88e24222808f4cf60c", optional = true }
 
 tracing-opentelemetry = { version = "0.15.0", optional = true }
 opentelemetry = { version = "0.16.0", features = ["rt-tokio"], optional = true }
