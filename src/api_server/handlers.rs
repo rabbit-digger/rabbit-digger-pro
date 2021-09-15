@@ -1,11 +1,17 @@
-use std::{convert::Infallible, path::PathBuf};
+use std::{convert::Infallible, error::Error, future::ready, path::PathBuf, time::Duration};
 
 use super::reject::{custom_reject, ApiError};
-use futures::{pin_mut, SinkExt, Stream, TryStreamExt};
+use futures::{pin_mut, SinkExt, Stream, StreamExt, TryStreamExt};
 use rabbit_digger::RabbitDigger;
+use rd_interface::Value;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::fs::{create_dir_all, read_to_string, remove_file, File};
-use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
+use tokio::{
+    fs::{create_dir_all, read_to_string, remove_file, File},
+    pin,
+    time::interval,
+};
+use tokio_stream::wrappers::{BroadcastStream, IntervalStream};
 use tokio_util::codec::{BytesCodec, FramedWrite};
 use warp::{
     path::Tail,
@@ -100,10 +106,14 @@ pub async fn delete_userdata(
     Ok(warp::reply::json(&json!({ "ok": true })))
 }
 
-async fn forward(
-    mut sub: impl Stream<Item = Result<Message, BroadcastStreamRecvError>> + Unpin,
+async fn forward<E>(
+    sub: impl Stream<Item = Result<Message, E>>,
     mut ws: WebSocket,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    E: Error + Send + Sync + 'static,
+{
+    pin!(sub);
     while let Some(item) = sub.try_next().await? {
         ws.send(item).await?;
     }
@@ -118,6 +128,54 @@ pub async fn ws_event(rd: RabbitDigger, ws: warp::ws::Ws) -> Result<impl warp::R
     });
     Ok(ws.on_upgrade(move |ws| async move {
         if let Err(e) = forward(sub, ws).await {
+            tracing::error!("WebSocket event error: {:?}", e)
+        }
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct ConnectionQuery {
+    #[serde(default)]
+    pub patch: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MaybePatch {
+    Full(Value),
+    Patch(json_patch::Patch),
+}
+
+pub async fn ws_conn(
+    rd: RabbitDigger,
+    query: ConnectionQuery,
+    ws: warp::ws::Ws,
+) -> Result<impl warp::Reply, Infallible> {
+    let patch_mode = query.patch;
+    let stream = IntervalStream::new(interval(Duration::from_secs(1)));
+    let stream = stream
+        .then(move |_| {
+            let rd = rd.clone();
+            async move { rd.connection(|c| serde_json::to_value(c)).await }
+        })
+        .scan(Option::<Value>::None, move |last, r| {
+            ready(Some(match (patch_mode, r) {
+                (true, Ok(x)) => {
+                    let r = if let Some(lv) = last {
+                        MaybePatch::Patch(json_patch::diff(lv, &x))
+                    } else {
+                        MaybePatch::Full(x.clone())
+                    };
+                    *last = Some(x);
+                    Ok(r)
+                }
+                (_, Ok(x)) => Ok(MaybePatch::Full(x)),
+                (_, Err(e)) => Err(e),
+            }))
+        })
+        .map_ok(|p| Message::text(serde_json::to_string(&p).unwrap()));
+    Ok(ws.on_upgrade(move |ws| async move {
+        if let Err(e) = forward(stream, ws).await {
             tracing::error!("WebSocket event error: {:?}", e)
         }
     }))
