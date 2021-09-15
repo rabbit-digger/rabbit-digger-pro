@@ -93,9 +93,17 @@ impl RunningServerNet {
     }
 }
 
+impl Debug for RunningServerNet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunningServerNet")
+            .field("server_name", &self.server_name)
+            .finish()
+    }
+}
+
 #[async_trait]
 impl INet for RunningServerNet {
-    #[instrument(err, skip(self))]
+    #[instrument(err)]
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
@@ -119,7 +127,7 @@ impl INet for RunningServerNet {
     }
 
     // TODO: wrap TcpListener
-    #[instrument(err, skip(self))]
+    #[instrument(err)]
     async fn tcp_bind(
         &self,
         ctx: &mut rd_interface::Context,
@@ -130,8 +138,7 @@ impl INet for RunningServerNet {
         self.net.tcp_bind(ctx, addr).await
     }
 
-    // TODO: wrap UdpSocket
-    #[instrument(err, skip(self))]
+    #[instrument(err)]
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
@@ -148,7 +155,7 @@ impl INet for RunningServerNet {
         Ok(udp.into_dyn())
     }
 
-    #[instrument(err, skip(self))]
+    #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         self.net.lookup_host(addr).await
     }
