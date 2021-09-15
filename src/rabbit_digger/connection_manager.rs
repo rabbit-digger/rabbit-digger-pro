@@ -14,6 +14,7 @@ fn ts(time: &SystemTime) -> u64 {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Protocol {
     Tcp,
     Udp,
