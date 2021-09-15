@@ -171,9 +171,19 @@ pub mod common_field {
     }
 
     #[derive(Debug, Deserialize, Serialize)]
-    pub struct OriginSocketAddr(pub SocketAddr);
+    pub struct DestDomain {
+        pub domain: String,
+        pub port: u16,
+    }
 
-    impl CommonField for OriginSocketAddr {
-        const KEY: &'static str = "origin_socket_addr";
+    impl CommonField for DestDomain {
+        const KEY: &'static str = "dest_domain";
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct DestSocketAddr(pub SocketAddr);
+
+    impl CommonField for DestSocketAddr {
+        const KEY: &'static str = "dest_socket_addr";
     }
 }

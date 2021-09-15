@@ -31,16 +31,16 @@ pub struct ConnectionInfo {
 }
 
 struct Inner {
-    conn: Mutex<HashMap<Uuid, ConnectionInfo>>,
+    conn: HashMap<Uuid, ConnectionInfo>,
 }
 
 impl Inner {
     fn new() -> Self {
         Inner {
-            conn: Mutex::new(HashMap::new()),
+            conn: HashMap::new(),
         }
     }
-    fn _input_event(&self, conn: &mut HashMap<Uuid, ConnectionInfo>, event: &Event) {
+    fn input_event(&mut self, event: &Event) {
         let Event {
             uuid,
             event_type,
@@ -50,7 +50,7 @@ impl Inner {
         let uuid = *uuid;
         match event_type {
             EventType::NewTcp(addr, ctx) => {
-                conn.insert(
+                self.conn.insert(
                     uuid,
                     ConnectionInfo {
                         protocol: Protocol::Tcp,
@@ -63,7 +63,7 @@ impl Inner {
                 );
             }
             EventType::NewUdp(addr, ctx) => {
-                conn.insert(
+                self.conn.insert(
                     uuid,
                     ConnectionInfo {
                         protocol: Protocol::Udp,
@@ -76,62 +76,58 @@ impl Inner {
                 );
             }
             EventType::Inbound(download) => {
-                if let Some(conn) = conn.get_mut(&uuid) {
+                if let Some(conn) = self.conn.get_mut(&uuid) {
                     conn.download += download;
                 }
             }
             EventType::Outbound(upload) => {
-                if let Some(conn) = conn.get_mut(&uuid) {
+                if let Some(conn) = self.conn.get_mut(&uuid) {
                     conn.upload += upload;
                 }
             }
             EventType::UdpInbound(_, download) => {
-                if let Some(conn) = conn.get_mut(&uuid) {
+                if let Some(conn) = self.conn.get_mut(&uuid) {
                     conn.download += download;
                 }
             }
             EventType::UdpOutbound(_, upload) => {
-                if let Some(conn) = conn.get_mut(&uuid) {
+                if let Some(conn) = self.conn.get_mut(&uuid) {
                     conn.upload += upload;
                 }
             }
             EventType::CloseConnection => {
-                conn.remove(&uuid);
+                self.conn.remove(&uuid);
             }
         };
     }
-    fn input_event(&self, event: &Event) {
-        self._input_event(&mut *self.conn.lock(), event)
-    }
-    fn input_events<'a>(&self, events: impl Iterator<Item = &'a Event>) {
-        let conn = &mut *self.conn.lock();
+    fn input_events<'a>(&mut self, events: impl Iterator<Item = &'a Event>) {
         for event in events {
-            self._input_event(conn, event);
+            self.input_event(event);
         }
     }
 }
 
 #[derive(Clone)]
 pub struct ConnectionManager {
-    inner: Arc<Inner>,
+    inner: Arc<Mutex<Inner>>,
 }
 
 impl ConnectionManager {
     pub fn new() -> Self {
-        let inner = Arc::new(Inner::new());
+        let inner = Arc::new(Mutex::new(Inner::new()));
         Self { inner }
     }
     pub fn input_event(&self, event: &Event) {
-        self.inner.input_event(event)
+        self.inner.lock().input_event(event)
     }
     pub fn input_events<'a>(&self, events: impl Iterator<Item = &'a Event>) {
-        self.inner.input_events(events)
+        self.inner.lock().input_events(events)
     }
     pub fn borrow_connection<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&HashMap<Uuid, ConnectionInfo>) -> R,
     {
-        let conn = &*self.inner.conn.lock();
+        let conn = &self.inner.lock().conn;
         f(conn)
     }
 }

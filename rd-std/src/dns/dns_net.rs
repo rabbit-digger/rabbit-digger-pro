@@ -2,10 +2,16 @@ use std::net::SocketAddr;
 
 use super::service::ReverseLookup;
 use rd_interface::{
-    async_trait, context::common_field::OriginSocketAddr, Address, Context, INet, IUdpSocket,
-    IntoDyn, Net, Result, UdpSocket,
+    async_trait, context::common_field::DestDomain, Address, Context, INet, IUdpSocket, IntoDyn,
+    Net, Result, UdpSocket,
 };
 
+/// This net is used for reverse lookup.
+///
+/// When a UDP packet recv from port 53, the DNS response will be recorded in this net.
+/// And the DNS response will be sent to the client.
+/// The tcp_connect to recorded IP will be recovered to domain name.
+/// If the domain name is in the cache, this net will add "DestDomain" to the context.
 pub struct DNSNet {
     net: Net,
     rl: ReverseLookup,
@@ -24,9 +30,12 @@ impl DNSNet {
                 .rl
                 .reverse_lookup(sa.ip())
                 .map(|name| {
-                    let domain = Address::Domain(name, sa.port());
-                    ctx.insert_common(OriginSocketAddr(*sa))
-                        .expect("Failed to insert origin socketaddr");
+                    let domain = Address::Domain(name.clone(), sa.port());
+                    ctx.insert_common(DestDomain {
+                        domain: name,
+                        port: sa.port(),
+                    })
+                    .expect("Failed to insert domain");
                     tracing::trace!(?domain, "recovered domain");
                     domain
                 })

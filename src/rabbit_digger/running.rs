@@ -8,8 +8,10 @@ use std::{
 };
 
 use rd_interface::{
-    async_trait, Address, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net,
-    ReadBuf, Result, TcpListener, TcpStream, UdpSocket, Value,
+    async_trait,
+    context::common_field::{DestDomain, DestSocketAddr},
+    Address, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net, ReadBuf, Result,
+    TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
     sync::{RwLock, Semaphore},
@@ -100,6 +102,14 @@ impl INet for RunningServerNet {
         addr: &Address,
     ) -> rd_interface::Result<TcpStream> {
         ctx.append_net(self.server_name.clone());
+        // prepare context
+        match addr {
+            Address::Domain(domain, port) => ctx.insert_common(DestDomain {
+                domain: domain.to_string(),
+                port: *port,
+            })?,
+            Address::SocketAddr(addr) => ctx.insert_common(DestSocketAddr(*addr))?,
+        };
 
         let tcp = self.net.tcp_connect(ctx, &addr).await?;
 
