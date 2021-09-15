@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, fmt, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
+    time::Duration,
+};
 
 use crate::{
     builtin::load_builtin,
@@ -21,13 +25,16 @@ use tokio::{
     sync::{broadcast, mpsc, RwLock},
     time::{sleep, timeout},
 };
+use uuid::Uuid;
 
 use self::{
     connection::ConnectionConfig,
+    connection_manager::ConnectionManager,
     event::{BatchEvent, Event},
 };
 
 mod connection;
+mod connection_manager;
 mod event;
 mod running;
 
@@ -68,6 +75,7 @@ struct Inner {
 
 #[derive(Clone)]
 pub struct RabbitDigger {
+    manager: ConnectionManager,
     inner: Arc<Inner>,
     plugin_loader: PluginLoader,
     sender: broadcast::Sender<BatchEvent>,
@@ -83,6 +91,7 @@ impl RabbitDigger {
     async fn recv_event(
         mut rx: mpsc::UnboundedReceiver<Event>,
         sender: broadcast::Sender<BatchEvent>,
+        conn_mgr: ConnectionManager,
     ) {
         loop {
             let e = match rx.recv().now_or_never() {
@@ -99,6 +108,7 @@ impl RabbitDigger {
             while let Some(Some(e)) = rx.recv().now_or_never() {
                 events.push(e);
             }
+            conn_mgr.input_events(events.iter());
 
             // Failed only when no receiver
             sender.send(Arc::new(events)).ok();
@@ -108,7 +118,13 @@ impl RabbitDigger {
     async fn new(plugin_loader: &PluginLoader) -> Result<RabbitDigger> {
         let (sender, _) = broadcast::channel(16);
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        tokio::spawn(Self::recv_event(event_receiver, sender.clone()));
+        let manager = ConnectionManager::new();
+
+        tokio::spawn(Self::recv_event(
+            event_receiver,
+            sender.clone(),
+            manager.clone(),
+        ));
 
         let inner = Inner {
             state: RwLock::new(State::WaitConfig),
@@ -118,6 +134,7 @@ impl RabbitDigger {
         Ok(RabbitDigger {
             inner: Arc::new(inner),
             plugin_loader: plugin_loader.clone(),
+            manager,
             sender,
         })
     }
@@ -184,6 +201,14 @@ impl RabbitDigger {
                 return Err(anyhow!("Not running"));
             }
         };
+    }
+
+    // get current config
+    pub async fn connection<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&HashMap<Uuid, connection_manager::ConnectionInfo>) -> R,
+    {
+        self.manager.borrow_connection(f)
     }
 
     // get state

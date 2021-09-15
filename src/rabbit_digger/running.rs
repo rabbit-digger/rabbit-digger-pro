@@ -21,7 +21,7 @@ use crate::Registry;
 
 use super::{
     connection::{Connection, ConnectionConfig},
-    event::{EventType, NewTcp},
+    event::EventType,
 };
 
 #[derive(Clone)]
@@ -104,14 +104,7 @@ impl INet for RunningServerNet {
         let tcp = self.net.tcp_connect(ctx, &addr).await?;
 
         tracing::info!(target: "rabbit_digger", "Connected");
-        let tcp = WrapTcpStream::new(
-            tcp,
-            self.config.clone(),
-            NewTcp {
-                addr: addr.clone(),
-                net_list: ctx.net_list().clone(),
-            },
-        );
+        let tcp = WrapTcpStream::new(tcp, self.config.clone(), addr.clone(), ctx);
         Ok(tcp.into_dyn())
     }
 
@@ -140,6 +133,7 @@ impl INet for RunningServerNet {
             self.net.udp_bind(ctx, addr).await?,
             self.config.clone(),
             addr.clone(),
+            ctx,
         );
         Ok(udp.into_dyn())
     }
@@ -156,10 +150,15 @@ pub struct WrapUdpSocket {
 }
 
 impl WrapUdpSocket {
-    pub fn new(inner: UdpSocket, config: ConnectionConfig, addr: Address) -> WrapUdpSocket {
+    pub fn new(
+        inner: UdpSocket,
+        config: ConnectionConfig,
+        addr: Address,
+        ctx: &Context,
+    ) -> WrapUdpSocket {
         WrapUdpSocket {
             inner,
-            conn: Connection::new(config, EventType::NewUdp(addr)),
+            conn: Connection::new(config, EventType::NewUdp(addr, ctx.to_value())),
         }
     }
 }
@@ -189,10 +188,15 @@ pub struct WrapTcpStream {
 }
 
 impl WrapTcpStream {
-    pub fn new(inner: TcpStream, config: ConnectionConfig, new_tcp: NewTcp) -> WrapTcpStream {
+    pub fn new(
+        inner: TcpStream,
+        config: ConnectionConfig,
+        addr: Address,
+        ctx: &Context,
+    ) -> WrapTcpStream {
         WrapTcpStream {
             inner,
-            conn: Connection::new(config, EventType::NewTcp(new_tcp)),
+            conn: Connection::new(config, EventType::NewTcp(addr, ctx.to_value())),
         }
     }
 }

@@ -1,20 +1,14 @@
 use std::time::SystemTime;
 
-use rd_interface::{Address, Arc};
+use rd_interface::{Address, Arc, Value};
 use serde::ser::Serializer;
 use serde::Serialize;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
-pub struct NewTcp {
-    pub addr: Address,
-    pub net_list: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
 pub enum EventType {
-    NewTcp(NewTcp),
-    NewUdp(Address),
+    NewTcp(Address, Value),
+    NewUdp(Address, Value),
     CloseConnection,
     Outbound(usize),
     Inbound(usize),

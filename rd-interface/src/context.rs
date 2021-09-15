@@ -1,6 +1,7 @@
 use crate::Value;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, fmt, mem::replace, net::SocketAddr};
+use serde_json::Map;
+use std::{collections::HashMap, fmt, iter::FromIterator, mem::replace, net::SocketAddr};
 use thiserror::Error;
 
 /// Context error
@@ -10,6 +11,8 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("item not exists")]
     NonExist,
+    #[error("Bad format")]
+    BadFormat,
 }
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -118,6 +121,37 @@ impl Context {
     /// Take net_list
     pub fn take_net_list(&mut self) -> Vec<String> {
         replace(&mut self.net_list, Vec::new())
+    }
+    /// to Value
+    pub fn to_value(&self) -> Value {
+        let mut map = Map::from_iter(self.data.clone().into_iter());
+        if let Some(v) = &self.source_address {
+            map.insert(
+                "source_address".to_string(),
+                serde_json::to_value(v).unwrap(),
+            );
+        }
+        map.insert(
+            "net_list".to_string(),
+            serde_json::to_value(&self.net_list).unwrap(),
+        );
+        Value::Object(map)
+    }
+    /// from Value
+    pub fn from_value(value: Value) -> Result<Self> {
+        let mut ctx = Context::new();
+        if let Value::Object(mut map) = value {
+            if let Some(net_list) = map.remove("net_list") {
+                ctx.net_list = serde_json::from_value(net_list)?;
+            }
+            if let Some(source_address) = map.remove("source_address") {
+                ctx.source_address = Some(serde_json::from_value(source_address)?);
+            }
+            ctx.data = HashMap::from_iter(map.into_iter());
+            Ok(ctx)
+        } else {
+            Err(Error::BadFormat)
+        }
     }
 }
 
