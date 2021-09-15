@@ -25,8 +25,6 @@ pub trait CommonField: DeserializeOwned + Serialize + 'static {
 /// during connecting.
 #[derive(Clone)]
 pub struct Context {
-    source_address: Option<SocketAddr>,
-
     data: HashMap<String, Value>,
     net_list: Vec<String>,
 }
@@ -34,9 +32,6 @@ pub struct Context {
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("Context");
-        if let Some(v) = &self.source_address {
-            s.field("source_address", v);
-        }
         for (key, value) in &self.data {
             s.field(key, value);
         }
@@ -54,18 +49,15 @@ impl Context {
     /// new a empty context
     pub fn new() -> Context {
         Context {
-            source_address: None,
             data: HashMap::new(),
             net_list: Vec::new(),
         }
     }
-    pub fn get_source_addr(&self) -> Option<SocketAddr> {
-        self.source_address
-    }
     /// new a context from socket addr
     pub fn from_socketaddr(addr: SocketAddr) -> Context {
         let mut ctx = Context::new();
-        ctx.source_address = Some(addr);
+        ctx.insert_common(common_field::SrcSocketAddr(addr))
+            .expect("Failed to insert src_socket_addr");
         ctx
     }
     /// Inserts a key-value pair into the context.
@@ -125,12 +117,6 @@ impl Context {
     /// to Value
     pub fn to_value(&self) -> Value {
         let mut map = Map::from_iter(self.data.clone().into_iter());
-        if let Some(v) = &self.source_address {
-            map.insert(
-                "source_address".to_string(),
-                serde_json::to_value(v).unwrap(),
-            );
-        }
         map.insert(
             "net_list".to_string(),
             serde_json::to_value(&self.net_list).unwrap(),
@@ -143,9 +129,6 @@ impl Context {
         if let Value::Object(mut map) = value {
             if let Some(net_list) = map.remove("net_list") {
                 ctx.net_list = serde_json::from_value(net_list)?;
-            }
-            if let Some(source_address) = map.remove("source_address") {
-                ctx.source_address = Some(serde_json::from_value(source_address)?);
             }
             ctx.data = HashMap::from_iter(map.into_iter());
             Ok(ctx)
@@ -185,5 +168,12 @@ pub mod common_field {
 
     impl CommonField for DestSocketAddr {
         const KEY: &'static str = "dest_socket_addr";
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct SrcSocketAddr(pub SocketAddr);
+
+    impl CommonField for SrcSocketAddr {
+        const KEY: &'static str = "src_socket_addr";
     }
 }
