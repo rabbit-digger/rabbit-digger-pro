@@ -40,6 +40,10 @@ pub async fn get_registry(rd: RabbitDigger) -> Result<impl warp::Reply, Infallib
     Ok(rd.registry(|r| warp::reply::json(&r)).await)
 }
 
+pub async fn get_connection(rd: RabbitDigger) -> Result<impl warp::Reply, Infallible> {
+    Ok(rd.connection(|c| warp::reply::json(&c)).await)
+}
+
 pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(warp::reply::json(
         &rd.state_str()

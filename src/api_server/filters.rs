@@ -26,6 +26,10 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and(warp::get())
         .and(with_rd(rd))
         .and_then(handlers::get_registry);
+    let get_connection = warp::path!("registry")
+        .and(warp::get())
+        .and(with_rd(rd))
+        .and_then(handlers::get_connection);
     let get_state = warp::path!("state")
         .and(warp::get())
         .and(with_rd(rd))
@@ -54,6 +58,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
                 get_config
                     .or(post_config)
                     .or(get_registry)
+                    .or(get_connection)
                     .or(get_state)
                     .or(get_userdata)
                     .or(put_userdata)
