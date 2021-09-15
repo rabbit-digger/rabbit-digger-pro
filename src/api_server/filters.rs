@@ -26,7 +26,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and(warp::get())
         .and(with_rd(rd))
         .and_then(handlers::get_registry);
-    let get_connection = warp::path!("registry")
+    let get_connection = warp::path!("connection")
         .and(warp::get())
         .and(with_rd(rd))
         .and_then(handlers::get_connection);
