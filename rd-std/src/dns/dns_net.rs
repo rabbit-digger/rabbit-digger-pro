@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 
 use super::service::ReverseLookup;
 use rd_interface::{
-    async_trait, context::common_field::DestDomain, Address, Context, INet, IUdpSocket, IntoDyn,
-    Net, Result, UdpSocket,
+    async_trait, context::common_field::DestDomain, Address, AddressDomain, Context, INet,
+    IUdpSocket, IntoDyn, Net, Result, UdpSocket,
 };
 
 /// This net is used for reverse lookup.
@@ -31,10 +31,10 @@ impl DNSNet {
                 .reverse_lookup(sa.ip())
                 .map(|name| {
                     let domain = Address::Domain(name.clone(), sa.port());
-                    ctx.insert_common(DestDomain {
+                    ctx.insert_common(DestDomain(AddressDomain {
                         domain: name,
                         port: sa.port(),
-                    })
+                    }))
                     .expect("Failed to insert domain");
                     tracing::trace!(?domain, "recovered domain");
                     domain

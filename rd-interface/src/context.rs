@@ -140,6 +140,8 @@ impl Context {
 
 /// Common context keys and types
 pub mod common_field {
+    use crate::address::AddressDomain;
+
     use super::CommonField;
     use serde::{Deserialize, Serialize};
     use std::net::SocketAddr;
@@ -153,11 +155,9 @@ pub mod common_field {
         const KEY: &'static str = "process_info";
     }
 
+    /// format: `domain:port`
     #[derive(Debug, Deserialize, Serialize)]
-    pub struct DestDomain {
-        pub domain: String,
-        pub port: u16,
-    }
+    pub struct DestDomain(pub AddressDomain);
 
     impl CommonField for DestDomain {
         const KEY: &'static str = "dest_domain";

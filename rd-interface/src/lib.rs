@@ -1,4 +1,4 @@
-pub use address::{Address, IntoAddress};
+pub use address::{Address, AddressDomain, IntoAddress};
 pub use context::Context;
 pub use error::{Error, ErrorContext, ErrorWithContext, Result, NOT_ENABLED, NOT_IMPLEMENTED};
 pub use interface::*;

@@ -1,7 +1,7 @@
 use futures::{future::BoxFuture, Future, FutureExt};
 use rd_interface::{
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, Result,
+    Address, AddressDomain, Result,
 };
 use std::{net::SocketAddr, pin, task};
 
@@ -42,7 +42,7 @@ pub(super) trait Matcher: Send + Sync {
 pub(super) struct MatchContext {
     address: Address,
     dest_socket_addr: Option<SocketAddr>,
-    dest_domain: Option<(String, u16)>,
+    dest_domain: Option<AddressDomain>,
 }
 
 impl MatchContext {
@@ -53,7 +53,7 @@ impl MatchContext {
         Ok(MatchContext {
             address: addr.clone(),
             dest_socket_addr: ctx.get_common::<DestSocketAddr>()?.map(|v| v.0),
-            dest_domain: ctx.get_common::<DestDomain>()?.map(|v| (v.domain, v.port)),
+            dest_domain: ctx.get_common::<DestDomain>()?.map(|v| v.0),
         })
     }
     pub fn address(&self) -> &Address {
@@ -62,7 +62,7 @@ impl MatchContext {
     pub fn dest_socket_addr(&self) -> &Option<SocketAddr> {
         &self.dest_socket_addr
     }
-    pub fn dest_domain(&self) -> &Option<(String, u16)> {
+    pub fn dest_domain(&self) -> &Option<AddressDomain> {
         &self.dest_domain
     }
     pub fn get_domain(&self) -> Option<(&String, &u16)> {
@@ -71,7 +71,7 @@ impl MatchContext {
             Address::SocketAddr(_) => {}
         };
         match self.dest_domain() {
-            Some((d, p)) => return Some((d, p)),
+            Some(AddressDomain { domain, port }) => return Some((domain, port)),
             None => {}
         };
 

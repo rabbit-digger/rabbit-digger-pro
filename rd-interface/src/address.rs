@@ -6,6 +6,61 @@ use std::{
     str::FromStr,
 };
 
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord)]
+pub struct AddressDomain {
+    pub domain: String,
+    pub port: u16,
+}
+
+impl From<AddressDomain> for Address {
+    fn from(AddressDomain { domain, port }: AddressDomain) -> Self {
+        Address::Domain(domain, port)
+    }
+}
+
+impl FromStr for AddressDomain {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let mut parts = s.rsplitn(2, ':');
+        let port: u16 = parts
+            .next()
+            .ok_or_else(no_addr)?
+            .parse()
+            .map_err(|_| no_addr())?;
+        let host = parts.next().ok_or_else(no_addr)?;
+        Ok(AddressDomain {
+            domain: host.to_string(),
+            port,
+        })
+    }
+}
+
+impl fmt::Display for AddressDomain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.domain, self.port)
+    }
+}
+
+impl<'de> de::Deserialize<'de> for AddressDomain {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        FromStr::from_str(&s).map_err(de::Error::custom)
+    }
+}
+
+impl ser::Serialize for AddressDomain {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_str(self)
+    }
+}
+
 /// Address can be IPv4, IPv6 address or a domain with port.
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord)]
 pub enum Address {
@@ -62,6 +117,15 @@ impl FromStr for Address {
 
     fn from_str(s: &str) -> Result<Self> {
         IntoAddress::into_address(s)
+    }
+}
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Address::Domain(domain, port) => write!(f, "{}:{}", domain, port),
+            Address::SocketAddr(s) => write!(f, "{}", s),
+        }
     }
 }
 
@@ -171,15 +235,6 @@ impl Address {
     }
 }
 
-impl fmt::Display for Address {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Address::Domain(domain, port) => write!(f, "{}:{}", domain, port),
-            Address::SocketAddr(s) => write!(f, "{}", s),
-        }
-    }
-}
-
 impl<'de> de::Deserialize<'de> for Address {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
@@ -220,6 +275,20 @@ mod tests {
         assert_eq!(
             Address::any_addr_port(&ipv6_addr),
             "[::]:0".into_address().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_address_domain_convert() {
+        let domain_addr = AddressDomain {
+            domain: DOMAIN.to_string(),
+            port: 1234,
+        };
+
+        assert_eq!(&domain_addr.to_string(), "example.com:1234");
+        assert_eq!(
+            "example.com:1234".parse::<AddressDomain>().unwrap(),
+            domain_addr
         );
     }
 
