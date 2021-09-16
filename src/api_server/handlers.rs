@@ -137,6 +137,8 @@ pub async fn ws_event(rd: RabbitDigger, ws: warp::ws::Ws) -> Result<impl warp::R
 pub struct ConnectionQuery {
     #[serde(default)]
     pub patch: bool,
+    #[serde(default)]
+    pub without_connections: bool,
 }
 
 #[derive(Serialize)]
@@ -151,12 +153,21 @@ pub async fn ws_conn(
     query: ConnectionQuery,
     ws: warp::ws::Ws,
 ) -> Result<impl warp::Reply, Infallible> {
-    let patch_mode = query.patch;
+    let ConnectionQuery {
+        patch: patch_mode,
+        without_connections,
+    } = query;
     let stream = IntervalStream::new(interval(Duration::from_secs(1)));
     let stream = stream
         .then(move |_| {
             let rd = rd.clone();
             async move { rd.connection(|c| serde_json::to_value(c)).await }
+        })
+        .map_ok(move |mut v| {
+            if let (Some(o), true) = (v.as_object_mut(), without_connections) {
+                o.remove("connections");
+            }
+            v
         })
         .scan(Option::<Value>::None, move |last, r| {
             ready(Some(match (patch_mode, r) {
