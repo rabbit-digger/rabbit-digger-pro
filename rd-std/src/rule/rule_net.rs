@@ -3,7 +3,6 @@ use crate::rule::matcher::MatchContext;
 use super::config;
 use super::matcher::Matcher;
 use super::udp::UdpRuleSocket;
-use std::io;
 
 use lru_time_cache::LruCache;
 use parking_lot::Mutex;
@@ -70,10 +69,8 @@ impl Rule {
             }
         }
 
-        tracing::trace!("Not matched, reject");
-        Err(rd_interface::Error::IO(
-            io::ErrorKind::ConnectionRefused.into(),
-        ))
+        tracing::trace!("Not matched");
+        Err(rd_interface::Error::NotMatched)
     }
 }
 

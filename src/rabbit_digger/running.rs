@@ -103,7 +103,7 @@ impl Debug for RunningServerNet {
 
 #[async_trait]
 impl INet for RunningServerNet {
-    #[instrument(err)]
+    #[instrument(err, skip(ctx))]
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
@@ -121,7 +121,7 @@ impl INet for RunningServerNet {
 
         let tcp = self.net.tcp_connect(ctx, &addr).await?;
 
-        tracing::info!(target: "rabbit_digger", "Connected");
+        tracing::info!(target: "rabbit_digger", ?ctx, "Connected");
         let tcp = WrapTcpStream::new(tcp, self.config.clone(), addr.clone(), ctx);
         Ok(tcp.into_dyn())
     }

@@ -33,6 +33,8 @@ impl ErrorWithContext {
 pub enum Error {
     #[error("IO error")]
     IO(#[from] io::Error),
+    #[error("Not matched")]
+    NotMatched,
     #[error("Not enabled in config")]
     NotEnabled,
     #[error("Not implemented")]
