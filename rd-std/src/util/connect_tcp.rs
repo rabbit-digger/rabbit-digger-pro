@@ -180,8 +180,8 @@ where
     CopyBidirectional {
         a: &mut a,
         b: &mut b,
-        a_to_b: TransferState::Running(CopyBuffer::new(4096)),
-        b_to_a: TransferState::Running(CopyBuffer::new(4096)),
+        a_to_b: TransferState::Running(CopyBuffer::new(8192)),
+        b_to_a: TransferState::Running(CopyBuffer::new(8192)),
     }
     .await
 }
