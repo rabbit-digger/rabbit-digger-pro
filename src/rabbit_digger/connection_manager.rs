@@ -26,15 +26,15 @@ pub struct ConnectionInfo {
     addr: Address,
     start_time: u64,
     ctx: Value,
-    upload: usize,
-    download: usize,
+    upload: u64,
+    download: u64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ConnectionState {
     connections: HashMap<Uuid, ConnectionInfo>,
-    total_upload: usize,
-    total_download: usize,
+    total_upload: u64,
+    total_download: u64,
 }
 
 impl ConnectionState {

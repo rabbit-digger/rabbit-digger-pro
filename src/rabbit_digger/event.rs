@@ -10,10 +10,10 @@ pub enum EventType {
     NewTcp(Address, Value),
     NewUdp(Address, Value),
     CloseConnection,
-    Outbound(usize),
-    Inbound(usize),
-    UdpOutbound(Address, usize),
-    UdpInbound(Address, usize),
+    Outbound(u64),
+    Inbound(u64),
+    UdpOutbound(Address, u64),
+    UdpInbound(Address, u64),
 }
 
 #[derive(Debug, Serialize)]

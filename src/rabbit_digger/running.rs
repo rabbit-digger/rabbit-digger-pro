@@ -184,13 +184,14 @@ impl WrapUdpSocket {
 impl IUdpSocket for WrapUdpSocket {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         let (size, addr) = self.inner.recv_from(buf).await?;
-        self.conn.send(EventType::UdpInbound(addr.into(), size));
+        self.conn
+            .send(EventType::UdpInbound(addr.into(), size as u64));
         Ok((size, addr))
     }
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
         self.conn
-            .send(EventType::UdpOutbound(addr.clone(), buf.len()));
+            .send(EventType::UdpOutbound(addr.clone(), buf.len() as u64));
         self.inner.send_to(buf, addr).await
     }
 
@@ -228,7 +229,7 @@ impl AsyncRead for WrapTcpStream {
         match Pin::new(&mut self.inner).poll_read(cx, buf) {
             Poll::Ready(Ok(())) => {
                 let s = buf.filled().len() - before;
-                self.conn.send(EventType::Inbound(s));
+                self.conn.send(EventType::Inbound(s as u64));
                 Ok(()).into()
             }
             r => r,
@@ -244,7 +245,7 @@ impl AsyncWrite for WrapTcpStream {
     ) -> Poll<io::Result<usize>> {
         match Pin::new(&mut self.inner).poll_write(cx, buf) {
             Poll::Ready(Ok(s)) => {
-                self.conn.send(EventType::Outbound(s));
+                self.conn.send(EventType::Outbound(s as u64));
                 Ok(s).into()
             }
             r => r,
