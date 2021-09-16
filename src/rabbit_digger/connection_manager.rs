@@ -30,14 +30,19 @@ pub struct ConnectionInfo {
     download: usize,
 }
 
-struct Inner {
-    conn: HashMap<Uuid, ConnectionInfo>,
+#[derive(Debug, Serialize)]
+pub struct ConnectionState {
+    connections: HashMap<Uuid, ConnectionInfo>,
+    total_upload: usize,
+    total_download: usize,
 }
 
-impl Inner {
+impl ConnectionState {
     fn new() -> Self {
-        Inner {
-            conn: HashMap::new(),
+        ConnectionState {
+            connections: HashMap::new(),
+            total_upload: 0,
+            total_download: 0,
         }
     }
     fn input_event(&mut self, event: &Event) {
@@ -50,7 +55,7 @@ impl Inner {
         let uuid = *uuid;
         match event_type {
             EventType::NewTcp(addr, ctx) => {
-                self.conn.insert(
+                self.connections.insert(
                     uuid,
                     ConnectionInfo {
                         protocol: Protocol::Tcp,
@@ -63,7 +68,7 @@ impl Inner {
                 );
             }
             EventType::NewUdp(addr, ctx) => {
-                self.conn.insert(
+                self.connections.insert(
                     uuid,
                     ConnectionInfo {
                         protocol: Protocol::Udp,
@@ -76,27 +81,31 @@ impl Inner {
                 );
             }
             EventType::Inbound(download) => {
-                if let Some(conn) = self.conn.get_mut(&uuid) {
+                if let Some(conn) = self.connections.get_mut(&uuid) {
                     conn.download += download;
+                    self.total_download += download;
                 }
             }
             EventType::Outbound(upload) => {
-                if let Some(conn) = self.conn.get_mut(&uuid) {
+                if let Some(conn) = self.connections.get_mut(&uuid) {
                     conn.upload += upload;
+                    self.total_upload += upload;
                 }
             }
             EventType::UdpInbound(_, download) => {
-                if let Some(conn) = self.conn.get_mut(&uuid) {
+                if let Some(conn) = self.connections.get_mut(&uuid) {
                     conn.download += download;
+                    self.total_download += download;
                 }
             }
             EventType::UdpOutbound(_, upload) => {
-                if let Some(conn) = self.conn.get_mut(&uuid) {
+                if let Some(conn) = self.connections.get_mut(&uuid) {
                     conn.upload += upload;
+                    self.total_upload += upload;
                 }
             }
             EventType::CloseConnection => {
-                self.conn.remove(&uuid);
+                self.connections.remove(&uuid);
             }
         };
     }
@@ -109,25 +118,25 @@ impl Inner {
 
 #[derive(Clone)]
 pub struct ConnectionManager {
-    inner: Arc<Mutex<Inner>>,
+    state: Arc<Mutex<ConnectionState>>,
 }
 
 impl ConnectionManager {
     pub fn new() -> Self {
-        let inner = Arc::new(Mutex::new(Inner::new()));
-        Self { inner }
+        let inner = Arc::new(Mutex::new(ConnectionState::new()));
+        Self { state: inner }
     }
     pub fn input_event(&self, event: &Event) {
-        self.inner.lock().input_event(event)
+        self.state.lock().input_event(event)
     }
     pub fn input_events<'a>(&self, events: impl Iterator<Item = &'a Event>) {
-        self.inner.lock().input_events(events)
+        self.state.lock().input_events(events)
     }
-    pub fn borrow_connection<F, R>(&self, f: F) -> R
+    pub fn borrow_state<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&HashMap<Uuid, ConnectionInfo>) -> R,
+        F: FnOnce(&ConnectionState) -> R,
     {
-        let conn = &self.inner.lock().conn;
+        let conn = &self.state.lock();
         f(conn)
     }
 }

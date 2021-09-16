@@ -1,8 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt,
-    time::Duration,
-};
+use std::{collections::BTreeMap, fmt, time::Duration};
 
 use crate::{
     builtin::load_builtin,
@@ -25,11 +21,10 @@ use tokio::{
     sync::{broadcast, mpsc, RwLock},
     time::{sleep, timeout},
 };
-use uuid::Uuid;
 
 use self::{
     connection::ConnectionConfig,
-    connection_manager::ConnectionManager,
+    connection_manager::{ConnectionManager, ConnectionState},
     event::{BatchEvent, Event},
 };
 
@@ -203,12 +198,12 @@ impl RabbitDigger {
         };
     }
 
-    // get current config
+    // get current connection state
     pub async fn connection<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&HashMap<Uuid, connection_manager::ConnectionInfo>) -> R,
+        F: FnOnce(&ConnectionState) -> R,
     {
-        self.manager.borrow_connection(f)
+        self.manager.borrow_state(f)
     }
 
     // get state
