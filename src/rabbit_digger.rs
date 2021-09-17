@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     pin,
     sync::{broadcast, mpsc, RwLock},
+    task::unconstrained,
     time::{sleep, timeout},
 };
 
@@ -115,11 +116,11 @@ impl RabbitDigger {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
         let manager = ConnectionManager::new();
 
-        tokio::spawn(Self::recv_event(
+        tokio::spawn(unconstrained(Self::recv_event(
             event_receiver,
             sender.clone(),
             manager.clone(),
-        ));
+        )));
 
         let inner = Inner {
             state: RwLock::new(State::WaitConfig),
