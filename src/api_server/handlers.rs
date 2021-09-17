@@ -61,7 +61,6 @@ pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejec
 #[derive(Debug, Deserialize)]
 pub struct UpdateNet {
     net_name: String,
-    #[serde(flatten)]
     opt: Value,
 }
 pub async fn update_net(
