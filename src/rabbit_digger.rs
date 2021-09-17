@@ -341,11 +341,15 @@ impl RabbitDigger {
                 if let (Some(cfg), Some(running_net)) =
                     (config.net.get_mut(net_name), nets.get(net_name))
                 {
-                    cfg.opt = opt.clone();
-                    let net = build_net(net_name.to_string(), cfg.clone(), &registry, &|key| {
+                    let mut new_cfg = cfg.clone();
+                    new_cfg.opt = opt;
+
+                    let net = build_net(net_name, &new_cfg, &registry, &|key| {
                         nets.get(key).map(|i| i.net())
                     })?;
-                    running_net.update_opt(opt, net.net()).await;
+                    running_net.update_net(net.net()).await;
+
+                    *cfg = new_cfg;
                 }
                 return Ok(());
             }
@@ -412,8 +416,8 @@ impl<'a> fmt::Display for ServerList<'a> {
 }
 
 fn build_net(
-    name: String,
-    i: config::Net,
+    name: &str,
+    i: &config::Net,
     registry: &Registry,
     getter: NetGetter,
 ) -> Result<Arc<RunningNet>> {
@@ -423,7 +427,7 @@ fn build_net(
         "Failed to build net {:?}. Please check your config.",
         name
     ))?;
-    let net = RunningNet::new(name.to_string(), i.opt, net);
+    let net = RunningNet::new(name.to_string(), net);
     Ok(net)
 }
 
@@ -457,7 +461,7 @@ fn build_nets(
     .ok_or_else(|| anyhow!("There is cyclic dependencies in net",))?;
 
     for (name, i) in all_net {
-        let net = build_net(name.clone(), i, registry, &|key| {
+        let net = build_net(&name, &i, registry, &|key| {
             running_map.get(key).map(|i| i.net())
         })
         .context(format!("Loading net {}", name))?;

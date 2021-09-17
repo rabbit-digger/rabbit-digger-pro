@@ -79,7 +79,7 @@ pub struct Reserved {
     r#break: bool,
     #[serde(default, skip_serializing)]
     r#const: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     name: bool,
 }
 

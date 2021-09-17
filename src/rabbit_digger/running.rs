@@ -28,23 +28,18 @@ use super::{
 
 pub struct RunningNet {
     name: String,
-    opt: parking_lot::Mutex<Value>,
-    inner: RwLock<Net>,
+    net: RwLock<Net>,
 }
 
 impl RunningNet {
-    pub fn new(name: String, opt: Value, net: Net) -> Arc<RunningNet> {
+    pub fn new(name: String, net: Net) -> Arc<RunningNet> {
         Arc::new(RunningNet {
             name,
-            opt: parking_lot::Mutex::new(opt),
-            inner: RwLock::new(net),
+            net: RwLock::new(net),
         })
     }
-    pub async fn update_opt(&self, opt: Value, net: Net) {
-        if *self.opt.lock() != opt {
-            *self.opt.lock() = opt;
-            *self.inner.write().await = net;
-        }
+    pub async fn update_net(&self, net: Net) {
+        *self.net.write().await = net;
     }
     pub fn net(self: &Arc<Self>) -> Net {
         self.clone()
@@ -64,24 +59,24 @@ impl INet for RunningNet {
     #[instrument(err)]
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         ctx.append_net(&self.name);
-        self.inner.read().await.tcp_connect(ctx, addr).await
+        self.net.read().await.tcp_connect(ctx, addr).await
     }
 
     #[instrument(err)]
     async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
         ctx.append_net(&self.name);
-        self.inner.read().await.tcp_bind(ctx, addr).await
+        self.net.read().await.tcp_bind(ctx, addr).await
     }
 
     #[instrument(err)]
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         ctx.append_net(&self.name);
-        self.inner.read().await.udp_bind(ctx, addr).await
+        self.net.read().await.udp_bind(ctx, addr).await
     }
 
     #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.inner.read().await.lookup_host(addr).await
+        self.net.read().await.lookup_host(addr).await
     }
 }
 
