@@ -34,6 +34,11 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and(warp::get())
         .and(with_rd(rd))
         .and_then(handlers::get_state);
+    let update_net = warp::path!("net")
+        .and(warp::post())
+        .and(with_rd(rd))
+        .and(warp::body::json())
+        .and_then(handlers::update_net);
 
     let get_userdata = warp::path("userdata")
         .and(warp::get())
@@ -61,6 +66,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
                     .or(get_registry)
                     .or(get_connection)
                     .or(get_state)
+                    .or(update_net)
                     .or(get_userdata)
                     .or(put_userdata)
                     .or(delete_userdata),

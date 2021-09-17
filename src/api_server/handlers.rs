@@ -58,6 +58,21 @@ pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejec
     ))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateNet {
+    net_name: String,
+    #[serde(flatten)]
+    opt: Value,
+}
+pub async fn update_net(
+    rd: RabbitDigger,
+    UpdateNet { net_name, opt }: UpdateNet,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    rd.update_net(&net_name, opt).await.map_err(custom_reject)?;
+    let reply = warp::reply::json(&Value::Null);
+    Ok(reply)
+}
+
 pub async fn get_userdata(
     mut userdata: PathBuf,
     tail: Tail,
