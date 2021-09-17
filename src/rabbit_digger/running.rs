@@ -41,9 +41,8 @@ impl RunningNet {
         })
     }
     pub async fn update_opt(&self, opt: Value, net: Net) {
-        let mut my_opt = self.opt.lock();
-        if *my_opt != opt {
-            *my_opt = opt;
+        if *self.opt.lock() != opt {
+            *self.opt.lock() = opt;
             *self.inner.write().await = net;
         }
     }
