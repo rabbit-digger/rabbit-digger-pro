@@ -26,20 +26,29 @@ use super::{
     event::EventType,
 };
 
-#[derive(Clone)]
 pub struct RunningNet {
     name: String,
-    opt: Value,
-    inner: Arc<RwLock<Net>>,
+    opt: parking_lot::Mutex<Value>,
+    inner: RwLock<Net>,
 }
 
 impl RunningNet {
-    pub fn new(name: String, opt: Value, net: Net) -> RunningNet {
-        RunningNet {
+    pub fn new(name: String, opt: Value, net: Net) -> Arc<RunningNet> {
+        Arc::new(RunningNet {
             name,
-            opt,
-            inner: Arc::new(RwLock::new(net)),
+            opt: parking_lot::Mutex::new(opt),
+            inner: RwLock::new(net),
+        })
+    }
+    pub async fn update_opt(&self, opt: Value, net: Net) {
+        let mut my_opt = self.opt.lock();
+        if *my_opt != opt {
+            *my_opt = opt;
+            *self.inner.write().await = net;
         }
+    }
+    pub fn net(self: &Arc<Self>) -> Net {
+        self.clone()
     }
 }
 

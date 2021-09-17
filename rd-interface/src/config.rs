@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 
-use crate::{registry::NetMap, Result};
+use crate::{registry::NetGetter, Result};
 
 mod resolvable;
 
@@ -46,14 +46,12 @@ pub trait Visitor {
 pub trait Config {
     fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()>;
 
-    fn resolve_net(&mut self, nets: &NetMap) -> Result<()> {
-        struct ResolveNetVisitor<'a>(&'a NetMap);
+    fn resolve_net(&mut self, getter: NetGetter) -> Result<()> {
+        struct ResolveNetVisitor<'a>(NetGetter<'a>);
 
         impl<'a> Visitor for ResolveNetVisitor<'a> {
             fn visit_net_ref(&mut self, net_ref: &mut NetRef) -> Result<()> {
-                let net = self
-                    .0
-                    .get(net_ref.represent())
+                let net = self.0(net_ref.represent())
                     .ok_or_else(|| crate::Error::NotFound(net_ref.represent().to_string()))?
                     .clone();
                 net_ref.set_value(net);
@@ -61,7 +59,7 @@ pub trait Config {
             }
         }
 
-        self.visit(&mut ResolveNetVisitor(nets))?;
+        self.visit(&mut ResolveNetVisitor(getter))?;
 
         Ok(())
     }

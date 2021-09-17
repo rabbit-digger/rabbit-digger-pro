@@ -13,7 +13,9 @@ use futures::{
     stream::FuturesUnordered,
     FutureExt, Stream, StreamExt, TryStreamExt,
 };
-use rd_interface::{config::EmptyConfig, schemars::schema::RootSchema, Arc, IntoDyn, Net, Value};
+use rd_interface::{
+    config::EmptyConfig, registry::NetGetter, schemars::schema::RootSchema, Arc, IntoDyn, Value,
+};
 use rd_std::builtin::local::LocalNetConfig;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -44,9 +46,10 @@ pub struct RabbitDiggerBuilder {
 
 #[allow(dead_code)]
 struct Running {
-    config: config::Config,
+    config: RwLock<config::Config>,
     registry_schema: RegistrySchema,
-    nets: BTreeMap<String, RunningNet>,
+    registry: Registry,
+    nets: BTreeMap<String, Arc<RunningNet>>,
     servers: BTreeMap<String, ServerInfo>,
 }
 
@@ -191,7 +194,7 @@ impl RabbitDigger {
         let state = self.inner.state.read().await;
         match &*state {
             State::Running(Running { config, .. }) => {
-                return Ok(config.clone());
+                return Ok(config.read().await.clone());
             }
             _ => {
                 return Err(anyhow!("Not running"));
@@ -243,7 +246,7 @@ impl RabbitDigger {
         (self.plugin_loader)(&config, &mut registry).context("Failed to load plugin")?;
         tracing::debug!("Registry:\n{}", registry);
 
-        let nets = build_net(&registry, config.net.clone()).context("Failed to build net")?;
+        let nets = build_nets(&registry, config.net.clone()).context("Failed to build net")?;
         let servers = build_server(&nets, &config.server, &inner.conn_cfg)
             .await
             .context("Failed to build server")?;
@@ -259,8 +262,9 @@ impl RabbitDigger {
         }
 
         *state = State::Running(Running {
-            config,
+            config: RwLock::new(config),
             registry_schema: get_registry_schema(&registry),
+            registry,
             nets,
             servers,
         });
@@ -322,6 +326,34 @@ impl RabbitDigger {
 
         Ok(())
     }
+
+    // Update net when running.
+    pub async fn update_net(&self, net_name: &str, opt: Value) -> Result<()> {
+        let state = self.inner.state.read().await;
+        match &*state {
+            State::Running(Running {
+                config,
+                nets,
+                registry,
+                ..
+            }) => {
+                let mut config = config.write().await;
+                if let (Some(cfg), Some(running_net)) =
+                    (config.net.get_mut(net_name), nets.get(net_name))
+                {
+                    cfg.opt = opt.clone();
+                    let net = build_net(net_name.to_string(), cfg.clone(), &registry, &|key| {
+                        nets.get(key).map(|i| i.net())
+                    })?;
+                    running_net.update_opt(opt, net.net()).await;
+                }
+                return Ok(());
+            }
+            _ => {
+                return Err(anyhow!("Not running"));
+            }
+        };
+    }
 }
 
 impl Default for RabbitDiggerBuilder {
@@ -380,11 +412,26 @@ impl<'a> fmt::Display for ServerList<'a> {
 }
 
 fn build_net(
+    name: String,
+    i: config::Net,
+    registry: &Registry,
+    getter: NetGetter,
+) -> Result<Arc<RunningNet>> {
+    let net_item = registry.get_net(&i.net_type)?;
+
+    let net = net_item.build(getter, i.opt.clone()).context(format!(
+        "Failed to build net {:?}. Please check your config.",
+        name
+    ))?;
+    let net = RunningNet::new(name.to_string(), i.opt, net);
+    Ok(net)
+}
+
+fn build_nets(
     registry: &Registry,
     mut all_net: BTreeMap<String, config::Net>,
-) -> Result<BTreeMap<String, RunningNet>> {
-    let mut net_map: BTreeMap<String, Net> = BTreeMap::new();
-    let mut running_map: BTreeMap<String, RunningNet> = BTreeMap::new();
+) -> Result<BTreeMap<String, Arc<RunningNet>>> {
+    let mut running_map: BTreeMap<String, Arc<RunningNet>> = BTreeMap::new();
 
     if !all_net.contains_key("noop") {
         all_net.insert(
@@ -410,26 +457,18 @@ fn build_net(
     .ok_or_else(|| anyhow!("There is cyclic dependencies in net",))?;
 
     for (name, i) in all_net {
-        let load_net = || -> Result<()> {
-            let net_item = registry.get_net(&i.net_type)?;
-
-            let net = net_item.build(&net_map, i.opt.clone()).context(format!(
-                "Failed to build net {:?}. Please check your config.",
-                name
-            ))?;
-            let net = RunningNet::new(name.to_string(), i.opt, net);
-            net_map.insert(name.to_string(), net.clone().into_dyn());
-            running_map.insert(name.to_string(), net);
-            Ok(())
-        };
-        load_net().context(format!("Loading net {}", name))?;
+        let net = build_net(name.clone(), i, registry, &|key| {
+            running_map.get(key).map(|i| i.net())
+        })
+        .context(format!("Loading net {}", name))?;
+        running_map.insert(name.to_string(), net);
     }
 
     Ok(running_map)
 }
 
 async fn build_server(
-    net: &BTreeMap<String, RunningNet>,
+    net: &BTreeMap<String, Arc<RunningNet>>,
     config: &config::ConfigServer,
     conn_cfg: &ConnectionConfig,
 ) -> Result<BTreeMap<String, ServerInfo>> {
@@ -449,16 +488,14 @@ async fn build_server(
                         &name
                     )
                 })?
-                .clone()
-                .into_dyn();
+                .net();
             let net = RunningServerNet::new(
                 name.clone(),
                 net.get(&i.net)
                     .ok_or_else(|| {
                         anyhow!("Net {} is not loaded. Required by {:?}", &i.net, &name)
                     })?
-                    .clone()
-                    .into_dyn(),
+                    .net(),
                 conn_cfg.clone(),
             )
             .into_dyn();
