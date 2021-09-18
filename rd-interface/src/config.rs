@@ -187,7 +187,7 @@ impl JsonSchema for Address {
 mod tests {
     use super::*;
     use crate::{rd_config, IntoDyn, NotImplementedNet};
-    use std::sync::Arc;
+    use std::{collections::HashMap, sync::Arc};
 
     #[test]
     fn test_net_ref() {
@@ -200,11 +200,12 @@ mod tests {
 
         assert_eq!(test.net[0].represent(), "test");
 
-        let mut net_map = NetMap::new();
+        let mut net_map = HashMap::new();
         let noop = NotImplementedNet.into_dyn();
 
         net_map.insert("test".to_string(), noop.clone());
-        test.resolve_net(&net_map).unwrap();
+        test.resolve_net(&|key| net_map.get(key).map(|i| i.clone()))
+            .unwrap();
 
         assert_eq!(Arc::as_ptr(&test.net[0]), Arc::as_ptr(&noop))
     }
