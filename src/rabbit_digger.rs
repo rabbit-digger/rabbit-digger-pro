@@ -20,15 +20,16 @@ use rd_std::builtin::local::LocalNetConfig;
 use serde::{Deserialize, Serialize};
 use tokio::{
     pin,
-    sync::{broadcast, mpsc, RwLock},
+    sync::{mpsc, RwLock},
     task::unconstrained,
     time::{sleep, timeout},
 };
+use uuid::Uuid;
 
 use self::{
     connection::ConnectionConfig,
     connection_manager::{ConnectionManager, ConnectionState},
-    event::{BatchEvent, Event},
+    event::Event,
 };
 
 mod connection;
@@ -77,7 +78,6 @@ pub struct RabbitDigger {
     manager: ConnectionManager,
     inner: Arc<Inner>,
     plugin_loader: PluginLoader,
-    sender: broadcast::Sender<BatchEvent>,
 }
 
 impl fmt::Debug for RabbitDigger {
@@ -87,11 +87,7 @@ impl fmt::Debug for RabbitDigger {
 }
 
 impl RabbitDigger {
-    async fn recv_event(
-        mut rx: mpsc::UnboundedReceiver<Event>,
-        sender: broadcast::Sender<BatchEvent>,
-        conn_mgr: ConnectionManager,
-    ) {
+    async fn recv_event(mut rx: mpsc::UnboundedReceiver<Event>, conn_mgr: ConnectionManager) {
         loop {
             let e = match rx.recv().now_or_never() {
                 Some(Some(e)) => e,
@@ -107,21 +103,16 @@ impl RabbitDigger {
             while let Some(Some(e)) = rx.recv().now_or_never() {
                 events.push(e);
             }
-            conn_mgr.input_events(events.iter());
-
-            // Failed only when no receiver
-            sender.send(Arc::new(events)).ok();
+            conn_mgr.input_events(events.into_iter());
         }
         tracing::warn!("recv_event task exited");
     }
     async fn new(plugin_loader: &PluginLoader) -> Result<RabbitDigger> {
-        let (sender, _) = broadcast::channel(16);
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
         let manager = ConnectionManager::new();
 
         tokio::spawn(unconstrained(Self::recv_event(
             event_receiver,
-            sender.clone(),
             manager.clone(),
         )));
 
@@ -134,7 +125,6 @@ impl RabbitDigger {
             inner: Arc::new(inner),
             plugin_loader: plugin_loader.clone(),
             manager,
-            sender,
         })
     }
     pub async fn stop(&self) -> Result<()> {
@@ -226,11 +216,6 @@ impl RabbitDigger {
     {
         let state = self.inner.state.read().await;
         f(state.running().map(|i| &i.registry_schema))
-    }
-
-    // get event subscriber
-    pub async fn get_subscriber(&self) -> broadcast::Receiver<BatchEvent> {
-        self.sender.subscribe()
     }
 
     // start all server, all server run in background.
@@ -357,6 +342,10 @@ impl RabbitDigger {
                 return Err(anyhow!("Not running"));
             }
         };
+    }
+    // Stop the connection by uuid
+    pub async fn stop_connection(&self, uuid: Uuid) -> Result<bool> {
+        Ok(self.manager.stop_connection(uuid))
     }
 }
 

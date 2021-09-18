@@ -7,6 +7,7 @@ use std::{
     task::{self, Poll},
 };
 
+use futures::{future::poll_fn, FutureExt};
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
@@ -14,7 +15,8 @@ use rd_interface::{
     ReadBuf, Result, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
-    sync::{RwLock, Semaphore},
+    pin,
+    sync::{oneshot, RwLock, Semaphore},
     task::JoinHandle,
 };
 use tracing::instrument;
@@ -167,6 +169,7 @@ impl INet for RunningServerNet {
 pub struct WrapUdpSocket {
     inner: UdpSocket,
     conn: Connection,
+    stopped: parking_lot::Mutex<oneshot::Receiver<()>>,
 }
 
 impl WrapUdpSocket {
@@ -176,9 +179,11 @@ impl WrapUdpSocket {
         addr: Address,
         ctx: &Context,
     ) -> WrapUdpSocket {
+        let (sender, stopped) = oneshot::channel();
         WrapUdpSocket {
             inner,
-            conn: Connection::new(config, EventType::NewUdp(addr, ctx.to_value())),
+            conn: Connection::new(config, EventType::NewUdp(addr, ctx.to_value(), sender)),
+            stopped: parking_lot::Mutex::new(stopped),
         }
     }
 }
@@ -193,9 +198,27 @@ impl IUdpSocket for WrapUdpSocket {
     }
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        self.conn
-            .send(EventType::UdpOutbound(addr.clone(), buf.len() as u64));
-        self.inner.send_to(buf, addr).await
+        let WrapUdpSocket {
+            inner,
+            conn,
+            stopped,
+        } = self;
+        let fut = async {
+            conn.send(EventType::UdpOutbound(addr.clone(), buf.len() as u64));
+            inner.send_to(buf, addr).await
+        };
+        pin!(fut);
+        poll_fn(|cx| {
+            if let Poll::Ready(_) = stopped.lock().poll_unpin(cx) {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::ConnectionAborted,
+                    "Aborted by user",
+                )
+                .into()));
+            }
+            fut.poll_unpin(cx)
+        })
+        .await
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
@@ -206,6 +229,7 @@ impl IUdpSocket for WrapUdpSocket {
 pub struct WrapTcpStream {
     inner: TcpStream,
     conn: Connection,
+    stopped: oneshot::Receiver<()>,
 }
 
 impl WrapTcpStream {
@@ -215,9 +239,11 @@ impl WrapTcpStream {
         addr: Address,
         ctx: &Context,
     ) -> WrapTcpStream {
+        let (sender, stopped) = oneshot::channel();
         WrapTcpStream {
             inner,
-            conn: Connection::new(config, EventType::NewTcp(addr, ctx.to_value())),
+            conn: Connection::new(config, EventType::NewTcp(addr, ctx.to_value(), sender)),
+            stopped,
         }
     }
 }
@@ -246,6 +272,12 @@ impl AsyncWrite for WrapTcpStream {
         cx: &mut task::Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
+        if let Poll::Ready(_) = self.stopped.poll_unpin(cx) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "Aborted by user",
+            )));
+        }
         match Pin::new(&mut self.inner).poll_write(cx, buf) {
             Poll::Ready(Ok(s)) => {
                 self.conn.send(EventType::Outbound(s as u64));
