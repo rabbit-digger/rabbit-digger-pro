@@ -2,7 +2,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use rd_interface::{
-    registry::{NetMap, NetResolver, ServerResolver},
+    registry::{NetGetter, NetResolver, ServerResolver},
     Net, Server, Value,
 };
 use std::{collections::BTreeMap, fmt};
@@ -20,9 +20,9 @@ pub struct ServerItem {
 }
 
 impl NetItem {
-    pub fn build(&self, nets: &NetMap, config: Value) -> Result<Net> {
+    pub fn build(&self, getter: NetGetter, config: Value) -> Result<Net> {
         self.resolver
-            .build(nets, config)
+            .build(getter, config)
             .with_context(|| format!("Failed to build net: {}", self.id))
     }
 }

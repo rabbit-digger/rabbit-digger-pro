@@ -7,7 +7,7 @@ use schemars::{schema::RootSchema, schema_for};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-pub type NetMap = BTreeMap<String, Net>;
+pub type NetGetter<'a> = &'a dyn Fn(&str) -> Option<Net>;
 
 pub struct Registry {
     pub net: BTreeMap<String, NetResolver>,
@@ -54,7 +54,7 @@ pub trait NetFactory {
 }
 
 pub struct NetResolver {
-    build: fn(nets: &NetMap, cfg: Value) -> Result<Net>,
+    build: fn(getter: NetGetter, cfg: Value) -> Result<Net>,
     get_dependency: fn(cfg: Value) -> Result<Vec<String>>,
     schema: RootSchema,
 }
@@ -81,8 +81,8 @@ impl NetResolver {
             schema,
         }
     }
-    pub fn build(&self, nets: &NetMap, cfg: Value) -> Result<Net> {
-        (self.build)(nets, cfg)
+    pub fn build(&self, getter: NetGetter, cfg: Value) -> Result<Net> {
+        (self.build)(getter, cfg)
     }
     pub fn get_dependency(&self, cfg: Value) -> Result<Vec<String>> {
         (self.get_dependency)(cfg)

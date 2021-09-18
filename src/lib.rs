@@ -13,3 +13,4 @@ pub use rd_interface;
 pub use rd_std;
 
 pub use self::rabbit_digger::{PluginLoader, RabbitDigger, RabbitDiggerBuilder};
+pub use uuid::Uuid;

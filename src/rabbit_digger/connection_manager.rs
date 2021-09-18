@@ -6,8 +6,10 @@ use std::{
 use super::event::{Event, EventType};
 use atomic_shim::AtomicU64;
 use dashmap::DashMap;
+use parking_lot::Mutex;
 use rd_interface::{Address, Value};
 use serde::{Serialize, Serializer};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 fn ts(time: &SystemTime) -> u64 {
@@ -40,6 +42,8 @@ pub struct ConnectionInfo {
     upload: AtomicU64,
     #[serde(serialize_with = "serialize_atomicu64")]
     download: AtomicU64,
+    #[serde(skip)]
+    stop_sender: Mutex<Option<oneshot::Sender<()>>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,63 +63,64 @@ impl ConnectionState {
             total_download: AtomicU64::new(0),
         }
     }
-    fn input_event(&self, event: &Event) {
+    fn input_event(&self, event: Event) {
         let Event {
             uuid,
             event_type,
             time,
         } = event;
 
-        let uuid = *uuid;
         match event_type {
-            EventType::NewTcp(addr, ctx) => {
+            EventType::NewTcp(addr, ctx, stop_sender) => {
                 self.connections.insert(
                     uuid,
                     ConnectionInfo {
                         protocol: Protocol::Tcp,
                         addr: addr.clone(),
                         ctx: ctx.clone(),
-                        start_time: ts(time),
+                        start_time: ts(&time),
                         upload: AtomicU64::new(0),
                         download: AtomicU64::new(0),
+                        stop_sender: Mutex::new(Some(stop_sender)),
                     },
                 );
             }
-            EventType::NewUdp(addr, ctx) => {
+            EventType::NewUdp(addr, ctx, stop_sender) => {
                 self.connections.insert(
                     uuid,
                     ConnectionInfo {
                         protocol: Protocol::Udp,
                         addr: addr.clone(),
                         ctx: ctx.clone(),
-                        start_time: ts(time),
+                        start_time: ts(&time),
                         upload: AtomicU64::new(0),
                         download: AtomicU64::new(0),
+                        stop_sender: Mutex::new(Some(stop_sender)),
                     },
                 );
             }
             EventType::Inbound(download) => {
                 if let Some(conn) = self.connections.get(&uuid) {
-                    conn.download.fetch_add(*download, Ordering::Relaxed);
-                    self.total_download.fetch_add(*download, Ordering::Relaxed);
+                    conn.download.fetch_add(download, Ordering::Relaxed);
+                    self.total_download.fetch_add(download, Ordering::Relaxed);
                 }
             }
             EventType::Outbound(upload) => {
                 if let Some(conn) = self.connections.get(&uuid) {
-                    conn.upload.fetch_add(*upload, Ordering::Relaxed);
-                    self.total_upload.fetch_add(*upload, Ordering::Relaxed);
+                    conn.upload.fetch_add(upload, Ordering::Relaxed);
+                    self.total_upload.fetch_add(upload, Ordering::Relaxed);
                 }
             }
             EventType::UdpInbound(_, download) => {
                 if let Some(conn) = self.connections.get(&uuid) {
-                    conn.download.fetch_add(*download, Ordering::Relaxed);
-                    self.total_download.fetch_add(*download, Ordering::Relaxed);
+                    conn.download.fetch_add(download, Ordering::Relaxed);
+                    self.total_download.fetch_add(download, Ordering::Relaxed);
                 }
             }
             EventType::UdpOutbound(_, upload) => {
                 if let Some(conn) = self.connections.get(&uuid) {
-                    conn.upload.fetch_add(*upload, Ordering::Relaxed);
-                    self.total_upload.fetch_add(*upload, Ordering::Relaxed);
+                    conn.upload.fetch_add(upload, Ordering::Relaxed);
+                    self.total_upload.fetch_add(upload, Ordering::Relaxed);
                 }
             }
             EventType::CloseConnection => {
@@ -123,7 +128,7 @@ impl ConnectionState {
             }
         };
     }
-    fn input_events<'a>(&self, events: impl Iterator<Item = &'a Event>) {
+    fn input_events<'a>(&self, events: impl Iterator<Item = Event>) {
         for event in events {
             self.input_event(event);
         }
@@ -140,7 +145,7 @@ impl ConnectionManager {
         let inner = Arc::new(ConnectionState::new());
         Self { state: inner }
     }
-    pub fn input_events<'a>(&self, events: impl Iterator<Item = &'a Event>) {
+    pub fn input_events<'a>(&self, events: impl Iterator<Item = Event>) {
         self.state.input_events(events)
     }
     pub fn borrow_state<F, R>(&self, f: F) -> R
@@ -149,5 +154,13 @@ impl ConnectionManager {
     {
         let conn = &self.state;
         f(conn)
+    }
+    pub fn stop_connection(&self, uuid: Uuid) -> bool {
+        self.state
+            .connections
+            .get(&uuid)
+            .and_then(|conn| conn.stop_sender.lock().take())
+            .map(|sender| sender.send(()).is_ok())
+            .unwrap_or_default()
     }
 }
