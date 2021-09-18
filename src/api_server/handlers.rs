@@ -2,6 +2,7 @@ use std::{convert::Infallible, error::Error, future::ready, path::PathBuf, time:
 
 use super::reject::{custom_reject, ApiError};
 use futures::{pin_mut, SinkExt, Stream, StreamExt, TryStreamExt};
+use json_patch::Patch;
 use rabbit_digger::{RabbitDigger, Uuid};
 use rd_interface::Value;
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ use warp::{
     Buf,
 };
 
-use crate::config::ConfigExt;
+use crate::config::{ConfigManager, ImportSource};
 
 pub async fn get_config(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(warp::reply::json(
@@ -31,13 +32,15 @@ pub async fn get_config(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Reje
 
 pub async fn post_config(
     rd: RabbitDigger,
-    config: ConfigExt,
+    cfg_mgr: ConfigManager,
+    source: ImportSource,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let config = config.post_process().await.map_err(custom_reject)?;
-    let reply = warp::reply::json(&config);
+    let stream = cfg_mgr.config_stream(source).await.map_err(custom_reject)?;
+
+    let reply = warp::reply::json(&Value::Null);
 
     rd.stop().await.map_err(custom_reject)?;
-    rd.start(config).await.map_err(custom_reject)?;
+    rd.start_stream(stream).await.map_err(custom_reject)?;
 
     Ok(reply)
 }
@@ -61,13 +64,38 @@ pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejec
 #[derive(Debug, Deserialize)]
 pub struct UpdateNet {
     net_name: String,
-    opt: Value,
+    patch: Patch,
 }
 pub async fn update_net(
     rd: RabbitDigger,
-    UpdateNet { net_name, opt }: UpdateNet,
+    cfg_mgr: ConfigManager,
+    UpdateNet { net_name, patch }: UpdateNet,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    rd.update_net(&net_name, opt).await.map_err(custom_reject)?;
+    rd.update_net(&net_name, move |o| {
+        if let Err(e) = json_patch::patch(o, &patch) {
+            tracing::warn!("Patch failed: {:?}", e);
+        }
+    })
+    .await
+    .map_err(custom_reject)?;
+
+    let patch = rd
+        .get_config(|i| {
+            i.map(|(left, right)| {
+                let patch =
+                    json_patch::diff(&serde_json::to_value(left)?, &serde_json::to_value(right)?);
+                anyhow::Result::<(String, Patch)>::Ok((left.id.clone(), patch))
+            })
+        })
+        .await;
+    if let Some(Ok((id, patch))) = patch {
+        cfg_mgr
+            .select_storage()
+            .set(&id, &serde_json::to_string(&patch).map_err(custom_reject)?)
+            .await
+            .map_err(custom_reject)?;
+    }
+
     let reply = warp::reply::json(&Value::Null);
     Ok(reply)
 }

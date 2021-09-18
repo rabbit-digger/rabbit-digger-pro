@@ -1,5 +1,7 @@
 use std::{convert::Infallible, future, path::PathBuf};
 
+use crate::config::ConfigManager;
+
 use super::{handlers, reject::handle_rejection, reject::ApiError, Server};
 use rabbit_digger::RabbitDigger;
 use warp::{Filter, Rejection};
@@ -12,6 +14,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .userdata
         .or_else(|| dirs::config_dir().map(|d| d.join("rabbit-digger")));
     let rd = &server.rabbit_digger;
+    let cfg_mgr = &server.config_manager;
 
     let get_config = warp::path!("config")
         .and(warp::get())
@@ -20,6 +23,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     let post_config = warp::path!("config")
         .and(warp::post())
         .and(with_rd(rd))
+        .and(with_cfg_mgr(cfg_mgr))
         .and(warp::body::json())
         .and_then(handlers::post_config);
     let get_registry = warp::path!("registry")
@@ -37,6 +41,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     let update_net = warp::path!("net")
         .and(warp::post())
         .and(with_rd(rd))
+        .and(with_cfg_mgr(cfg_mgr))
         .and(warp::body::json())
         .and_then(handlers::update_net);
     let delete_conn = warp::path("connection")
@@ -118,6 +123,13 @@ fn with_rd(
 ) -> impl Filter<Extract = (RabbitDigger,), Error = Infallible> + Clone {
     let rd = rd.clone();
     warp::any().map(move || rd.clone())
+}
+
+fn with_cfg_mgr(
+    cfg_mgr: &ConfigManager,
+) -> impl Filter<Extract = (ConfigManager,), Error = Infallible> + Clone {
+    let cfg_mgr = cfg_mgr.clone();
+    warp::any().map(move || cfg_mgr.clone())
 }
 
 fn with_userdata(
