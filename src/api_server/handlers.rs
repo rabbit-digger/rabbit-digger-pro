@@ -2,7 +2,7 @@ use std::{convert::Infallible, error::Error, future::ready, path::PathBuf, time:
 
 use super::reject::{custom_reject, ApiError};
 use futures::{pin_mut, SinkExt, Stream, StreamExt, TryStreamExt};
-use rabbit_digger::RabbitDigger;
+use rabbit_digger::{RabbitDigger, Uuid};
 use rd_interface::Value;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -11,7 +11,7 @@ use tokio::{
     pin,
     time::interval,
 };
-use tokio_stream::wrappers::{BroadcastStream, IntervalStream};
+use tokio_stream::wrappers::IntervalStream;
 use tokio_util::codec::{BytesCodec, FramedWrite};
 use warp::{
     path::Tail,
@@ -70,6 +70,14 @@ pub async fn update_net(
     rd.update_net(&net_name, opt).await.map_err(custom_reject)?;
     let reply = warp::reply::json(&Value::Null);
     Ok(reply)
+}
+
+pub async fn delete_conn(
+    rd: RabbitDigger,
+    uuid: Uuid,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let ok = rd.stop_connection(uuid).await.map_err(custom_reject)?;
+    Ok(warp::reply::json(&ok))
 }
 
 pub async fn get_userdata(
@@ -132,19 +140,6 @@ where
         ws.send(item).await?;
     }
     Ok(())
-}
-
-pub async fn ws_event(rd: RabbitDigger, ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
-    let sub = BroadcastStream::new(rd.get_subscriber().await);
-    let sub = sub.map_ok(|i| {
-        let events = serde_json::to_string(&i).unwrap();
-        Message::text(events)
-    });
-    Ok(ws.on_upgrade(move |ws| async move {
-        if let Err(e) = forward(sub, ws).await {
-            tracing::error!("WebSocket event error: {:?}", e)
-        }
-    }))
 }
 
 #[derive(Deserialize)]

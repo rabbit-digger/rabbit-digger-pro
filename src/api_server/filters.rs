@@ -39,6 +39,11 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and(with_rd(rd))
         .and(warp::body::json())
         .and_then(handlers::update_net);
+    let delete_conn = warp::path("connection")
+        .and(warp::delete())
+        .and(with_rd(rd))
+        .and(warp::path::param())
+        .and_then(handlers::delete_conn);
 
     let get_userdata = warp::path("userdata")
         .and(warp::get())
@@ -58,8 +63,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and_then(handlers::delete_userdata);
 
     prefix.and(
-        ws_event(&server.rabbit_digger)
-            .or(ws_connection(&server.rabbit_digger))
+        ws_connection(&server.rabbit_digger)
             .or(at.and(
                 get_config
                     .or(post_config)
@@ -67,6 +71,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
                     .or(get_connection)
                     .or(get_state)
                     .or(update_net)
+                    .or(delete_conn)
                     .or(get_userdata)
                     .or(put_userdata)
                     .or(delete_userdata),
@@ -95,16 +100,6 @@ pub fn routes(
         .allow_methods(["GET", "POST", "PUT", "DELETE"]);
 
     api(server).or(forward).with(cors)
-}
-
-// Websocket /event
-pub fn ws_event(
-    rd: &RabbitDigger,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("event")
-        .and(with_rd(rd))
-        .and(warp::ws())
-        .and_then(handlers::ws_event)
 }
 
 // Websocket /connection
