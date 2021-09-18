@@ -191,21 +191,15 @@ impl WrapUdpSocket {
 #[async_trait]
 impl IUdpSocket for WrapUdpSocket {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        let (size, addr) = self.inner.recv_from(buf).await?;
-        self.conn
-            .send(EventType::UdpInbound(addr.into(), size as u64));
-        Ok((size, addr))
-    }
-
-    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
         let WrapUdpSocket {
             inner,
             conn,
             stopped,
         } = self;
         let fut = async {
-            conn.send(EventType::UdpOutbound(addr.clone(), buf.len() as u64));
-            inner.send_to(buf, addr).await
+            let (size, addr) = inner.recv_from(buf).await?;
+            conn.send(EventType::UdpInbound(addr.into(), size as u64));
+            Ok((size, addr))
         };
         pin!(fut);
         poll_fn(|cx| {
@@ -219,6 +213,12 @@ impl IUdpSocket for WrapUdpSocket {
             fut.poll_unpin(cx)
         })
         .await
+    }
+
+    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
+        self.conn
+            .send(EventType::UdpOutbound(addr.clone(), buf.len() as u64));
+        self.inner.send_to(buf, addr).await
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
@@ -254,6 +254,12 @@ impl AsyncRead for WrapTcpStream {
         cx: &mut task::Context<'_>,
         buf: &mut ReadBuf,
     ) -> Poll<io::Result<()>> {
+        if let Poll::Ready(_) = self.stopped.poll_unpin(cx) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "Aborted by user",
+            )));
+        }
         let before = buf.filled().len();
         match Pin::new(&mut self.inner).poll_read(cx, buf) {
             Poll::Ready(Ok(())) => {
@@ -272,12 +278,6 @@ impl AsyncWrite for WrapTcpStream {
         cx: &mut task::Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        if let Poll::Ready(_) = self.stopped.poll_unpin(cx) {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::ConnectionAborted,
-                "Aborted by user",
-            )));
-        }
         match Pin::new(&mut self.inner).poll_write(cx, buf) {
             Poll::Ready(Ok(s)) => {
                 self.conn.send(EventType::Outbound(s as u64));
