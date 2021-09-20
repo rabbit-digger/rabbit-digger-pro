@@ -47,6 +47,7 @@ pub struct RabbitDiggerBuilder {
 
 #[allow(dead_code)]
 struct Running {
+    origin_config: config::Config,
     config: RwLock<config::Config>,
     registry_schema: RegistrySchema,
     registry: Registry,
@@ -247,6 +248,7 @@ impl RabbitDigger {
         }
 
         *state = State::Running(Running {
+            origin_config: config.clone(),
             config: RwLock::new(config),
             registry_schema: get_registry_schema(&registry),
             registry,
@@ -313,7 +315,10 @@ impl RabbitDigger {
     }
 
     // Update net when running.
-    pub async fn update_net(&self, net_name: &str, opt: Value) -> Result<()> {
+    pub async fn update_net<F>(&self, net_name: &str, update: F) -> Result<()>
+    where
+        F: FnOnce(&mut Value),
+    {
         let state = self.inner.state.read().await;
         match &*state {
             State::Running(Running {
@@ -327,7 +332,7 @@ impl RabbitDigger {
                     (config.net.get_mut(net_name), nets.get(net_name))
                 {
                     let mut new_cfg = cfg.clone();
-                    new_cfg.opt = opt;
+                    update(&mut new_cfg.opt);
 
                     let net = build_net(net_name, &new_cfg, &registry, &|key| {
                         nets.get(key).map(|i| i.net())
@@ -343,6 +348,18 @@ impl RabbitDigger {
             }
         };
     }
+
+    pub async fn get_config<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<(&config::Config, &config::Config)>) -> R,
+    {
+        let state = self.inner.state.read().await;
+        match state.running() {
+            Some(i) => f(Some((&i.origin_config, &*i.config.read().await))),
+            None => f(None),
+        }
+    }
+
     // Stop the connection by uuid
     pub async fn stop_connection(&self, uuid: Uuid) -> Result<bool> {
         Ok(self.manager.stop_connection(uuid))
