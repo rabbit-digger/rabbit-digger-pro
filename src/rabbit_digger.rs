@@ -267,7 +267,7 @@ impl RabbitDigger {
     {
         futures::pin_mut!(config_stream);
 
-        let mut config = match timeout(Duration::from_secs(1), config_stream.try_next()).await {
+        let mut config = match timeout(Duration::from_secs(10), config_stream.try_next()).await {
             Ok(Ok(Some(cfg))) => cfg,
             Ok(Err(e)) => return Err(e.context("Failed to get first config.")),
             Err(_) | Ok(Ok(None)) => {
