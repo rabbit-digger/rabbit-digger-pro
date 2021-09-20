@@ -7,7 +7,6 @@ use rabbit_digger::{
         self as rule_config, AnyMatcher, DomainMatcher, DomainMatcherMethod, GeoIpMatcher, IpCidr,
         IpCidrMatcher, Matcher,
     },
-    util::{topological_sort, RootType},
 };
 use rd_interface::config::NetRef;
 use serde::Deserialize;
@@ -213,22 +212,20 @@ impl Clash {
         }
 
         if !self.disable_proxy_group {
-            let proxy_groups = topological_sort(
-                RootType::All,
-                clash_config
-                    .proxy_groups
-                    .into_iter()
-                    .map(|i| (i.name.to_string(), i))
-                    .collect(),
-                |_, i: &ProxyGroup| Ok(i.proxies.clone()) as Result<_>,
-            )?
-            .ok_or_else(|| anyhow!("There is cyclic dependencies in proxy_groups"))?;
+            for old_name in clash_config.proxy_groups.iter().map(|i| &i.name) {
+                let name = self.proxy_group_name(old_name);
+                self.name_map.insert(old_name.clone(), name.clone());
+            }
 
+            let proxy_groups = clash_config
+                .proxy_groups
+                .into_iter()
+                .map(|i| (i.name.to_string(), i))
+                .collect::<Vec<_>>();
             for (old_name, pg) in proxy_groups {
                 let name = self.proxy_group_name(&old_name);
                 match self.proxy_group_to_net(pg) {
                     Ok(pg) => {
-                        self.name_map.insert(old_name, name.clone());
                         config.net.insert(name, pg);
                     }
                     Err(e) => {
