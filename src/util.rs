@@ -1,27 +1,54 @@
-use std::{collections::BTreeMap, hash::Hash};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    hash::Hash,
+};
 
 use topological_sort::TopologicalSort;
 
+#[derive(Debug)]
+pub enum RootType<K> {
+    All,
+    Key(Vec<K>),
+}
+
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
+enum Node<T> {
+    Item(T),
+    Root,
+}
+
 pub fn topological_sort<K, V, D, E>(
+    root: RootType<K>,
     mut map: BTreeMap<K, V>,
     get_deps: D,
 ) -> Result<Option<Vec<(K, V)>>, E>
 where
-    K: Hash + Ord + Eq + Clone,
+    K: Hash + Ord + Eq + Clone + std::fmt::Debug,
     D: Fn(&K, &V) -> Result<Vec<K>, E>,
 {
-    let mut ts = TopologicalSort::<K>::new();
+    let mut ts = TopologicalSort::<Node<K>>::new();
 
     for (k, v) in map.iter() {
         for d in get_deps(k, v)?.into_iter() {
-            ts.add_dependency(d, k.clone());
+            ts.add_dependency(Node::Item(k.clone()), Node::Item(d));
         }
-        ts.insert(k.clone());
+        if let RootType::All = root {
+            ts.add_dependency(Node::Root, Node::Item(k.clone()));
+        }
+    }
+    if let RootType::Key(root) = root {
+        for k in root {
+            ts.add_dependency(Node::Root, Node::Item(k));
+        }
     }
 
-    let mut list = Vec::<K>::new();
+    ts.pop_all();
+
+    let mut list = VecDeque::<K>::new();
     while let Some(k) = ts.pop() {
-        list.push(k.clone());
+        if let Node::Item(k) = k {
+            list.push_front(k.clone());
+        }
     }
 
     if !ts.is_empty() {
@@ -30,11 +57,10 @@ where
 
     Ok(Some(
         list.into_iter()
-            .map(|k| {
+            .flat_map(|k| {
                 let v = map.remove(&k);
                 v.map(|v| (k, v))
             })
-            .flatten()
             .collect(),
     ))
 }

@@ -5,7 +5,7 @@ use crate::{
     config,
     rabbit_digger::running::{RunningNet, RunningServer, RunningServerNet},
     registry::Registry,
-    util::topological_sort,
+    util::{topological_sort, RootType},
 };
 use anyhow::{anyhow, Context, Result};
 use futures::{
@@ -231,7 +231,13 @@ impl RabbitDigger {
         (self.plugin_loader)(&config, &mut registry).context("Failed to load plugin")?;
         tracing::debug!("Registry:\n{}", registry);
 
-        let nets = build_nets(&registry, config.net.clone()).context("Failed to build net")?;
+        let root = config
+            .server
+            .values()
+            .flat_map(|i| [i.listen.clone(), i.net.clone()])
+            .collect();
+        let nets =
+            build_nets(&registry, config.net.clone(), root).context("Failed to build net")?;
         let servers = build_server(&nets, &config.server, &inner.conn_cfg)
             .await
             .context("Failed to build server")?;
@@ -438,6 +444,7 @@ fn build_net(
 fn build_nets(
     registry: &Registry,
     mut all_net: BTreeMap<String, config::Net>,
+    root: Vec<String>,
 ) -> Result<BTreeMap<String, Arc<RunningNet>>> {
     let mut running_map: BTreeMap<String, Arc<RunningNet>> = BTreeMap::new();
 
@@ -454,7 +461,7 @@ fn build_nets(
         );
     }
 
-    let all_net = topological_sort(all_net, |k, n| {
+    let all_net = topological_sort(RootType::Key(root), all_net, |k, n| {
         registry
             .get_net(&n.net_type)?
             .resolver
