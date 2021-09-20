@@ -7,7 +7,7 @@ use rabbit_digger::{
         self as rule_config, AnyMatcher, DomainMatcher, DomainMatcherMethod, GeoIpMatcher, IpCidr,
         IpCidrMatcher, Matcher,
     },
-    util::topological_sort,
+    util::{topological_sort, RootType},
 };
 use rd_interface::config::NetRef;
 use serde::Deserialize;
@@ -214,10 +214,11 @@ impl Clash {
 
         if !self.disable_proxy_group {
             let proxy_groups = topological_sort(
+                RootType::All,
                 clash_config
                     .proxy_groups
                     .into_iter()
-                    .map(|i| (i.name.clone(), i))
+                    .map(|i| (i.name.to_string(), i))
                     .collect(),
                 |_, i: &ProxyGroup| Ok(i.proxies.clone()) as Result<_>,
             )?

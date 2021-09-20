@@ -8,8 +8,8 @@ use rd_interface::{
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct SelectNetConfig {
-    selected: String,
-    list: Vec<NetRef>,
+    selected: NetRef,
+    list: Vec<String>,
 }
 
 pub struct SelectNet(Option<Net>);
@@ -19,17 +19,8 @@ impl SelectNet {
         if config.list.is_empty() {
             return Err(Error::Other("select list is empty".into()));
         }
-        let net = config
-            .list
-            .iter()
-            .find(|i| i.represent() == &config.selected);
-        if let Some(net) = net {
-            tracing::trace!("selected net: {}", net.represent());
-        } else {
-            tracing::trace!("not selected: {}", config.selected);
-        }
-        let net = net.map(|i| (**i).clone());
-        Ok(SelectNet(net))
+
+        Ok(SelectNet(Some((*config.selected).clone())))
     }
     fn net(&self) -> Result<&Net> {
         self.0
