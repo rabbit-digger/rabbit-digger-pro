@@ -1,7 +1,6 @@
+pub use self::{cache::ConfigCache, manager::ConfigManager, select_map::SelectMap};
 use anyhow::{Context, Result};
-pub use cache::ConfigCache;
 use futures::StreamExt;
-pub use manager::ConfigManager;
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rabbit_digger::Config;
 use serde::{Deserialize, Serialize};
@@ -17,6 +16,7 @@ use crate::util::DebounceStreamExt;
 
 mod cache;
 mod manager;
+mod select_map;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ImportUrl {

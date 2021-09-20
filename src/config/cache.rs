@@ -147,12 +147,19 @@ impl ConfigCache for FileCache {
     }
 
     async fn set(&self, key: &str, value: &str) -> Result<()> {
-        let filename = Uuid::new_v4().to_string();
+        let key = format!("{}{}", self.prefix, key);
+        let mut index = self.get_index().await?;
+
+        let filename = index
+            .index
+            .get(&key)
+            .map(|item| item.content.clone())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
         write(self.cache_dir.join(&filename), value).await?;
 
-        let mut index = self.get_index().await?;
         index.index.insert(
-            format!("{}{}", self.prefix, key),
+            key,
             CacheItem {
                 updated_at: SystemTime::now(),
                 content: filename,

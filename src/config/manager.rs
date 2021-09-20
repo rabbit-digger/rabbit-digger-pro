@@ -3,8 +3,7 @@ use std::sync::Arc;
 use crate::deserialize_config;
 
 use super::{
-    cache::{CacheItem, FileCache},
-    ConfigCache, ConfigExt, Import, ImportSource,
+    cache::FileCache, select_map::SelectMap, ConfigCache, ConfigExt, Import, ImportSource,
 };
 use anyhow::{Context, Result};
 use async_stream::stream;
@@ -75,12 +74,10 @@ impl Inner {
         }
 
         // restore patch
-        let patch = self.select_storage.get(&config.config.id).await;
-        if let Ok(Some(CacheItem { content, .. })) = patch {
-            let mut config_value = serde_json::to_value(&config.config)?;
-            json_patch::patch(&mut config_value, &serde_json::from_str(&content)?)?;
-            config.config = serde_json::from_value(config_value)?;
-        }
+        SelectMap::from_cache(&config.config.id, &self.select_storage)
+            .await?
+            .apply_config(&mut config.config)
+            .await;
 
         Ok(config.config)
     }

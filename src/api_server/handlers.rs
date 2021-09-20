@@ -2,7 +2,6 @@ use std::{convert::Infallible, error::Error, future::ready, path::PathBuf, time:
 
 use super::reject::{custom_reject, ApiError};
 use futures::{pin_mut, SinkExt, Stream, StreamExt, TryStreamExt};
-use json_patch::Patch;
 use rabbit_digger::{RabbitDigger, Uuid};
 use rd_interface::Value;
 use serde::{Deserialize, Serialize};
@@ -20,7 +19,7 @@ use warp::{
     Buf,
 };
 
-use crate::config::{ConfigManager, ImportSource};
+use crate::config::{ConfigManager, ImportSource, SelectMap};
 
 pub async fn get_config(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(warp::reply::json(
@@ -62,42 +61,41 @@ pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejec
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UpdateNet {
+pub struct PostSelect {
     net_name: String,
-    patch: Patch,
+    selected: String,
 }
-pub async fn update_net(
+pub async fn post_select(
     rd: RabbitDigger,
     cfg_mgr: ConfigManager,
-    UpdateNet { net_name, patch }: UpdateNet,
+    PostSelect { net_name, selected }: PostSelect,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    rd.update_net(&net_name, move |o| {
-        if let Err(e) = json_patch::patch(o, &patch) {
-            tracing::warn!("Patch failed: {:?}", e);
+    rd.update_net(&net_name, |o| {
+        if o.net_type == "select" {
+            if let Some(o) = o.opt.as_object_mut() {
+                o.insert("selected".to_string(), selected.clone().into());
+            }
+        } else {
+            tracing::warn!("net_type is not select");
         }
     })
     .await
     .map_err(custom_reject)?;
 
-    let patch = rd
-        .get_config(|i| {
-            i.map(|(left, right)| {
-                let patch =
-                    json_patch::diff(&serde_json::to_value(left)?, &serde_json::to_value(right)?);
-                anyhow::Result::<(String, Patch)>::Ok((left.id.clone(), patch))
-            })
-        })
-        .await;
-    if let Some(Ok((id, patch))) = patch {
-        cfg_mgr
-            .select_storage()
-            .set(&id, &serde_json::to_string(&patch).map_err(custom_reject)?)
+    if let Some(id) = rd.get_config(|c| c.map(|c| c.id.clone())).await {
+        let mut select_map = SelectMap::from_cache(&id, cfg_mgr.select_storage())
+            .await
+            .map_err(custom_reject)?;
+
+        select_map.insert(net_name, selected);
+
+        select_map
+            .write_cache(&id, cfg_mgr.select_storage())
             .await
             .map_err(custom_reject)?;
     }
 
-    let reply = warp::reply::json(&Value::Null);
-    Ok(reply)
+    Ok(warp::reply::json(&Value::Null))
 }
 
 pub async fn delete_conn(

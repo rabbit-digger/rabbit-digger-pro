@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use rabbit_digger::config::Config;
 
 mod clash;
+mod merge;
 
 pub async fn post_process(
     config: &mut Config,
@@ -13,6 +14,11 @@ pub async fn post_process(
     match import.format.as_ref() {
         "clash" => {
             clash::from_config(import.opt)?
+                .process(config, content)
+                .await?
+        }
+        "merge" => {
+            merge::from_config(import.opt)?
                 .process(config, content)
                 .await?
         }

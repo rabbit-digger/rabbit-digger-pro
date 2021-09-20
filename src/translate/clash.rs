@@ -120,7 +120,7 @@ impl Clash {
             "select" => Net::new(
                 "select",
                 json!({
-                    "selected": 0,
+                    "selected": net_list.get(0).cloned().unwrap_or_else(|| "noop".to_string()),
                     "list": net_list,
                 }),
             ),
