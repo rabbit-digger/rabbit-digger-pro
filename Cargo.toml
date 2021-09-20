@@ -27,9 +27,14 @@ serde_json = "1.0"
 serde = { version = "1.0.119", features = ["derive"] }
 rd-interface = { path = "./rabbit-digger/rd-interface/", version = "0.4" }
 cfg-if = "1.0"
+reqwest = { version = "0.11.4", features = ["native-tls-vendored"] }
+parking_lot = "0.11.1"
+uuid = { version = "0.8.2", features = [ "v4" ] }
+fs2 = "0.4.3"
+async-stream = "0.3.0"
 
 warp = { version = "0.3.1", default-features = false, features = ["websocket"], optional = true }
-dirs = { version = "3.0.2", optional = true }
+dirs = { version = "3.0.2" }
 json-patch = { version = "0.2.6", optional = true }
 
 ss = { path = "./protocol/ss", optional = true }
@@ -52,7 +57,7 @@ rusty-hook = "0.11.0"
 
 [features]
 default = [ "ss", "trojan", "remote", "obfs", "api_server" ]
-api_server = [ "warp", "dirs", "json-patch" ]
+api_server = [ "warp", "json-patch" ]
 console = ["console-subscriber"]
 telemetry = ["tracing-opentelemetry", "opentelemetry", "opentelemetry-jaeger"]
 jemalloc = ["jemallocator"]

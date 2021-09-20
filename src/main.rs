@@ -6,7 +6,10 @@ use futures::{pin_mut, stream::TryStreamExt};
 use rabbit_digger::{RabbitDigger, RabbitDiggerBuilder};
 #[cfg(feature = "api_server")]
 use rabbit_digger_pro::api_server;
-use rabbit_digger_pro::{plugin_loader, schema, watch_config_stream};
+use rabbit_digger_pro::{
+    config::{ConfigManager, ImportSource},
+    plugin_loader, schema,
+};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -71,11 +74,16 @@ async fn write_config(path: impl AsRef<Path>, cfg: &rabbit_digger::Config) -> Re
     Ok(())
 }
 
-async fn run_api_server(rd: RabbitDigger, api_server: &ApiServer) -> Result<()> {
+async fn run_api_server(
+    _rd: RabbitDigger,
+    _cfg_mgr: ConfigManager,
+    api_server: &ApiServer,
+) -> Result<()> {
     if let Some(_bind) = &api_server.bind {
         #[cfg(feature = "api_server")]
         api_server::Server {
-            rabbit_digger: rd,
+            rabbit_digger: _rd,
+            config_manager: _cfg_mgr,
             access_token: api_server._access_token.to_owned(),
             web_ui: api_server._web_ui.to_owned(),
             userdata: api_server._userdata.to_owned(),
@@ -95,16 +103,23 @@ async fn get_rd() -> Result<RabbitDigger> {
     Ok(rd)
 }
 
+async fn get_cfg() -> Result<ConfigManager> {
+    Ok(ConfigManager::new().await?)
+}
+
 async fn real_main(args: Args) -> Result<()> {
+    let cfg_mgr = get_cfg().await?;
     let rd = get_rd().await?;
 
-    run_api_server(rd.clone(), &args.api_server).await?;
+    run_api_server(rd.clone(), cfg_mgr.clone(), &args.api_server).await?;
 
     let config_path = args.config.clone();
     let write_config_path = args.write_config;
 
-    let config_stream =
-        watch_config_stream(config_path)?.and_then(|c: rabbit_digger::Config| async {
+    let config_stream = cfg_mgr
+        .config_stream(ImportSource::Path(config_path))
+        .await?
+        .and_then(|c: rabbit_digger::Config| async {
             if let Some(path) = &write_config_path {
                 write_config(path, &c).await?;
             };
@@ -120,7 +135,7 @@ async fn real_main(args: Args) -> Result<()> {
 }
 
 #[paw::main]
-#[tokio::main(worker_threads = 2)]
+#[tokio::main]
 async fn main(args: Args) -> Result<()> {
     use tracing_subscriber::{layer::SubscriberExt, prelude::*, EnvFilter};
     if std::env::var_os("RUST_LOG").is_none() {
@@ -173,8 +188,9 @@ async fn main(args: Args) -> Result<()> {
         }
         Some(Command::Server { api_server }) => {
             let rd = get_rd().await?;
+            let cfg_mgr = get_cfg().await?;
 
-            run_api_server(rd, &api_server).await?;
+            run_api_server(rd, cfg_mgr, &api_server).await?;
 
             tokio::signal::ctrl_c().await?;
 

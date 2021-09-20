@@ -5,12 +5,15 @@ use rabbit_digger::RabbitDigger;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 
+use crate::config::ConfigManager;
+
 mod filters;
 mod handlers;
 mod reject;
 
 pub struct Server {
     pub rabbit_digger: RabbitDigger,
+    pub config_manager: ConfigManager,
     pub access_token: Option<String>,
     pub web_ui: Option<String>,
     pub userdata: Option<PathBuf>,

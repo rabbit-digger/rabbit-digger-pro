@@ -8,41 +8,52 @@ use rd_interface::{
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct SelectNetConfig {
-    selected: usize,
+    selected: String,
     list: Vec<NetRef>,
 }
 
-pub struct SelectNet(Net);
+pub struct SelectNet(Option<Net>);
 
 impl SelectNet {
     pub fn new(config: SelectNetConfig) -> Result<Self> {
         if config.list.is_empty() {
             return Err(Error::Other("select list is empty".into()));
         }
-        let index = config.selected.min(config.list.len() - 1);
-        let net = &config.list[index];
-        tracing::trace!("selected net: {}", net.represent());
-        let net = (**net).clone();
+        let net = config
+            .list
+            .iter()
+            .find(|i| i.represent() == &config.selected);
+        if let Some(net) = net {
+            tracing::trace!("selected net: {}", net.represent());
+        } else {
+            tracing::trace!("not selected: {}", config.selected);
+        }
+        let net = net.map(|i| (**i).clone());
         Ok(SelectNet(net))
+    }
+    fn net(&self) -> Result<&Net> {
+        self.0
+            .as_ref()
+            .ok_or_else(|| Error::Other(format!("select net not found").into()))
     }
 }
 
 #[async_trait]
 impl INet for SelectNet {
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        self.0.tcp_connect(ctx, addr).await
+        self.net()?.tcp_connect(ctx, addr).await
     }
 
     async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-        self.0.tcp_bind(ctx, addr).await
+        self.net()?.tcp_bind(ctx, addr).await
     }
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        self.0.udp_bind(ctx, addr).await
+        self.net()?.udp_bind(ctx, addr).await
     }
 
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<std::net::SocketAddr>> {
-        self.0.lookup_host(addr).await
+        self.net()?.lookup_host(addr).await
     }
 }
 
