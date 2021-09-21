@@ -1,1 +1,1 @@
-cargo run --features tracing-subscriber,raw -- %*
+cargo run --features raw -- %*

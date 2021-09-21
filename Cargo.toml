@@ -16,7 +16,7 @@ tokio-stream = { version = "0.1.6", features = ["net", "sync", "time"] }
 structopt = { version = "0.3.21", default-features = false, features = ["paw"] }
 paw = "1.0.0"
 tracing = "0.1.26"
-tracing-subscriber = { version = "0.2.18", optional = true }
+tracing-subscriber = { version = "0.2.24", features = ["registry"] }
 rabbit-digger = { version = "0.1", path = "./rabbit-digger" }
 notify-stream = "0.1.1"
 futures = "0.3"
@@ -80,4 +80,3 @@ strip = "symbols"
 
 [[bin]]
 name = "rabbit-digger-pro"
-required-features = ["tracing-subscriber"]

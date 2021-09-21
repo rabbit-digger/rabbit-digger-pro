@@ -11,6 +11,7 @@ use rabbit_digger_pro::{
     plugin_loader, schema,
 };
 use structopt::StructOpt;
+use tracing_subscriber::filter::dynamic_filter_fn;
 
 #[derive(StructOpt)]
 struct ApiServer {
@@ -141,19 +142,16 @@ async fn main(args: Args) -> Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace,raw=trace",
+            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=trace,raw=debug",
         )
     }
-    let filter = EnvFilter::from_default_env();
+    let log_filter = EnvFilter::from_default_env();
     let tr = tracing_subscriber::registry();
 
     cfg_if! {
         if #[cfg(feature = "console")] {
             let (layer, server) = console_subscriber::TasksLayer::builder().with_default_env().build();
             tokio::spawn(server.serve());
-            let filter = filter
-                .add_directive("tokio=trace".parse()?)
-                .add_directive("runtime=trace".parse()?);
             let tr = tr.with(layer);
         }
     }
@@ -165,16 +163,25 @@ async fn main(args: Args) -> Result<()> {
                 .install_batch(opentelemetry::runtime::Tokio)?;
             // only for debug
             // let tracer = opentelemetry::sdk::export::trace::stdout::new_pipeline().install_simple();
+            let tracer_filter =
+                EnvFilter::new("rabbit_digger=trace,rabbit_digger_pro=trace,rd_std=trace");
             let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-            let tr = tr.with(opentelemetry);
+            let tr = tr.with(
+                opentelemetry.with_filter(dynamic_filter_fn(move |metadata, ctx| {
+                    tracer_filter.enabled(metadata, ctx.clone())
+                })),
+            );
         }
     }
 
-    tr.with(filter)
-        .with(tracing_subscriber::fmt::layer().with_writer(
-            std::io::stdout.with_filter(|meta| meta.level() != &tracing::Level::TRACE),
-        ))
-        .init();
+    tr.with(
+        tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stdout)
+            .with_filter(dynamic_filter_fn(move |metadata, ctx| {
+                log_filter.enabled(metadata, ctx.clone())
+            })),
+    )
+    .init();
 
     match &args.cmd {
         Some(Command::GenerateSchema { path }) => {
