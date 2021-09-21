@@ -142,7 +142,7 @@ async fn main(args: Args) -> Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=trace,raw=debug",
+            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug",
         )
     }
     let tr = tracing_subscriber::registry();
@@ -175,7 +175,7 @@ async fn main(args: Args) -> Result<()> {
 
     let log_filter = EnvFilter::from_default_env();
     let log_writer_filter =
-        EnvFilter::new("rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=trace,raw=debug");
+        EnvFilter::new("rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug");
     tr.with(
         tracing_subscriber::fmt::layer()
             .with_writer(std::io::stdout)
