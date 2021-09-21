@@ -42,8 +42,6 @@ where
         }
     }
 
-    ts.pop_all();
-
     let mut list = VecDeque::<K>::new();
     while let Some(k) = ts.pop() {
         if let Node::Item(k) = k {
