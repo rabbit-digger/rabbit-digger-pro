@@ -69,6 +69,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
 
     prefix.and(
         ws_connection(&server.rabbit_digger)
+            .or(ws_log())
             .or(at.and(
                 get_config
                     .or(post_config)
@@ -116,6 +117,13 @@ pub fn ws_connection(
         .and(warp::query::<handlers::ConnectionQuery>())
         .and(warp::ws())
         .and_then(handlers::ws_conn)
+}
+
+// Websocket /log
+pub fn ws_log() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("log")
+        .and(warp::ws())
+        .and_then(handlers::ws_log)
 }
 
 fn with_rd(

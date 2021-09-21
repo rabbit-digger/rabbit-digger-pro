@@ -32,6 +32,7 @@ parking_lot = "0.11.1"
 uuid = { version = "0.8.2", features = [ "v4" ] }
 fs2 = "0.4.3"
 async-stream = "0.3.0"
+once_cell = "1.7.2"
 
 warp = { version = "0.3.1", default-features = false, features = ["websocket"], optional = true }
 dirs = { version = "3.0.2" }

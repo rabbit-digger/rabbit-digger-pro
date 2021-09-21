@@ -226,3 +226,18 @@ pub async fn ws_conn(
         }
     }))
 }
+
+pub async fn ws_log(ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
+    Ok(ws.on_upgrade(move |mut ws| async move {
+        let mut recv = crate::log::get_sender().subscribe();
+        while let Ok(content) = recv.recv().await {
+            if let Err(e) = ws
+                .send(Message::text(String::from_utf8_lossy(&content)))
+                .await
+            {
+                tracing::error!("WebSocket event error: {:?}", e);
+                break;
+            }
+        }
+    }))
+}

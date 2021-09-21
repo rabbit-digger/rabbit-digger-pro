@@ -145,7 +145,6 @@ async fn main(args: Args) -> Result<()> {
             "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=trace,raw=debug",
         )
     }
-    let log_filter = EnvFilter::from_default_env();
     let tr = tracing_subscriber::registry();
 
     cfg_if! {
@@ -174,11 +173,22 @@ async fn main(args: Args) -> Result<()> {
         }
     }
 
+    let log_filter = EnvFilter::from_default_env();
+    let log_writer_filter =
+        EnvFilter::new("rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=trace,raw=debug");
     tr.with(
         tracing_subscriber::fmt::layer()
             .with_writer(std::io::stdout)
             .with_filter(dynamic_filter_fn(move |metadata, ctx| {
                 log_filter.enabled(metadata, ctx.clone())
+            })),
+    )
+    .with(
+        tracing_subscriber::fmt::layer()
+            .json()
+            .with_writer(rabbit_digger_pro::log::LogWriter::new)
+            .with_filter(dynamic_filter_fn(move |metadata, ctx| {
+                log_writer_filter.enabled(metadata, ctx.clone())
             })),
     )
     .init();

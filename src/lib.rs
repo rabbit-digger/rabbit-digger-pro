@@ -6,6 +6,7 @@ use yaml_merge_keys::merge_keys_serde;
 #[cfg(feature = "api_server")]
 pub mod api_server;
 pub mod config;
+pub mod log;
 pub mod schema;
 mod select;
 mod translate;
