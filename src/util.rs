@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{HashMap, VecDeque},
     hash::Hash,
 };
 
@@ -19,7 +19,7 @@ enum Node<T> {
 
 pub fn topological_sort<K, V, D, E>(
     root: RootType<K>,
-    mut map: BTreeMap<K, V>,
+    map: impl Iterator<Item = (K, V)>,
     get_deps: D,
 ) -> Result<Option<Vec<(K, V)>>, E>
 where
@@ -27,6 +27,7 @@ where
     D: Fn(&K, &V) -> Result<Vec<K>, E>,
 {
     let mut ts = TopologicalSort::<Node<K>>::new();
+    let mut map = map.collect::<HashMap<_, _>>();
 
     for (k, v) in map.iter() {
         for d in get_deps(k, v)?.into_iter() {

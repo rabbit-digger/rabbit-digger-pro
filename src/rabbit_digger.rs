@@ -443,7 +443,7 @@ fn build_net(
 
 fn build_nets(
     registry: &Registry,
-    mut all_net: BTreeMap<String, config::Net>,
+    mut all_net: config::ConfigNet,
     root: Vec<String>,
 ) -> Result<BTreeMap<String, Arc<RunningNet>>> {
     let mut running_map: BTreeMap<String, Arc<RunningNet>> = BTreeMap::new();
@@ -461,7 +461,7 @@ fn build_nets(
         );
     }
 
-    let all_net = topological_sort(RootType::Key(root), all_net, |k, n| {
+    let all_net = topological_sort(RootType::Key(root), all_net.into_iter(), |k, n| {
         registry
             .get_net(&n.net_type)?
             .resolver

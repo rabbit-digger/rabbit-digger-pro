@@ -1,15 +1,16 @@
 pub mod default;
 
-use std::{borrow::Cow, collections::BTreeMap};
+use std::borrow::Cow;
 
+use indexmap::IndexMap;
 use rd_interface::{
     schemars::{self, JsonSchema},
     Value,
 };
 use serde::{Deserialize, Serialize};
 
-pub type ConfigNet = BTreeMap<String, Net>;
-pub type ConfigServer = BTreeMap<String, Server>;
+pub type ConfigNet = IndexMap<String, Net>;
+pub type ConfigServer = IndexMap<String, Server>;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Config {
