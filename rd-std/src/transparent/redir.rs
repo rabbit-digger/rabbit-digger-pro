@@ -6,7 +6,6 @@ use rd_interface::{
     async_trait,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
-    
     Address, Context, IServer, IntoAddress, IntoDyn, Net, Result,
 };
 use serde::Deserialize;
@@ -51,9 +50,7 @@ impl RedirServer {
         let target = socket.origin_addr()?;
 
         let ctx = &mut Context::from_socketaddr(addr);
-        let target_tcp = net
-            .tcp_connect(ctx, &target.into_address()?)
-            .await?;
+        let target_tcp = net.tcp_connect(ctx, &target.into_address()?).await?;
         let socket = CompatTcp(socket).into_dyn();
 
         connect_tcp(ctx, socket, target_tcp).await?;

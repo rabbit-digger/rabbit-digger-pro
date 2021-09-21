@@ -102,12 +102,10 @@ impl TProxyServer {
         let target = socket.local_addr()?;
 
         let ctx = &mut Context::from_socketaddr(addr);
-        let target_tcp = net
-            .tcp_connect(ctx, &target.into_address()?)
-            .await?;
+        let target_tcp = net.tcp_connect(ctx, &target.into_address()?).await?;
         let socket = CompatTcp(socket).into_dyn();
 
-        connect_tcp(ctx,socket, target_tcp).await?;
+        connect_tcp(ctx, socket, target_tcp).await?;
 
         Ok(())
     }
