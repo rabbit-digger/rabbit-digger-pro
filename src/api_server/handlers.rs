@@ -1,9 +1,15 @@
-use std::{convert::Infallible, error::Error, future::ready, path::PathBuf, time::Duration};
+use std::{
+    convert::Infallible,
+    error::Error,
+    future::ready,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use super::reject::{custom_reject, ApiError};
 use futures::{pin_mut, SinkExt, Stream, StreamExt, TryStreamExt};
 use rabbit_digger::{RabbitDigger, Uuid};
-use rd_interface::Value;
+use rd_interface::{IntoAddress, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{
@@ -104,6 +110,66 @@ pub async fn delete_conn(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let ok = rd.stop_connection(uuid).await.map_err(custom_reject)?;
     Ok(warp::reply::json(&ok))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Delay {
+    net_name: String,
+    url: url::Url,
+    timeout: Option<u64>,
+}
+#[derive(Debug, Serialize)]
+pub struct DelayResponse {
+    connect: u64,
+    response: u64,
+}
+pub async fn get_delay(
+    rd: RabbitDigger,
+    Delay {
+        net_name,
+        url,
+        timeout,
+    }: Delay,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let net = rd
+        .get_net(&net_name)
+        .await
+        .map_err(custom_reject)?
+        .map(|n| n.net());
+    let host = url.host_str();
+    let port = url.port_or_known_default();
+    let timeout = timeout.unwrap_or(5000);
+    Ok(match (net, host, port) {
+        (Some(net), Some(host), Some(port)) => {
+            let start = Instant::now();
+            let fut = async {
+                let socket = net
+                    .tcp_connect(
+                        &mut rd_interface::Context::new(),
+                        &(host, port).into_address()?,
+                    )
+                    .await?;
+                let connect = start.elapsed().as_millis() as u64;
+                let (mut request_sender, connection) =
+                    hyper::client::conn::handshake(socket).await?;
+                let connect_req = hyper::Request::builder()
+                    .method("GET")
+                    .uri(url.path())
+                    .body(hyper::Body::empty())?;
+                tokio::spawn(connection);
+                let _connect_resp = request_sender.send_request(connect_req).await?;
+                let response = start.elapsed().as_millis() as u64;
+                anyhow::Result::<DelayResponse>::Ok(DelayResponse { connect, response })
+            };
+            let resp = tokio::time::timeout(Duration::from_millis(timeout), fut).await;
+            let resp = match resp {
+                Ok(v) => Some(v.map_err(custom_reject)?),
+                _ => None,
+            };
+            warp::reply::json(&resp)
+        }
+        _ => warp::reply::json(&Value::Null),
+    })
 }
 
 pub async fn get_userdata(

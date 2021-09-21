@@ -49,6 +49,11 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and(with_rd(rd))
         .and(warp::path::param())
         .and_then(handlers::delete_conn);
+    let get_delay = warp::path("delay")
+        .and(warp::get())
+        .and(with_rd(rd))
+        .and(warp::query::<handlers::Delay>())
+        .and_then(handlers::get_delay);
 
     let get_userdata = warp::path("userdata")
         .and(warp::get())
@@ -78,6 +83,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
                     .or(get_state)
                     .or(post_select)
                     .or(delete_conn)
+                    .or(get_delay)
                     .or(get_userdata)
                     .or(put_userdata)
                     .or(delete_userdata),
