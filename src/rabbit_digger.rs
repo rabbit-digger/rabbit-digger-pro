@@ -318,6 +318,14 @@ impl RabbitDigger {
         Ok(())
     }
 
+    pub async fn get_net(&self, name: &str) -> Result<Option<Arc<RunningNet>>> {
+        let state = self.inner.state.read().await;
+        match &*state {
+            State::Running(Running { nets, .. }) => Ok(nets.get(name).cloned()),
+            _ => Err(anyhow!("Not running")),
+        }
+    }
+
     // Update net when running.
     pub async fn update_net<F>(&self, net_name: &str, update: F) -> Result<()>
     where
