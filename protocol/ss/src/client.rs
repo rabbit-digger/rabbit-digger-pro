@@ -1,13 +1,14 @@
 use super::wrapper::{Cipher, WrapAddress, WrapSSTcp, WrapSSUdp};
 use rd_interface::{
-    async_trait, prelude::*, registry::NetRef, Address, Arc, INet, IntoDyn, Result, TcpStream,
+    async_trait, prelude::*, registry::NetRef, Address, INet, IntoDyn, Net, Result, TcpStream,
     UdpSocket, NOT_ENABLED,
 };
 use shadowsocks::{
     config::{ServerConfig, ServerType},
-    context::Context,
+    context::{Context, SharedContext},
     ProxyClientStream,
 };
+use tokio::sync::OnceCell;
 
 #[rd_config]
 #[derive(Debug, Clone)]
@@ -24,14 +25,32 @@ pub struct SSNetConfig {
 }
 
 pub struct SSNet {
-    context: Arc<Context>,
-    config: SSNetConfig,
+    context: OnceCell<SharedContext>,
+    cfg: ServerConfig,
+    addr: Address,
+    udp: bool,
+    net: Net,
 }
 
 impl SSNet {
     pub fn new(config: SSNetConfig) -> SSNet {
-        let context = Arc::new(Context::new(ServerType::Local));
-        SSNet { context, config }
+        SSNet {
+            context: OnceCell::new(),
+            addr: config.server.clone(),
+            cfg: ServerConfig::new(
+                (config.server.host(), config.server.port()),
+                config.password,
+                config.cipher.into(),
+            ),
+            udp: config.udp,
+            net: (*config.net).clone(),
+        }
+    }
+    pub async fn context(&self) -> SharedContext {
+        self.context
+            .get_or_init(|| async { Context::new_shared(ServerType::Local) })
+            .await
+            .clone()
     }
 }
 
@@ -42,38 +61,22 @@ impl INet for SSNet {
         ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpStream> {
-        let cfg = self.config.clone();
-        let stream = self.config.net.tcp_connect(ctx, &cfg.server).await?;
-        let svr_cfg = ServerConfig::new(
-            (cfg.server.host(), cfg.server.port()),
-            cfg.password,
-            cfg.cipher.into(),
-        );
+        let stream = self.net.tcp_connect(ctx, &self.addr).await?;
         let client = ProxyClientStream::from_stream(
-            self.context.clone(),
+            self.context().await,
             stream,
-            &svr_cfg,
+            &self.cfg,
             WrapAddress(addr.clone()),
         );
         Ok(WrapSSTcp(client).into_dyn())
     }
 
     async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
-        if !self.config.udp {
+        if !self.udp {
             return Err(NOT_ENABLED);
         }
-        let cfg = self.config.clone();
-        let socket = self
-            .config
-            .net
-            .udp_bind(ctx, &addr.to_any_addr_port()?)
-            .await?;
-        let svr_cfg = ServerConfig::new(
-            (cfg.server.host(), cfg.server.port()),
-            cfg.password,
-            cfg.cipher.into(),
-        );
-        let udp = WrapSSUdp::new(self.context.clone(), socket, &svr_cfg);
+        let socket = self.net.udp_bind(ctx, &addr.to_any_addr_port()?).await?;
+        let udp = WrapSSUdp::new(self.context().await, socket, &self.cfg);
         Ok(udp.into_dyn())
     }
 }
