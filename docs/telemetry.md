@@ -7,5 +7,5 @@ docker run -d --name jaeger -e COLLECTOR_ZIPKIN_HOST_PORT=:9411 -p 5775:5775/udp
 ## Run with telemetry feature
 
 ```
-cargo run --features tracing-subscriber,raw,telemetry
+cargo run --features raw,telemetry
 ```

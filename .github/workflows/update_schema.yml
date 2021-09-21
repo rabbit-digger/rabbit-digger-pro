@@ -33,7 +33,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: run
-          args: --features=tracing-subscriber -- generate-schema /tmp/rabbit-digger-pro-schema.json
+          args: -- generate-schema /tmp/rabbit-digger-pro-schema.json
       - name: Update git repo
         run: |
           cd /tmp/schema/

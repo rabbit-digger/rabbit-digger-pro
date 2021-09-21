@@ -22,7 +22,7 @@ jobs:
         uses: actions-rs/tarpaulin@v0.1
         with:
           version: "0.18.0"
-          args: --features tracing-subscriber,raw --workspace
+          args: --features raw --workspace
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v2.1.0
         with:
