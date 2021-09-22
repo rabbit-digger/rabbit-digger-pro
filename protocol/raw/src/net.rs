@@ -5,7 +5,8 @@ use crate::{
     wrap::{TcpListenerWrap, TcpStreamWrap, UdpSocketWrap},
 };
 use rd_interface::{
-    async_trait, prelude::*, registry::NetFactory, Address, Context, Error, INet, IntoDyn, Result,
+    async_trait, error::map_other, prelude::*, registry::NetFactory, Address, Context, Error, INet,
+    IntoDyn, Result,
 };
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use tokio::sync::Mutex;
