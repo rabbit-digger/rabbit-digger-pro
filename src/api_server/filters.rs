@@ -38,22 +38,25 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
         .and(warp::get())
         .and(with_rd(rd))
         .and_then(handlers::get_state);
-    let post_select = warp::path!("net")
+    let post_select = warp::path("net")
         .and(warp::post())
         .and(with_rd(rd))
         .and(with_cfg_mgr(cfg_mgr))
+        .and(warp::path::param())
         .and(warp::body::json())
         .and_then(handlers::post_select);
+    let get_delay = warp::path("net")
+        .and(warp::get())
+        .and(with_rd(rd))
+        .and(warp::path::param())
+        .and(warp::path("delay"))
+        .and(warp::query::<handlers::DelayRequest>())
+        .and_then(handlers::get_delay);
     let delete_conn = warp::path("connection")
         .and(warp::delete())
         .and(with_rd(rd))
         .and(warp::path::param())
         .and_then(handlers::delete_conn);
-    let get_delay = warp::path("delay")
-        .and(warp::get())
-        .and(with_rd(rd))
-        .and(warp::query::<handlers::Delay>())
-        .and_then(handlers::get_delay);
 
     let get_userdata = warp::path("userdata")
         .and(warp::get())

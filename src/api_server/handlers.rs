@@ -68,14 +68,17 @@ pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejec
 
 #[derive(Debug, Deserialize)]
 pub struct PostSelect {
-    net_name: String,
     selected: String,
 }
 pub async fn post_select(
     rd: RabbitDigger,
     cfg_mgr: ConfigManager,
-    PostSelect { net_name, selected }: PostSelect,
+    net_name: String,
+    PostSelect { selected }: PostSelect,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let net_name = percent_encoding::percent_decode(net_name.as_bytes())
+        .decode_utf8()
+        .map_err(custom_reject)?;
     rd.update_net(&net_name, |o| {
         if o.net_type == "select" {
             if let Some(o) = o.opt.as_object_mut() {
@@ -93,7 +96,7 @@ pub async fn post_select(
             .await
             .map_err(custom_reject)?;
 
-        select_map.insert(net_name, selected);
+        select_map.insert(net_name.to_string(), selected);
 
         select_map
             .write_cache(&id, cfg_mgr.select_storage())
@@ -113,8 +116,7 @@ pub async fn delete_conn(
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Delay {
-    net_name: String,
+pub struct DelayRequest {
     url: url::Url,
     timeout: Option<u64>,
 }
@@ -125,12 +127,12 @@ pub struct DelayResponse {
 }
 pub async fn get_delay(
     rd: RabbitDigger,
-    Delay {
-        net_name,
-        url,
-        timeout,
-    }: Delay,
+    net_name: String,
+    DelayRequest { url, timeout }: DelayRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let net_name = percent_encoding::percent_decode(net_name.as_bytes())
+        .decode_utf8()
+        .map_err(custom_reject)?;
     let net = rd
         .get_net(&net_name)
         .await
