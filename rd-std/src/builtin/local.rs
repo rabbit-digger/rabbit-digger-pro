@@ -1,5 +1,5 @@
 use std::{
-    io::{self, ErrorKind},
+    io::{self},
     net::SocketAddr,
     time::Duration,
 };
@@ -42,6 +42,74 @@ impl LocalNet {
     pub fn new(config: LocalNetConfig) -> LocalNet {
         LocalNet(config)
     }
+    async fn tcp_connect_single(&self, addr: SocketAddr) -> Result<net::TcpStream> {
+        let socket = match addr {
+            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
+        };
+        socket.set_nonblocking(true)?;
+
+        if let Some(ttl) = self.0.ttl {
+            socket.set_ttl(ttl)?;
+        }
+
+        if let Some(nodelay) = self.0.nodelay {
+            socket.set_nodelay(nodelay)?;
+        }
+
+        #[cfg(target_os = "linux")]
+        if let Some(mark) = self.0.mark {
+            socket.set_mark(mark)?;
+        }
+
+        #[cfg(target_os = "linux")]
+        if let Some(device) = &self.0.device {
+            socket.bind_device(Some(device.as_bytes()))?;
+        }
+
+        let socket = net::TcpSocket::from_std_stream(socket.into());
+
+        let tcp = match self.0.connect_timeout {
+            None => socket.connect(addr).await?,
+            Some(secs) => timeout(Duration::from_secs(secs), socket.connect(addr)).await??,
+        };
+
+        Ok(tcp)
+    }
+    async fn tcp_bind_single(&self, addr: SocketAddr) -> Result<net::TcpListener> {
+        let listener = net::TcpListener::bind(addr).await?;
+
+        if let Some(ttl) = self.0.ttl {
+            listener.set_ttl(ttl)?;
+        }
+
+        Ok(listener)
+    }
+    async fn udp_bind_single(&self, addr: SocketAddr) -> Result<net::UdpSocket> {
+        let udp = match addr {
+            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::DGRAM, None)?,
+            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::DGRAM, None)?,
+        };
+
+        udp.set_nonblocking(true)?;
+        udp.bind(&addr.into())?;
+        if let Some(ttl) = self.0.ttl {
+            udp.set_ttl(ttl)?;
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(mark) = self.0.mark {
+            udp.set_mark(mark)?;
+        }
+
+        #[cfg(target_os = "linux")]
+        if let Some(device) = &self.0.device {
+            udp.bind_device(Some(device.as_bytes()))?;
+        }
+
+        let udp = net::UdpSocket::from_std(udp.into())?;
+
+        Ok(udp)
+    }
 }
 
 impl std::fmt::Debug for LocalNet {
@@ -51,14 +119,11 @@ impl std::fmt::Debug for LocalNet {
 }
 
 #[instrument(err)]
-async fn lookup_host(domain: String, port: u16) -> io::Result<SocketAddr> {
+async fn lookup_host(domain: String, port: u16) -> io::Result<Vec<SocketAddr>> {
     use tokio::net::lookup_host;
 
     let domain = (domain.as_ref(), port);
-    lookup_host(domain)
-        .await?
-        .next()
-        .ok_or_else(|| ErrorKind::AddrNotAvailable.into())
+    Ok(lookup_host(domain).await?.collect())
 }
 
 impl_async_read_write!(CompatTcp, 0);
@@ -96,6 +161,12 @@ impl rd_interface::ITcpListener for Listener {
     }
 }
 
+impl Udp {
+    async fn send_to_single(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
+        self.0.send_to(buf, addr).await.map_err(Into::into)
+    }
+}
+
 #[async_trait]
 impl rd_interface::IUdpSocket for Udp {
     async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
@@ -103,8 +174,16 @@ impl rd_interface::IUdpSocket for Udp {
     }
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        let addr = addr.resolve(lookup_host).await?;
-        self.0.send_to(buf, addr).await.map_err(Into::into)
+        let addrs = addr.resolve(lookup_host).await?;
+
+        match addrs.into_iter().next() {
+            Some(target) => self.send_to_single(buf, target).await,
+            None => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "no addresses to send data to",
+            )
+            .into()),
+        }
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
@@ -120,40 +199,23 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpStream> {
-        let addr = addr.resolve(lookup_host).await?;
+        let addrs = addr.resolve(lookup_host).await?;
+        let mut last_err = None;
 
-        let socket = match addr {
-            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
-            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
-        };
-        socket.set_nonblocking(true)?;
-
-        if let Some(ttl) = self.0.ttl {
-            socket.set_ttl(ttl)?;
+        for addr in addrs {
+            match self.tcp_connect_single(addr).await {
+                Ok(stream) => return Ok(CompatTcp::new(stream).into_dyn()),
+                Err(e) => last_err = Some(e),
+            }
         }
 
-        if let Some(nodelay) = self.0.nodelay {
-            socket.set_nodelay(nodelay)?;
-        }
-
-        #[cfg(target_os = "linux")]
-        if let Some(mark) = self.0.mark {
-            socket.set_mark(mark)?;
-        }
-
-        #[cfg(target_os = "linux")]
-        if let Some(device) = &self.0.device {
-            socket.bind_device(Some(device.as_bytes()))?;
-        }
-
-        let socket = net::TcpSocket::from_std_stream(socket.into());
-
-        let tcp = match self.0.connect_timeout {
-            None => socket.connect(addr).await?,
-            Some(secs) => timeout(Duration::from_secs(secs), socket.connect(addr)).await??,
-        };
-
-        Ok(CompatTcp::new(tcp).into_dyn())
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "could not resolve to any address",
+            )
+            .into()
+        }))
     }
 
     #[instrument(err)]
@@ -162,12 +224,23 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpListener> {
-        let addr = addr.resolve(lookup_host).await?;
-        let listener = net::TcpListener::bind(addr).await?;
-        if let Some(ttl) = self.0.ttl {
-            listener.set_ttl(ttl)?;
+        let addrs = addr.resolve(lookup_host).await?;
+        let mut last_err = None;
+
+        for addr in addrs {
+            match self.tcp_bind_single(addr).await {
+                Ok(listener) => return Ok(Listener(listener, self.0.clone()).into_dyn()),
+                Err(e) => last_err = Some(e),
+            }
         }
-        Ok(Listener(listener, self.0.clone()).into_dyn())
+
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "could not resolve to any address",
+            )
+            .into()
+        }))
     }
 
     #[instrument(err)]
@@ -176,36 +249,29 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<UdpSocket> {
-        let addr = addr.resolve(lookup_host).await?;
-        let udp = match addr {
-            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::DGRAM, None)?,
-            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::DGRAM, None)?,
-        };
+        let addrs = addr.resolve(lookup_host).await?;
+        let mut last_err = None;
 
-        udp.set_nonblocking(true)?;
-        udp.bind(&addr.into())?;
-        if let Some(ttl) = self.0.ttl {
-            udp.set_ttl(ttl)?;
-        }
-        #[cfg(target_os = "linux")]
-        if let Some(mark) = self.0.mark {
-            udp.set_mark(mark)?;
+        for addr in addrs {
+            match self.udp_bind_single(addr).await {
+                Ok(udp) => return Ok(Udp(udp).into_dyn()),
+                Err(e) => last_err = Some(e),
+            }
         }
 
-        #[cfg(target_os = "linux")]
-        if let Some(device) = &self.0.device {
-            udp.bind_device(Some(device.as_bytes()))?;
-        }
-
-        let udp = net::UdpSocket::from_std(udp.into())?;
-
-        Ok(Udp(udp).into_dyn())
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "could not resolve to any address",
+            )
+            .into()
+        }))
     }
 
     #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         let addr = addr.resolve(lookup_host).await?;
-        Ok(vec![addr])
+        Ok(addr)
     }
 }
 

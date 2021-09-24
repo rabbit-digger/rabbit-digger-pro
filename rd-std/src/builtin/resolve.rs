@@ -1,18 +1,15 @@
-use std::{
-    io::{self, ErrorKind},
-    net::SocketAddr,
-};
+use std::{io, net::SocketAddr};
 
 use futures::{future::BoxFuture, FutureExt};
 use rd_interface::{
     async_trait,
     prelude::*,
     registry::{NetFactory, NetRef},
-    Address, Arc, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    Address, Arc, INet, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 type Resolver =
-    Arc<dyn Fn(String, u16) -> BoxFuture<'static, io::Result<SocketAddr>> + Send + Sync>;
+    Arc<dyn Fn(String, u16) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> + Send + Sync>;
 pub struct Udp(UdpSocket, Resolver);
 
 // Resolves domain names to IP addresses before connecting.
@@ -44,12 +41,12 @@ impl ResolveNet {
         let resolver: Resolver = Arc::new(move |domain: String, port: u16| {
             let resolve_net = resolve_net.clone();
             async move {
-                resolve_net
+                Ok(resolve_net
                     .lookup_host(&Address::Domain(domain, port))
                     .await?
                     .into_iter()
-                    .find(|i| (ipv4 && i.is_ipv4()) || (ipv6 && i.is_ipv6()))
-                    .ok_or_else(|| io::Error::from(ErrorKind::AddrNotAvailable))
+                    .filter(|i| (ipv4 && i.is_ipv4()) || (ipv6 && i.is_ipv6()))
+                    .collect())
             }
             .boxed()
         });
@@ -64,7 +61,17 @@ impl rd_interface::IUdpSocket for Udp {
     }
 
     async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        let addr = addr.resolve(&*self.1).await?;
+        let addr = addr
+            .resolve(&*self.1)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "could not resolve to any address",
+                )
+            })?;
         self.0.send_to(buf, addr.into()).await.map_err(Into::into)
     }
 
@@ -80,9 +87,23 @@ impl INet for ResolveNet {
         ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpStream> {
-        let addr = addr.resolve(&*self.resolver).await?;
-        let tcp = self.config.net.tcp_connect(ctx, &addr.into()).await?;
-        Ok(tcp)
+        let addrs = addr.resolve(&*self.resolver).await?;
+        let mut last_err = None;
+
+        for addr in addrs {
+            match self.config.net.tcp_connect(ctx, &addr.into()).await {
+                Ok(stream) => return Ok(stream),
+                Err(e) => last_err = Some(e),
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "could not resolve to any address",
+            )
+            .into()
+        }))
     }
 
     async fn tcp_bind(
@@ -94,9 +115,23 @@ impl INet for ResolveNet {
     }
 
     async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
-        let addr = addr.resolve(&*self.resolver).await?;
-        let udp = self.config.net.udp_bind(ctx, &addr.into()).await?;
-        Ok(Udp(udp, self.resolver.clone()).into_dyn())
+        let addrs = addr.resolve(&*self.resolver).await?;
+        let mut last_err = None;
+
+        for addr in addrs {
+            match self.config.net.udp_bind(ctx, &addr.into()).await {
+                Ok(udp) => return Ok(udp),
+                Err(e) => last_err = Some(e),
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "could not resolve to any address",
+            )
+            .into()
+        }))
     }
 }
 

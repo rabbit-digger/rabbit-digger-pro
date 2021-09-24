@@ -205,14 +205,14 @@ impl Address {
     }
 
     /// Resolve domain to SocketAddr using `f`.
-    pub async fn resolve<Fut>(&self, f: impl FnOnce(String, u16) -> Fut) -> Result<SocketAddr>
+    pub async fn resolve<Fut>(&self, f: impl FnOnce(String, u16) -> Fut) -> Result<Vec<SocketAddr>>
     where
-        Fut: std::future::Future<Output = Result<SocketAddr>>,
+        Fut: std::future::Future<Output = Result<Vec<SocketAddr>>>,
     {
         match self {
-            Address::SocketAddr(s) => Ok(*s),
+            Address::SocketAddr(s) => Ok(vec![*s]),
             Address::Domain(d, p) => match strip_brackets(d).parse::<IpAddr>() {
-                Ok(ip) => Ok(SocketAddr::new(ip, *p)),
+                Ok(ip) => Ok(vec![SocketAddr::new(ip, *p)]),
                 Err(_) => f(d.to_string(), *p).await,
             },
         }
