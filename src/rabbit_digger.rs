@@ -14,7 +14,8 @@ use futures::{
     FutureExt, Stream, StreamExt, TryStreamExt,
 };
 use rd_interface::{
-    config::EmptyConfig, registry::NetGetter, schemars::schema::RootSchema, Arc, IntoDyn, Value,
+    config::EmptyConfig, registry::NetGetter, schemars::schema::RootSchema, Arc, IntoDyn, Net,
+    Value,
 };
 use rd_std::builtin::local::LocalNetConfig;
 use serde::{Deserialize, Serialize};
@@ -349,7 +350,7 @@ impl RabbitDigger {
                     let net = build_net(net_name, &new_cfg, &registry, &|key| {
                         nets.get(key).map(|i| i.net())
                     })?;
-                    running_net.update_net(net.net()).await;
+                    running_net.update_net(net).await;
 
                     *cfg = new_cfg;
                 }
@@ -433,19 +434,14 @@ impl<'a> fmt::Display for ServerList<'a> {
     }
 }
 
-fn build_net(
-    name: &str,
-    i: &config::Net,
-    registry: &Registry,
-    getter: NetGetter,
-) -> Result<Arc<RunningNet>> {
+fn build_net(name: &str, i: &config::Net, registry: &Registry, getter: NetGetter) -> Result<Net> {
     let net_item = registry.get_net(&i.net_type)?;
 
     let net = net_item.build(getter, i.opt.clone()).context(format!(
         "Failed to build net {:?}. Please check your config.",
         name
     ))?;
-    let net = RunningNet::new(name.to_string(), net);
+
     Ok(net)
 }
 
@@ -484,6 +480,9 @@ fn build_nets(
             running_map.get(key).map(|i| i.net())
         })
         .context(format!("Loading net {}", name))?;
+
+        let net = RunningNet::new(name.to_string(), net);
+
         running_map.insert(name.to_string(), net);
     }
 
