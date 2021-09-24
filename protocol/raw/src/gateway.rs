@@ -14,6 +14,8 @@ use smoltcp::wire::{
 };
 use tokio_smoltcp::device::{Interface, Packet};
 
+use crate::server::Layer;
+
 #[derive(Clone)]
 pub struct MapTable {
     map: Arc<Mutex<LruCache<SocketAddrV4, SocketAddrV4>>>,
@@ -38,6 +40,7 @@ pub struct GatewayInterface<I> {
     map: MapTable,
 
     override_v4: SocketAddrV4,
+    layer: Layer,
 }
 
 fn set_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
@@ -66,16 +69,14 @@ fn set_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
     )))
 }
 
-fn get_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
-    ip: &mut Ipv4Packet<T>,
-) -> smoltcp::Result<Option<SocketAddrV4>> {
+fn get_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(ip: &mut Ipv4Packet<T>) -> Option<SocketAddrV4> {
     let dst_addr = ip.dst_addr();
     let port = match ip.protocol() {
-        IpProtocol::Tcp => TcpPacket::new_checked(ip.payload_mut())?.dst_port(),
-        IpProtocol::Udp => UdpPacket::new_checked(ip.payload_mut())?.dst_port(),
-        _ => return Ok(None),
+        IpProtocol::Tcp => TcpPacket::new_checked(ip.payload_mut()).ok()?.dst_port(),
+        IpProtocol::Udp => UdpPacket::new_checked(ip.payload_mut()).ok()?.dst_port(),
+        _ => return None,
     };
-    Ok(Some(SocketAddrV4::new(dst_addr.into(), port)))
+    Some(SocketAddrV4::new(dst_addr.into(), port))
 }
 
 fn set_src_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
@@ -99,61 +100,55 @@ fn set_src_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
 }
 
 impl<I> GatewayInterface<I> {
-    pub fn new(inner: I, lru_size: usize, override_v4: SocketAddrV4) -> GatewayInterface<I> {
+    pub fn new(
+        inner: I,
+        lru_size: usize,
+        override_v4: SocketAddrV4,
+        layer: Layer,
+    ) -> GatewayInterface<I> {
         GatewayInterface {
             inner,
             map: MapTable::new(lru_size),
-
             override_v4,
+            layer,
         }
     }
     pub fn get_map(&self) -> MapTable {
         self.map.clone()
     }
-    fn map_in(&self, mut packet: Packet) -> Packet {
-        fn map(
-            packet: &mut Packet,
-            override_v4: SocketAddrV4,
-            map_table: &MapTable,
-        ) -> smoltcp::Result<()> {
-            let mut frame = EthernetFrame::new_checked(packet)?;
+    // get ip packet by self.layer
+    fn payload(&self, mut packet: Packet, f: impl FnOnce(Ipv4Packet<&mut [u8]>)) -> Packet {
+        let cb = |payload_mut: &mut [u8]| Ipv4Packet::new_checked(payload_mut).map(f).ok();
 
-            match frame.ethertype() {
-                EthernetProtocol::Ipv4 => {
-                    let mut ipv4 = Ipv4Packet::new_checked(frame.payload_mut())?;
-                    if let Some((src_addr, ori_addr)) = set_dst_addr(&mut ipv4, override_v4)? {
-                        map_table.insert(src_addr, ori_addr);
-                    }
+        match self.layer {
+            Layer::L2 => {
+                let mut frame = match EthernetFrame::new_checked(&mut packet) {
+                    Ok(p) => p,
+                    Err(_) => return packet,
+                };
+
+                match frame.ethertype() {
+                    EthernetProtocol::Ipv4 => cb(frame.payload_mut()),
+                    _ => return packet,
                 }
-                _ => return Ok(()),
-            };
-
-            Ok(())
-        }
-        map(&mut packet, self.override_v4, &self.map).ok();
+            }
+            Layer::L3 => cb(&mut packet[..]),
+        };
         packet
     }
-    fn map_out(&self, mut packet: Packet) -> Packet {
-        fn map(packet: &mut Packet, map_table: &MapTable) -> smoltcp::Result<()> {
-            let mut frame = EthernetFrame::new_checked(packet)?;
-
-            match frame.ethertype() {
-                EthernetProtocol::Ipv4 => {
-                    let mut ipv4 = Ipv4Packet::new_checked(frame.payload_mut())?;
-                    if let Some(src) = get_dst_addr(&mut ipv4)?
-                        .map(|d| map_table.get(&d))
-                        .flatten()
-                    {
-                        set_src_addr(&mut ipv4, src)?;
-                    }
-                }
-                _ => return Ok(()),
-            };
-
-            Ok(())
-        }
-        map(&mut packet, &self.map).ok();
-        packet
+    fn map_in(&self, packet: Packet) -> Packet {
+        self.payload(packet, |mut ipv4| {
+            if let Ok(Some((src_addr, ori_addr))) = set_dst_addr(&mut ipv4, self.override_v4) {
+                self.map.insert(src_addr, ori_addr);
+            }
+        })
+    }
+    fn map_out(&self, packet: Packet) -> Packet {
+        self.payload(packet, |mut ipv4| {
+            if let Some(src) = get_dst_addr(&mut ipv4).map(|d| self.map.get(&d)).flatten() {
+                set_src_addr(&mut ipv4, src).ok();
+            }
+        })
     }
 }
 

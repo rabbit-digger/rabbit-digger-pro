@@ -10,8 +10,8 @@ rd-std = { path = "../../rabbit-digger/rd-std/", version = "0.1" }
 # rd-interface = "0.3"
 serde = "1.0"
 tracing = "0.1.26"
-tokio-smoltcp = "0.1.13"
-smoltcp = "0.7"
+tokio-smoltcp = { version = "0.1.14", git = "https://github.com/spacemeowx2/tokio-smoltcp.git", rev = "4d72afc0aec7689fe4dd42ca2b85b0df4db85194" }
+smoltcp = { version = "0.8", git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "dedfbe1e7da2316b4e3c4a8c228c19b28190e3ea" }
 tokio = { version = "1.5.0", features = ["rt", "macros", "net"] }
 pcap = "0.8.1"
 futures = "0.3"
@@ -19,10 +19,10 @@ lru_time_cache = "0.11"
 parking_lot = "0.11.1"
 thiserror = "1.0"
 
+tokio-util = { version = "0.6", features = ["codec"] }
+
 [dependencies.tun-crate]
-version = "0.5.1"
-git = "https://github.com/meh/rust-tun.git"
-rev = "19906c006512acf805f392e744e38aec8adc6618"
+version = "0.5.3"
 package = "tun"
 features = ["async"]
 

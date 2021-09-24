@@ -12,7 +12,7 @@ use rd_interface::{
 };
 use rd_std::util::connect_tcp;
 use smoltcp::{
-    phy::{Checksum, ChecksumCapabilities},
+    phy::{Checksum, ChecksumCapabilities, Medium},
     wire::{
         EthernetAddress, EthernetFrame, EthernetProtocol, IpCidr, IpProtocol, IpVersion,
         Ipv4Address, Ipv4Packet, Ipv4Repr, UdpPacket, UdpRepr,
@@ -34,6 +34,19 @@ use crate::{
 };
 
 #[rd_config]
+#[derive(Clone, Copy)]
+pub enum Layer {
+    L2,
+    L3,
+}
+
+impl Default for Layer {
+    fn default() -> Self {
+        Layer::L2
+    }
+}
+
+#[rd_config]
 pub struct RawServerConfig {
     pub device: String,
     pub mtu: usize,
@@ -42,6 +55,7 @@ pub struct RawServerConfig {
     pub ethernet_addr: Option<String>,
     #[serde(default = "default_lru")]
     pub lru_size: usize,
+    pub layer: Layer,
 }
 
 pub fn default_lru() -> usize {
@@ -81,14 +95,16 @@ impl RawServer {
         ip_addr: IpCidr,
         lru_size: usize,
         mtu: usize,
+        layer: Layer,
     ) -> Result<RawServer> {
-        let ethernet_addr = match ethernet_addr {
-            Some(ethernet_addr) => ethernet_addr,
-            None => {
+        let ethernet_addr = match (ethernet_addr, layer) {
+            (Some(ethernet_addr), _) => ethernet_addr,
+            (None, Layer::L2) => {
                 crate::interface_info::get_interface_info(dev_name)
                     .map_err(map_other)?
                     .ethernet_address
             }
+            (None, Layer::L3) => EthernetAddress::BROADCAST,
         };
         let gateway = ip_addr.address();
         let net_config = NetConfig {
@@ -111,13 +127,15 @@ impl RawServer {
             _ => return Err(Error::Other("Ipv6 is not supported".into())),
         };
 
-        let device = GatewayInterface::new(
-            dev.filter(move |p: &Packet| ready(filter_packet(p, ethernet_addr, ip_addr))),
-            lru_size,
-            SocketAddrV4::new(addr.into(), 20000),
-        );
+        // .filter(move |p: &Packet| ready(filter_packet(p, ethernet_addr, ip_addr)))
+        let device =
+            GatewayInterface::new(dev, lru_size, SocketAddrV4::new(addr.into(), 20000), layer);
         let map = device.get_map();
         let mut device = FutureDevice::new(device, mtu);
+        match layer {
+            Layer::L2 => device.caps.medium = Medium::Ethernet,
+            Layer::L3 => device.caps.medium = Medium::Ip,
+        }
         device.caps.max_burst_size = Some(100);
         // ignored checksum since we modify the packets
         device.caps.checksum = ChecksumCapabilities::ignored();
@@ -154,6 +172,7 @@ impl RawServer {
             ip_addr,
             config.lru_size,
             config.mtu,
+            config.layer,
         )
     }
     async fn serve_tcp(&self, mut listener: TcpListener) -> Result<()> {
@@ -250,23 +269,25 @@ fn pack_udp(src: SocketAddr, dst: SocketAddr, payload: &[u8]) -> Option<Vec<u8>>
             let udp_repr = UdpRepr {
                 src_port: src.port(),
                 dst_port: dst.port(),
-                payload,
             };
             let ipv4_repr = Ipv4Repr {
                 src_addr: Ipv4Address::from(*src_v4.ip()),
                 dst_addr: Ipv4Address::from(*dst_v4.ip()),
                 protocol: IpProtocol::Udp,
-                payload_len: udp_repr.buffer_len(),
+                payload_len: udp_repr.header_len() + payload.len(),
                 hop_limit: 64,
             };
 
-            let mut buffer = vec![0u8; ipv4_repr.buffer_len() + udp_repr.buffer_len()];
+            let mut buffer =
+                vec![0u8; ipv4_repr.buffer_len() + udp_repr.header_len() + payload.len()];
 
             let mut udp_packet = UdpPacket::new_unchecked(&mut buffer[ipv4_repr.buffer_len()..]);
             udp_repr.emit(
                 &mut udp_packet,
                 &src.ip().into(),
                 &dst.ip().into(),
+                payload.len(),
+                |buf| buf.copy_from_slice(payload),
                 checksum,
             );
 
