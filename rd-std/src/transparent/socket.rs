@@ -60,7 +60,11 @@ pub async fn create_tcp_listener(addr: SocketAddr) -> io::Result<TcpListener> {
 pub struct TransparentUdp(AsyncFd<UdpSocket>);
 
 // https://github.com/shadowsocks/shadowsocks-rust/blob/0433b3ec09bcaa26f7460a50287b56c67b687a34/crates/shadowsocks-service/src/local/redir/udprelay/sys/unix/linux.rs#L56
-async fn create_udp_socket(addr: SocketAddr, reuse_port: bool) -> io::Result<TransparentUdp> {
+async fn create_udp_socket(
+    addr: SocketAddr,
+    reuse_port: bool,
+    mark: Option<u32>,
+) -> io::Result<TransparentUdp> {
     let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))?;
     set_socket_before_bind(&addr, &socket)?;
 
@@ -68,6 +72,9 @@ async fn create_udp_socket(addr: SocketAddr, reuse_port: bool) -> io::Result<Tra
     socket.set_reuse_address(true)?;
     if reuse_port {
         socket.set_reuse_port(true)?;
+    }
+    if let Some(mark) = mark {
+        socket.set_mark(mark)?;
     }
 
     socket.bind(&SockAddr::from(addr))?;
@@ -226,12 +233,10 @@ impl AsRawFd for TransparentUdp {
 
 impl TransparentUdp {
     pub async fn listen(addr: SocketAddr) -> io::Result<TransparentUdp> {
-        create_udp_socket(addr, false).await
+        create_udp_socket(addr, false, None).await
     }
     pub async fn bind_any(addr: SocketAddr, mark: Option<u32>) -> io::Result<TransparentUdp> {
-        let socket = create_udp_socket(addr, true).await?;
-
-        crate::builtin::local::set_mark(socket.as_raw_fd(), mark)?;
+        let socket = create_udp_socket(addr, true, mark).await?;
 
         Ok(socket)
     }

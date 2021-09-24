@@ -8,6 +8,7 @@ use rd_interface::{
     async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, INet, IntoDyn,
     Result, TcpListener, TcpStream, UdpSocket,
 };
+use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
 use tracing::instrument;
 
@@ -24,6 +25,9 @@ pub struct LocalNetConfig {
 
     /// set SO_MARK on linux
     pub mark: Option<u32>,
+
+    /// bind to device
+    pub device: Option<String>,
 
     /// timeout of TCP connect, in seconds.
     pub connect_timeout: Option<u64>,
@@ -108,29 +112,6 @@ impl rd_interface::IUdpSocket for Udp {
     }
 }
 
-#[cfg(target_os = "linux")]
-pub(crate) fn set_mark(socket: libc::c_int, mark: Option<u32>) -> Result<()> {
-    cfg_if::cfg_if! {
-        if #[cfg(target_os = "linux")] {
-            if let Some(mark) = mark {
-                let ret = unsafe {
-                    libc::setsockopt(
-                        socket,
-                        libc::SOL_SOCKET,
-                        libc::SO_MARK,
-                        &mark as *const _ as *const _,
-                        std::mem::size_of_val(&mark) as libc::socklen_t,
-                    )
-                };
-                if ret != 0 {
-                    return Err(io::Error::last_os_error().into());
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 #[async_trait]
 impl INet for LocalNet {
     #[instrument(err)]
@@ -142,27 +123,35 @@ impl INet for LocalNet {
         let addr = addr.resolve(lookup_host).await?;
 
         let socket = match addr {
-            SocketAddr::V4(..) => net::TcpSocket::new_v4()?,
-            SocketAddr::V6(..) => net::TcpSocket::new_v6()?,
+            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
         };
+        socket.set_nonblocking(true)?;
+
+        if let Some(ttl) = self.0.ttl {
+            socket.set_ttl(ttl)?;
+        }
+
+        if let Some(nodelay) = self.0.nodelay {
+            socket.set_nodelay(nodelay)?;
+        }
 
         #[cfg(target_os = "linux")]
-        set_mark(
-            std::os::unix::prelude::AsRawFd::as_raw_fd(&socket),
-            self.0.mark,
-        )?;
+        if let Some(mark) = self.0.mark {
+            socket.set_mark(mark)?;
+        }
+
+        #[cfg(target_os = "linux")]
+        if let Some(device) = &self.0.device {
+            socket.bind_device(Some(device.as_bytes()))?;
+        }
+
+        let socket = net::TcpSocket::from_std_stream(socket.into());
 
         let tcp = match self.0.connect_timeout {
             None => socket.connect(addr).await?,
             Some(secs) => timeout(Duration::from_secs(secs), socket.connect(addr)).await??,
         };
-
-        if let Some(ttl) = self.0.ttl {
-            tcp.set_ttl(ttl)?;
-        }
-        if let Some(nodelay) = self.0.nodelay {
-            tcp.set_nodelay(nodelay)?;
-        }
 
         Ok(CompatTcp::new(tcp).into_dyn())
     }
@@ -188,15 +177,28 @@ impl INet for LocalNet {
         addr: &Address,
     ) -> Result<UdpSocket> {
         let addr = addr.resolve(lookup_host).await?;
-        let udp = net::UdpSocket::bind(addr).await?;
+        let udp = match addr {
+            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::DGRAM, None)?,
+            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::DGRAM, None)?,
+        };
+
+        udp.set_nonblocking(true)?;
+        udp.bind(&addr.into())?;
         if let Some(ttl) = self.0.ttl {
             udp.set_ttl(ttl)?;
         }
         #[cfg(target_os = "linux")]
-        set_mark(
-            std::os::unix::prelude::AsRawFd::as_raw_fd(&udp),
-            self.0.mark,
-        )?;
+        if let Some(mark) = self.0.mark {
+            udp.set_mark(mark)?;
+        }
+
+        #[cfg(target_os = "linux")]
+        if let Some(device) = &self.0.device {
+            udp.bind_device(Some(device.as_bytes()))?;
+        }
+
+        let udp = net::UdpSocket::from_std(udp.into())?;
+
         Ok(Udp(udp).into_dyn())
     }
 
