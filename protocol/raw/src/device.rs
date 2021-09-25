@@ -2,7 +2,7 @@ use pcap::{Capture, Device};
 use rd_interface::{Error, ErrorContext, Result};
 use tokio_smoltcp::device::Interface;
 
-pub fn get_device(name: &str) -> Result<Device> {
+pub fn get_device_name(name: &str) -> Result<Device> {
     let mut devices = Device::list().context("Failed to list device")?;
 
     if let Some(id) = devices.iter().position(|d| d.name == name) {

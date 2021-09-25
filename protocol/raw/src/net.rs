@@ -5,7 +5,8 @@ use crate::{
     wrap::{TcpListenerWrap, TcpStreamWrap, UdpSocketWrap},
 };
 use rd_interface::{
-    async_trait, prelude::*, registry::NetFactory, Address, Context, Error, INet, IntoDyn, Result,
+    async_trait, error::map_other, prelude::*, registry::NetFactory, Address, Context, Error, INet,
+    IntoDyn, Result,
 };
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use tokio::sync::Mutex;
@@ -15,7 +16,7 @@ use tokio_smoltcp::{device::FutureDevice, BufferSize, Net, NetConfig};
 pub struct RawNetConfig {
     device: String,
     mtu: usize,
-    ethernet_addr: String,
+    ethernet_addr: Option<String>,
     ip_addr: String,
     gateway: String,
 }
@@ -26,13 +27,20 @@ pub struct RawNet {
 
 impl RawNet {
     fn new(config: RawNetConfig) -> Result<RawNet> {
-        let ethernet_addr = EthernetAddress::from_str(&config.ethernet_addr)
-            .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?;
+        let ethernet_addr = match config.ethernet_addr {
+            Some(addr) => EthernetAddress::from_str(&addr)
+                .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?,
+            None => {
+                crate::interface_info::get_interface_info(&config.device)
+                    .map_err(map_other)?
+                    .ethernet_address
+            }
+        };
         let ip_addr = IpCidr::from_str(&config.ip_addr)
             .map_err(|_| Error::Other("Failed to parse ip_addr".into()))?;
         let gateway = IpAddress::from_str(&config.gateway)
             .map_err(|_| Error::Other("Failed to parse gateway".into()))?;
-        let device = device::get_device(&config.device)?;
+        let device = device::get_device_name(&config.device)?;
 
         let net_config = NetConfig {
             ethernet_addr,
