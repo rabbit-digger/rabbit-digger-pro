@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::SystemTime};
 
-use super::{Storage, StorageItem};
+use super::{Storage, StorageItem, StorageKey};
 use anyhow::Result;
 use parking_lot::RwLock;
 use rd_interface::async_trait;
@@ -36,8 +36,16 @@ impl Storage for MemoryCache {
         );
         Ok(())
     }
-    async fn keys(&self) -> Result<Vec<String>> {
-        Ok(self.cache.read().keys().map(|i| i.clone()).collect())
+    async fn keys(&self) -> Result<Vec<StorageKey>> {
+        Ok(self
+            .cache
+            .read()
+            .iter()
+            .map(|(key, i)| StorageKey {
+                key: key.to_string(),
+                updated_at: i.updated_at,
+            })
+            .collect())
     }
 
     async fn remove(&self, key: &str) -> Result<()> {

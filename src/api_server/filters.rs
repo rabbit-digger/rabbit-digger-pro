@@ -79,6 +79,10 @@ pub async fn api(
         .and(with_ctx(&ctx))
         .and(warp::path::tail())
         .and_then(handlers::delete_userdata);
+    let list_userdata = warp::path!("userdata")
+        .and(warp::get())
+        .and(with_ctx(&ctx))
+        .and_then(handlers::list_userdata);
 
     Ok(prefix.and(
         ws_connection(&ctx)
@@ -94,7 +98,8 @@ pub async fn api(
                     .or(get_delay)
                     .or(get_userdata)
                     .or(put_userdata)
-                    .or(delete_userdata),
+                    .or(delete_userdata)
+                    .or(list_userdata),
             ))
             .recover(handle_rejection),
     ))

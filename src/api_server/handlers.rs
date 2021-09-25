@@ -50,7 +50,7 @@ pub(super) async fn post_config(
     let reply = warp::reply::json(&Value::Null);
 
     rd.stop().await.map_err(custom_reject)?;
-    rd.start_stream(stream).await.map_err(custom_reject)?;
+    tokio::spawn(rd.start_stream(stream));
 
     Ok(reply)
 }
@@ -214,6 +214,13 @@ pub(super) async fn delete_userdata(
         .map_err(custom_reject)?;
 
     Ok(warp::reply::json(&json!({ "ok": true })))
+}
+
+pub(super) async fn list_userdata(
+    Ctx { userdata, .. }: Ctx,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let keys = userdata.keys().await.map_err(custom_reject)?;
+    Ok(warp::reply::json(&json!({ "keys": keys })))
 }
 
 async fn forward<E>(

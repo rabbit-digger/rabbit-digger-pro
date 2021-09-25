@@ -115,7 +115,10 @@ impl ImportSource {
             }
             ImportSource::Storage(ImportStorage { folder, key }) => {
                 let storage = FileStorage::new(folder).await?;
-                let path = storage.get_path(&key);
+                let path = storage
+                    .get_path(&key)
+                    .await?
+                    .ok_or_else(|| anyhow!("Not found"))?;
 
                 let mut stream = notify_stream(path, RecursiveMode::NonRecursive)?
                     .debounce(Duration::from_millis(100));

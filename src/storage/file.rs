@@ -16,7 +16,7 @@ use tokio::{
 };
 use uuid::Uuid;
 
-pub use super::{Storage, StorageItem};
+pub use super::{Storage, StorageItem, StorageKey};
 
 const CACHE_DIR: &str = "rabbit_digger_pro";
 
@@ -50,8 +50,13 @@ impl FileStorage {
 
         Ok(cache)
     }
-    pub fn get_path(&self, key: &str) -> PathBuf {
-        self.cache_dir.join(key)
+    pub async fn get_path(&self, key: &str) -> Result<Option<PathBuf>> {
+        let index = self.get_index().await?;
+
+        Ok(match index.index.get(key) {
+            Some(item) => Some(self.cache_dir.join(&item.content)),
+            None => None,
+        })
     }
     async fn get_index(&self) -> Result<Index> {
         let index_path = self.index_path.clone();
@@ -96,7 +101,7 @@ impl Storage for FileStorage {
         Ok(match index.index.get(key) {
             Some(item) => Some(StorageItem {
                 updated_at: item.updated_at,
-                content: read_to_string(self.get_path(&item.content)).await?,
+                content: read_to_string(self.cache_dir.join(&item.content)).await?,
             }),
             None => None,
         })
@@ -111,7 +116,7 @@ impl Storage for FileStorage {
             .map(|item| item.content.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        write(self.get_path(&filename), value).await?;
+        write(self.cache_dir.join(&filename), value).await?;
 
         index.index.insert(
             key.to_string(),
@@ -124,9 +129,16 @@ impl Storage for FileStorage {
 
         Ok(())
     }
-    async fn keys(&self) -> Result<Vec<String>> {
+    async fn keys(&self) -> Result<Vec<StorageKey>> {
         let index = self.get_index().await?;
-        Ok(index.index.keys().cloned().collect())
+        Ok(index
+            .index
+            .into_iter()
+            .map(|(key, i)| StorageKey {
+                updated_at: i.updated_at,
+                key,
+            })
+            .collect())
     }
 
     async fn remove(&self, key: &str) -> Result<()> {
@@ -138,7 +150,7 @@ impl Storage for FileStorage {
             .map(|item| item.content.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        remove_file(&self.get_path(&filename)).await.ok();
+        remove_file(self.cache_dir.join(&filename)).await.ok();
 
         index.index.remove(key);
         self.set_index(index).await?;
