@@ -55,6 +55,7 @@ pub struct RawServerConfig {
     pub ethernet_addr: Option<String>,
     #[serde(default = "default_lru")]
     pub lru_size: usize,
+    #[serde(default)]
     pub layer: Layer,
 }
 
