@@ -9,7 +9,6 @@ use rabbit_digger_pro::api_server;
 use rabbit_digger_pro::{
     config::{ConfigManager, ImportSource},
     plugin_loader, schema,
-    storage::FileStorage,
 };
 use structopt::StructOpt;
 use tracing_subscriber::filter::dynamic_filter_fn;
@@ -84,7 +83,6 @@ async fn run_api_server(
             config_manager: _cfg_mgr,
             access_token: api_server._access_token.to_owned(),
             web_ui: api_server._web_ui.to_owned(),
-            userdata: FileStorage::new("userdata").await?,
         }
         .run(_bind)
         .await

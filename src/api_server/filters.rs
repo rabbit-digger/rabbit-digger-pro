@@ -1,5 +1,8 @@
 use std::{convert::Infallible, future, path::PathBuf, sync::Arc};
 
+use crate::storage::FileStorage;
+use anyhow::Result;
+
 use super::{
     handlers::{self, Ctx},
     reject::handle_rejection,
@@ -10,14 +13,14 @@ use warp::{Filter, Rejection};
 
 pub async fn api(
     server: Server,
-) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+) -> Result<impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone> {
     let at = check_access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
     // TODO: read or write userdata by API
     let ctx = Ctx {
         rd: server.rabbit_digger.clone(),
         cfg_mgr: server.config_manager.clone(),
-        userdata: Arc::new(server.userdata),
+        userdata: Arc::new(FileStorage::new("userdata").await?),
     };
 
     let get_config = warp::path!("config")
@@ -77,7 +80,7 @@ pub async fn api(
         .and(warp::path::tail())
         .and_then(handlers::delete_userdata);
 
-    prefix.and(
+    Ok(prefix.and(
         ws_connection(&ctx)
             .or(ws_log())
             .or(at.and(
@@ -94,12 +97,12 @@ pub async fn api(
                     .or(delete_userdata),
             ))
             .recover(handle_rejection),
-    )
+    ))
 }
 
 pub async fn routes(
     server: Server,
-) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+) -> Result<impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone> {
     let web_ui = server.web_ui.clone();
     let forward = match web_ui {
         Some(web_ui) => warp::get()
@@ -116,7 +119,7 @@ pub async fn routes(
         .allow_headers(["authorization", "content-type"])
         .allow_methods(["GET", "POST", "PUT", "DELETE"]);
 
-    api(server).await.or(forward).with(cors)
+    Ok(api(server).await?.or(forward).with(cors))
 }
 
 // Websocket /connection
