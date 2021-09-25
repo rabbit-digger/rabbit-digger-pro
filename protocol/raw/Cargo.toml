@@ -21,7 +21,7 @@ thiserror = "1.0"
 
 tokio-util = { version = "0.6", features = ["codec"] }
 
-[dependencies.tun-crate]
+[target.'cfg(unix)'.dependencies.tun-crate]
 version = "0.5.3"
 package = "tun"
 features = ["async"]
