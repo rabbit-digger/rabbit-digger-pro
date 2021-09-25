@@ -135,7 +135,7 @@ impl Storage for FileStorage {
             .map(|item| item.content.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        remove_file(&filename).await?;
+        remove_file(&self.cache_dir.join(&filename)).await.ok();
 
         index.index.remove(key);
         self.set_index(index).await?;
