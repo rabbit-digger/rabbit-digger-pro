@@ -1,5 +1,5 @@
 pub use self::{manager::ConfigManager, select_map::SelectMap};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use futures::StreamExt;
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rabbit_digger::Config;
@@ -12,7 +12,10 @@ use std::{
 };
 use tokio::{fs::read_to_string, time::sleep};
 
-use crate::{storage::Storage, util::DebounceStreamExt};
+use crate::{
+    storage::{FileStorage, Storage},
+    util::DebounceStreamExt,
+};
 
 mod manager;
 mod select_map;
@@ -24,17 +27,25 @@ pub struct ImportUrl {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImportStorage {
+    pub folder: String,
+    pub key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ImportSource {
     Path(PathBuf),
-    Url(ImportUrl),
+    Poll(ImportUrl),
+    Storage(ImportStorage),
 }
 
 impl ImportSource {
     pub fn cache_key(&self) -> String {
         match self {
             ImportSource::Path(path) => format!("path:{:?}", path),
-            ImportSource::Url(url) => format!("url:{}", url.url),
+            ImportSource::Poll(url) => format!("poll:{}", url.url),
+            ImportSource::Storage(storage) => format!("storage:{}:{}", storage.folder, storage.key),
         }
     }
     pub async fn get_content(&self, cache: &dyn Storage) -> Result<String> {
@@ -55,21 +66,30 @@ impl ImportSource {
 
         Ok(match self {
             ImportSource::Path(path) => read_to_string(path).await?,
-            ImportSource::Url(ImportUrl { url, .. }) => {
+            ImportSource::Poll(ImportUrl { url, .. }) => {
                 tracing::info!("Fetching {}", url);
                 let content = reqwest::get(url).await?.text().await?;
                 tracing::info!("Done");
                 cache.set(&key, &content).await?;
                 content
             }
+            ImportSource::Storage(ImportStorage { folder, key }) => {
+                let storage = FileStorage::new(folder).await?;
+                let item = storage
+                    .get(&key)
+                    .await?
+                    .ok_or_else(|| anyhow!("Not found"))?;
+                item.content
+            }
         })
     }
     fn get_expire_duration(&self) -> Option<Duration> {
         match self {
             ImportSource::Path(_) => None,
-            ImportSource::Url(ImportUrl { interval, .. }) => {
+            ImportSource::Poll(ImportUrl { interval, .. }) => {
                 interval.map(|i| Duration::from_secs(i))
             }
+            ImportSource::Storage(_) => None,
         }
     }
     pub async fn wait(&self, cache: &dyn Storage) -> Result<()> {
@@ -79,7 +99,7 @@ impl ImportSource {
                     .debounce(Duration::from_millis(100));
                 stream.next().await;
             }
-            ImportSource::Url(ImportUrl { interval, .. }) => {
+            ImportSource::Poll(ImportUrl { interval, .. }) => {
                 let updated_at = cache.get_updated_at(&self.cache_key()).await?;
                 match (updated_at, interval) {
                     (None, _) => {}
@@ -92,6 +112,14 @@ impl ImportSource {
                         sleep(tts).await
                     }
                 }
+            }
+            ImportSource::Storage(ImportStorage { folder, key }) => {
+                let storage = FileStorage::new(folder).await?;
+                let path = storage.get_path(&key);
+
+                let mut stream = notify_stream(path, RecursiveMode::NonRecursive)?
+                    .debounce(Duration::from_millis(100));
+                stream.next().await;
             }
         };
         Ok(())

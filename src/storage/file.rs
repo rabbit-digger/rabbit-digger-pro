@@ -50,6 +50,9 @@ impl FileStorage {
 
         Ok(cache)
     }
+    pub fn get_path(&self, key: &str) -> PathBuf {
+        self.cache_dir.join(key)
+    }
     async fn get_index(&self) -> Result<Index> {
         let index_path = self.index_path.clone();
         let index = spawn_blocking(move || {
@@ -93,7 +96,7 @@ impl Storage for FileStorage {
         Ok(match index.index.get(key) {
             Some(item) => Some(StorageItem {
                 updated_at: item.updated_at,
-                content: read_to_string(self.cache_dir.join(&item.content)).await?,
+                content: read_to_string(self.get_path(&item.content)).await?,
             }),
             None => None,
         })
@@ -108,7 +111,7 @@ impl Storage for FileStorage {
             .map(|item| item.content.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        write(self.cache_dir.join(&filename), value).await?;
+        write(self.get_path(&filename), value).await?;
 
         index.index.insert(
             key.to_string(),
@@ -135,7 +138,7 @@ impl Storage for FileStorage {
             .map(|item| item.content.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        remove_file(&self.cache_dir.join(&filename)).await.ok();
+        remove_file(&self.get_path(&filename)).await.ok();
 
         index.index.remove(key);
         self.set_index(index).await?;
