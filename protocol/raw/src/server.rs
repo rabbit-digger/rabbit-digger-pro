@@ -69,21 +69,37 @@ pub struct RawServer {
     map: MapTable,
 }
 
-fn filter_packet(packet: &[u8], ethernet_addr: EthernetAddress, ip_addr: IpCidr) -> bool {
-    if let Ok(f) = EthernetFrame::new_checked(packet) {
-        let ether_accept = f.dst_addr() == ethernet_addr || f.dst_addr().is_broadcast();
-        ether_accept && {
-            match (f.ethertype(), Ipv4Packet::new_checked(f.payload())) {
-                (EthernetProtocol::Ipv4, Ok(p)) => {
-                    ip_addr.contains_addr(&p.src_addr().into())
-                        || ip_addr.contains_addr(&p.dst_addr().into())
+fn filter_packet(
+    packet: &[u8],
+    ethernet_addr: EthernetAddress,
+    ip_addr: IpCidr,
+    layer: Layer,
+) -> bool {
+    let cb = |payload_mut: &[u8]| {
+        Ipv4Packet::new_checked(payload_mut)
+            .map(|p| {
+                ip_addr.contains_addr(&p.src_addr().into())
+                    || ip_addr.contains_addr(&p.dst_addr().into())
+            })
+            .unwrap_or(false)
+    };
+
+    match layer {
+        Layer::L2 => {
+            let f = match EthernetFrame::new_checked(&packet) {
+                Ok(p) => p,
+                Err(_) => return false,
+            };
+            let ether_accept = f.dst_addr() == ethernet_addr || f.dst_addr().is_broadcast();
+
+            ether_accept
+                && match f.ethertype() {
+                    EthernetProtocol::Ipv4 => cb(f.payload()),
+                    // ignore other ether type
+                    _ => true,
                 }
-                // ignore other ether type
-                _ => true,
-            }
         }
-    } else {
-        false
+        Layer::L3 => cb(&packet[..]),
     }
 }
 
@@ -128,9 +144,12 @@ impl RawServer {
             _ => return Err(Error::Other("Ipv6 is not supported".into())),
         };
 
-        // .filter(move |p: &Packet| ready(filter_packet(p, ethernet_addr, ip_addr)))
-        let device =
-            GatewayInterface::new(dev, lru_size, SocketAddrV4::new(addr.into(), 20000), layer);
+        let device = GatewayInterface::new(
+            dev.filter(move |p: &Packet| ready(filter_packet(p, ethernet_addr, ip_addr, layer))),
+            lru_size,
+            SocketAddrV4::new(addr.into(), 20000),
+            layer,
+        );
         let map = device.get_map();
         let mut device = FutureDevice::new(device, mtu);
         match layer {
