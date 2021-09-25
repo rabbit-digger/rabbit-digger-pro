@@ -1,4 +1,4 @@
-pub use self::{cache::ConfigCache, manager::ConfigManager, select_map::SelectMap};
+pub use self::{manager::ConfigManager, select_map::SelectMap};
 use anyhow::{Context, Result};
 use futures::StreamExt;
 use notify_stream::{notify::RecursiveMode, notify_stream};
@@ -12,9 +12,8 @@ use std::{
 };
 use tokio::{fs::read_to_string, time::sleep};
 
-use crate::util::DebounceStreamExt;
+use crate::{storage::Storage, util::DebounceStreamExt};
 
-mod cache;
 mod manager;
 mod select_map;
 
@@ -38,7 +37,7 @@ impl ImportSource {
             ImportSource::Url(url) => format!("url:{}", url.url),
         }
     }
-    pub async fn get_content(&self, cache: &dyn ConfigCache) -> Result<String> {
+    pub async fn get_content(&self, cache: &dyn Storage) -> Result<String> {
         let key = self.cache_key();
         let content = cache.get(&key).await?;
 
@@ -73,7 +72,7 @@ impl ImportSource {
             }
         }
     }
-    pub async fn wait(&self, cache: &dyn ConfigCache) -> Result<()> {
+    pub async fn wait(&self, cache: &dyn Storage) -> Result<()> {
         match self {
             ImportSource::Path(path) => {
                 let mut stream = notify_stream(path, RecursiveMode::NonRecursive)?
@@ -125,7 +124,7 @@ pub struct ConfigExt {
 }
 
 impl ConfigExt {
-    pub async fn build_from_cache(self, cache: &dyn cache::ConfigCache) -> Result<Config> {
+    pub async fn build_from_cache(self, cache: &dyn Storage) -> Result<Config> {
         let imports = self.import;
         let mut config = self.config;
         for i in imports {

@@ -4,13 +4,13 @@ use anyhow::Result;
 use rabbit_digger::Config;
 use serde::{Deserialize, Serialize};
 
-use super::ConfigCache;
+use crate::storage::Storage;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SelectMap(HashMap<String, String>);
 
 impl SelectMap {
-    pub async fn from_cache(id: &str, cache: &dyn ConfigCache) -> Result<SelectMap> {
+    pub async fn from_cache(id: &str, cache: &dyn Storage) -> Result<SelectMap> {
         let select_map = cache
             .get(id)
             .await?
@@ -18,7 +18,7 @@ impl SelectMap {
             .unwrap_or_default();
         Ok(SelectMap(select_map))
     }
-    pub async fn write_cache(&self, id: &str, cache: &dyn ConfigCache) -> Result<()> {
+    pub async fn write_cache(&self, id: &str, cache: &dyn Storage) -> Result<()> {
         cache.set(id, &serde_json::to_string(&self.0)?).await
     }
     pub async fn apply_config(&self, config: &mut Config) {

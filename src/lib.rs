@@ -9,6 +9,7 @@ pub mod config;
 pub mod log;
 pub mod schema;
 mod select;
+pub mod storage;
 mod translate;
 mod util;
 

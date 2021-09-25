@@ -1,15 +1,11 @@
-use crate::config::{ConfigCache, Import};
+use crate::{config::Import, storage::Storage};
 use anyhow::{anyhow, Result};
 use rabbit_digger::config::Config;
 
 mod clash;
 mod merge;
 
-pub async fn post_process(
-    config: &mut Config,
-    import: Import,
-    cache: &dyn ConfigCache,
-) -> Result<()> {
+pub async fn post_process(config: &mut Config, import: Import, cache: &dyn Storage) -> Result<()> {
     let content = import.source.get_content(cache).await?;
     match import.format.as_ref() {
         "clash" => {
