@@ -10,7 +10,7 @@ rd-std = { path = "../../rabbit-digger/rd-std/", version = "0.1" }
 # rd-interface = "0.3"
 serde = "1.0"
 tracing = "0.1.26"
-tokio-smoltcp = { version = "0.1.14", git = "https://github.com/spacemeowx2/tokio-smoltcp.git", rev = "4d72afc0aec7689fe4dd42ca2b85b0df4db85194" }
+tokio-smoltcp = { version = "0.1.14", git = "https://github.com/spacemeowx2/tokio-smoltcp.git", rev = "b8182933c9a689130448f85facb089112f005c5a" }
 smoltcp = { version = "0.8", git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "dedfbe1e7da2316b4e3c4a8c228c19b28190e3ea" }
 tokio = { version = "1.5.0", features = ["rt", "macros", "net"] }
 pcap = "0.8.1"
