@@ -39,4 +39,9 @@ impl Storage for MemoryCache {
     async fn keys(&self) -> Result<Vec<String>> {
         Ok(self.cache.read().keys().map(|i| i.clone()).collect())
     }
+
+    async fn remove(&self, key: &str) -> Result<()> {
+        self.cache.write().remove(key);
+        Ok(())
+    }
 }

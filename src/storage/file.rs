@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs::File, path::PathBuf, time::SystemTime};
+use std::{
+    collections::HashMap,
+    fs::File,
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use anyhow::{Context, Result};
 use dirs::cache_dir;
@@ -6,7 +11,7 @@ use fs2::FileExt;
 use rd_interface::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::{
-    fs::{create_dir_all, read_to_string, write},
+    fs::{create_dir_all, read_to_string, remove_file, write},
     task::spawn_blocking,
 };
 use uuid::Uuid;
@@ -16,22 +21,21 @@ pub use super::{Storage, StorageItem};
 const CACHE_DIR: &str = "rabbit_digger_pro";
 
 pub struct FileStorage {
-    prefix: String,
     cache_dir: PathBuf,
     index_path: PathBuf,
 }
 
 impl FileStorage {
-    pub async fn new(prefix: impl Into<String>) -> Result<Self> {
+    pub async fn new(folder: impl AsRef<Path>) -> Result<Self> {
         let cache_dir = cache_dir()
             .ok_or_else(|| anyhow::anyhow!("no cache dir"))?
-            .join(CACHE_DIR);
+            .join(CACHE_DIR)
+            .join(folder);
         create_dir_all(&cache_dir)
             .await
             .context("Failed to create cache dir")?;
         let index_path = cache_dir.join("index.json");
         let cache = FileStorage {
-            prefix: prefix.into(),
             cache_dir,
             index_path: index_path.clone(),
         };
@@ -82,14 +86,11 @@ struct Index {
 impl Storage for FileStorage {
     async fn get_updated_at(&self, key: &str) -> Result<Option<SystemTime>> {
         let index = self.get_index().await?;
-        Ok(index
-            .index
-            .get(&format!("{}{}", self.prefix, key))
-            .map(|item| item.updated_at))
+        Ok(index.index.get(key).map(|item| item.updated_at))
     }
     async fn get(&self, key: &str) -> Result<Option<StorageItem>> {
         let index = self.get_index().await?;
-        Ok(match index.index.get(&format!("{}{}", self.prefix, key)) {
+        Ok(match index.index.get(key) {
             Some(item) => Some(StorageItem {
                 updated_at: item.updated_at,
                 content: read_to_string(self.cache_dir.join(&item.content)).await?,
@@ -99,19 +100,18 @@ impl Storage for FileStorage {
     }
 
     async fn set(&self, key: &str, value: &str) -> Result<()> {
-        let key = format!("{}{}", self.prefix, key);
         let mut index = self.get_index().await?;
 
         let filename = index
             .index
-            .get(&key)
+            .get(key)
             .map(|item| item.content.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         write(self.cache_dir.join(&filename), value).await?;
 
         index.index.insert(
-            key,
+            key.to_string(),
             StorageItem {
                 updated_at: SystemTime::now(),
                 content: filename,
@@ -123,11 +123,23 @@ impl Storage for FileStorage {
     }
     async fn keys(&self) -> Result<Vec<String>> {
         let index = self.get_index().await?;
-        Ok(index
+        Ok(index.index.keys().cloned().collect())
+    }
+
+    async fn remove(&self, key: &str) -> Result<()> {
+        let mut index = self.get_index().await?;
+
+        let filename = index
             .index
-            .keys()
-            .filter(|i| i.starts_with(&self.prefix))
-            .map(|i| i.clone())
-            .collect())
+            .get(key)
+            .map(|item| item.content.clone())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        remove_file(&filename).await?;
+
+        index.index.remove(key);
+        self.set_index(index).await?;
+
+        Ok(())
     }
 }

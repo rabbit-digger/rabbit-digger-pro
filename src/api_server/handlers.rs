@@ -2,32 +2,38 @@ use std::{
     convert::Infallible,
     error::Error,
     future::ready,
-    path::PathBuf,
+    str::from_utf8,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use super::reject::{custom_reject, ApiError};
-use futures::{pin_mut, SinkExt, Stream, StreamExt, TryStreamExt};
+use bytes::Bytes;
+use futures::{SinkExt, Stream, StreamExt, TryStreamExt};
 use rabbit_digger::{RabbitDigger, Uuid};
 use rd_interface::{IntoAddress, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::{
-    fs::{create_dir_all, read_to_string, remove_file, File},
-    pin,
-    time::interval,
-};
+use tokio::{pin, time::interval};
 use tokio_stream::wrappers::IntervalStream;
-use tokio_util::codec::{BytesCodec, FramedWrite};
 use warp::{
     path::Tail,
     ws::{Message, WebSocket},
-    Buf,
 };
 
-use crate::config::{ConfigManager, ImportSource, SelectMap};
+use crate::{
+    config::{ConfigManager, ImportSource, SelectMap},
+    storage::{FileStorage, Storage},
+};
 
-pub async fn get_config(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejection> {
+#[derive(Clone)]
+pub(super) struct Ctx {
+    pub(super) rd: RabbitDigger,
+    pub(super) cfg_mgr: ConfigManager,
+    pub(super) userdata: Arc<FileStorage>,
+}
+
+pub(super) async fn get_config(Ctx { rd, .. }: Ctx) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(warp::reply::json(
         &rd.config()
             .await
@@ -35,9 +41,8 @@ pub async fn get_config(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Reje
     ))
 }
 
-pub async fn post_config(
-    rd: RabbitDigger,
-    cfg_mgr: ConfigManager,
+pub(super) async fn post_config(
+    Ctx { rd, cfg_mgr, .. }: Ctx,
     source: ImportSource,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let stream = cfg_mgr.config_stream(source).await.map_err(custom_reject)?;
@@ -50,15 +55,15 @@ pub async fn post_config(
     Ok(reply)
 }
 
-pub async fn get_registry(rd: RabbitDigger) -> Result<impl warp::Reply, Infallible> {
+pub(super) async fn get_registry(Ctx { rd, .. }: Ctx) -> Result<impl warp::Reply, Infallible> {
     Ok(rd.registry(|r| warp::reply::json(&r)).await)
 }
 
-pub async fn get_connection(rd: RabbitDigger) -> Result<impl warp::Reply, Infallible> {
+pub(super) async fn get_connection(Ctx { rd, .. }: Ctx) -> Result<impl warp::Reply, Infallible> {
     Ok(rd.connection(|c| warp::reply::json(&c)).await)
 }
 
-pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejection> {
+pub(super) async fn get_state(Ctx { rd, .. }: Ctx) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(warp::reply::json(
         &rd.state_str()
             .await
@@ -70,9 +75,8 @@ pub async fn get_state(rd: RabbitDigger) -> Result<impl warp::Reply, warp::Rejec
 pub struct PostSelect {
     selected: String,
 }
-pub async fn post_select(
-    rd: RabbitDigger,
-    cfg_mgr: ConfigManager,
+pub(super) async fn post_select(
+    Ctx { rd, cfg_mgr, .. }: Ctx,
     net_name: String,
     PostSelect { selected }: PostSelect,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -107,8 +111,8 @@ pub async fn post_select(
     Ok(warp::reply::json(&Value::Null))
 }
 
-pub async fn delete_conn(
-    rd: RabbitDigger,
+pub(super) async fn delete_conn(
+    Ctx { rd, .. }: Ctx,
     uuid: Uuid,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let ok = rd.stop_connection(uuid).await.map_err(custom_reject)?;
@@ -125,8 +129,8 @@ pub struct DelayResponse {
     connect: u64,
     response: u64,
 }
-pub async fn get_delay(
-    rd: RabbitDigger,
+pub(super) async fn get_delay(
+    Ctx { rd, .. }: Ctx,
     net_name: String,
     DelayRequest { url, timeout }: DelayRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -174,50 +178,40 @@ pub async fn get_delay(
     })
 }
 
-pub async fn get_userdata(
-    mut userdata: PathBuf,
+pub(super) async fn get_userdata(
+    Ctx { userdata, .. }: Ctx,
     tail: Tail,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    // TOOD prevent ".." attack
-    userdata.push(tail.as_str());
-    let body = read_to_string(userdata)
+    let item = userdata
+        .get(tail.as_str())
         .await
-        .map_err(|_| warp::reject::custom(ApiError::NotFound))?;
-    Ok(warp::reply::json(&json!({ "body": body })))
+        .map_err(|_| warp::reject::custom(ApiError::NotFound))?
+        .ok_or_else(|| warp::reject::custom(ApiError::NotFound))?;
+
+    Ok(warp::reply::json(&item))
 }
 
-pub async fn put_userdata(
-    mut userdata: PathBuf,
+pub(super) async fn put_userdata(
+    Ctx { userdata, .. }: Ctx,
     tail: Tail,
-    body: impl Stream<Item = Result<impl Buf, warp::Error>>,
+    body: Bytes,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    create_dir_all(&userdata).await.map_err(custom_reject)?;
-    // TOOD prevent ".." attack
-    userdata.push(tail.as_str());
-    let file = File::create(&userdata).await.map_err(custom_reject)?;
-    let mut stream = FramedWrite::new(file, BytesCodec::new());
-    let mut size = 0;
-    pin_mut!(body);
-    while let Some(mut chunk) = body.try_next().await.map_err(custom_reject)? {
-        let len = chunk.remaining();
-        size += len;
-        stream
-            .send(chunk.copy_to_bytes(len))
-            .await
-            .map_err(custom_reject)?;
-    }
-    Ok(warp::reply::json(&json!({ "copied": size })))
+    userdata
+        .set(tail.as_str(), from_utf8(&body).map_err(custom_reject)?)
+        .await
+        .map_err(custom_reject)?;
+
+    Ok(warp::reply::json(&json!({ "copied": body.len() })))
 }
 
-pub async fn delete_userdata(
-    mut userdata: PathBuf,
+pub(super) async fn delete_userdata(
+    Ctx { userdata, .. }: Ctx,
     tail: Tail,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    create_dir_all(&userdata).await.map_err(custom_reject)?;
-    // TOOD prevent ".." attack
-    userdata.push(tail.as_str());
-
-    remove_file(&userdata).await.map_err(custom_reject)?;
+    userdata
+        .remove(tail.as_str())
+        .await
+        .map_err(custom_reject)?;
 
     Ok(warp::reply::json(&json!({ "ok": true })))
 }
@@ -251,8 +245,8 @@ pub enum MaybePatch {
     Patch(json_patch::Patch),
 }
 
-pub async fn ws_conn(
-    rd: RabbitDigger,
+pub(super) async fn ws_conn(
+    Ctx { rd, .. }: Ctx,
     query: ConnectionQuery,
     ws: warp::ws::Ws,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -295,7 +289,7 @@ pub async fn ws_conn(
     }))
 }
 
-pub async fn ws_log(ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
+pub(super) async fn ws_log(ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
     Ok(ws.on_upgrade(move |mut ws| async move {
         let mut recv = crate::log::get_sender().subscribe();
         while let Ok(content) = recv.recv().await {

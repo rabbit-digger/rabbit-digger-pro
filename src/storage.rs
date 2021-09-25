@@ -20,5 +20,6 @@ pub trait Storage: Send + Sync {
     async fn get_updated_at(&self, key: &str) -> Result<Option<SystemTime>>;
     async fn get(&self, key: &str) -> Result<Option<StorageItem>>;
     async fn set(&self, key: &str, value: &str) -> Result<()>;
+    async fn remove(&self, key: &str) -> Result<()>;
     async fn keys(&self) -> Result<Vec<String>>;
 }

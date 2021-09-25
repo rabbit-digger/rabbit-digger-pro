@@ -1,11 +1,11 @@
-use std::{net::SocketAddr, path::PathBuf};
+use std::net::SocketAddr;
 
 use anyhow::Result;
 use rabbit_digger::RabbitDigger;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 
-use crate::config::ConfigManager;
+use crate::{config::ConfigManager, storage::FileStorage};
 
 mod filters;
 mod handlers;
@@ -16,12 +16,12 @@ pub struct Server {
     pub config_manager: ConfigManager,
     pub access_token: Option<String>,
     pub web_ui: Option<String>,
-    pub userdata: Option<PathBuf>,
+    pub userdata: FileStorage,
 }
 
 impl Server {
     pub async fn run(self, bind: &str) -> Result<SocketAddr> {
-        let routes = filters::routes(self);
+        let routes = filters::routes(self).await;
         let listener = TcpListener::bind(bind).await?;
         let local_addr = listener.local_addr()?;
         let listener = TcpListenerStream::new(listener);

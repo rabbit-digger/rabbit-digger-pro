@@ -1,82 +1,84 @@
-use std::{convert::Infallible, future, path::PathBuf};
+use std::{convert::Infallible, future, path::PathBuf, sync::Arc};
 
-use crate::config::ConfigManager;
-
-use super::{handlers, reject::handle_rejection, reject::ApiError, Server};
-use rabbit_digger::RabbitDigger;
+use super::{
+    handlers::{self, Ctx},
+    reject::handle_rejection,
+    reject::ApiError,
+    Server,
+};
 use warp::{Filter, Rejection};
 
-pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+pub async fn api(
+    server: Server,
+) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     let at = check_access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
     // TODO: read or write userdata by API
-    let userdata = &server
-        .userdata
-        .or_else(|| dirs::config_dir().map(|d| d.join("rabbit-digger")));
-    let rd = &server.rabbit_digger;
-    let cfg_mgr = &server.config_manager;
+    let ctx = Ctx {
+        rd: server.rabbit_digger.clone(),
+        cfg_mgr: server.config_manager.clone(),
+        userdata: Arc::new(server.userdata),
+    };
 
     let get_config = warp::path!("config")
         .and(warp::get())
-        .and(with_rd(rd))
+        .and(with_ctx(&ctx))
         .and_then(handlers::get_config);
     let post_config = warp::path!("config")
         .and(warp::post())
-        .and(with_rd(rd))
-        .and(with_cfg_mgr(cfg_mgr))
+        .and(with_ctx(&ctx))
         .and(warp::body::json())
         .and_then(handlers::post_config);
     let get_registry = warp::path!("registry")
         .and(warp::get())
-        .and(with_rd(rd))
+        .and(with_ctx(&ctx))
         .and_then(handlers::get_registry);
     let get_connection = warp::path!("connection")
         .and(warp::get())
-        .and(with_rd(rd))
+        .and(with_ctx(&ctx))
         .and_then(handlers::get_connection);
     let get_state = warp::path!("state")
         .and(warp::get())
-        .and(with_rd(rd))
+        .and(with_ctx(&ctx))
         .and_then(handlers::get_state);
     let post_select = warp::path("net")
         .and(warp::post())
-        .and(with_rd(rd))
-        .and(with_cfg_mgr(cfg_mgr))
+        .and(with_ctx(&ctx))
         .and(warp::path::param())
         .and(warp::body::json())
         .and_then(handlers::post_select);
     let get_delay = warp::path("net")
         .and(warp::get())
-        .and(with_rd(rd))
+        .and(with_ctx(&ctx))
         .and(warp::path::param())
         .and(warp::path("delay"))
         .and(warp::query::<handlers::DelayRequest>())
         .and_then(handlers::get_delay);
     let delete_conn = warp::path("connection")
         .and(warp::delete())
-        .and(with_rd(rd))
+        .and(with_ctx(&ctx))
         .and(warp::path::param())
         .and_then(handlers::delete_conn);
 
     let get_userdata = warp::path("userdata")
         .and(warp::get())
-        .and(with_userdata(userdata))
+        .and(with_ctx(&ctx))
         .and(warp::path::tail())
         .and_then(handlers::get_userdata);
     let put_userdata = warp::path("userdata")
         .and(warp::put())
-        .and(with_userdata(userdata))
+        .and(with_ctx(&ctx))
         .and(warp::path::tail())
-        .and(warp::body::stream())
+        .and(warp::body::bytes())
         .and_then(handlers::put_userdata);
     let delete_userdata = warp::path("userdata")
         .and(warp::delete())
-        .and(with_userdata(userdata))
+        .and(with_ctx(&ctx))
         .and(warp::path::tail())
         .and_then(handlers::delete_userdata);
 
     prefix.and(
-        ws_connection(&server.rabbit_digger)
+        ws_connection(&ctx)
             .or(ws_log())
             .or(at.and(
                 get_config
@@ -95,7 +97,7 @@ pub fn api(server: Server) -> impl Filter<Extract = impl warp::Reply, Error = Re
     )
 }
 
-pub fn routes(
+pub async fn routes(
     server: Server,
 ) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     let web_ui = server.web_ui.clone();
@@ -114,15 +116,15 @@ pub fn routes(
         .allow_headers(["authorization", "content-type"])
         .allow_methods(["GET", "POST", "PUT", "DELETE"]);
 
-    api(server).or(forward).with(cors)
+    api(server).await.or(forward).with(cors)
 }
 
 // Websocket /connection
-pub fn ws_connection(
-    rd: &RabbitDigger,
+fn ws_connection(
+    ctx: &Ctx,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("connection")
-        .and(with_rd(rd))
+        .and(with_ctx(ctx))
         .and(warp::query::<handlers::ConnectionQuery>())
         .and(warp::ws())
         .and_then(handlers::ws_conn)
@@ -135,31 +137,9 @@ pub fn ws_log() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejecti
         .and_then(handlers::ws_log)
 }
 
-fn with_rd(
-    rd: &RabbitDigger,
-) -> impl Filter<Extract = (RabbitDigger,), Error = Infallible> + Clone {
-    let rd = rd.clone();
-    warp::any().map(move || rd.clone())
-}
-
-fn with_cfg_mgr(
-    cfg_mgr: &ConfigManager,
-) -> impl Filter<Extract = (ConfigManager,), Error = Infallible> + Clone {
-    let cfg_mgr = cfg_mgr.clone();
-    warp::any().map(move || cfg_mgr.clone())
-}
-
-fn with_userdata(
-    userdata: &Option<PathBuf>,
-) -> impl Filter<Extract = (PathBuf,), Error = Rejection> + Clone {
-    let userdata = userdata.clone();
-    if let Some(userdata) = userdata {
-        warp::any().map(move || userdata.clone()).boxed()
-    } else {
-        warp::any()
-            .and_then(|| future::ready(Err(warp::reject::custom(ApiError::Forbidden))))
-            .boxed()
-    }
+fn with_ctx(ctx: &Ctx) -> impl Filter<Extract = (Ctx,), Error = Infallible> + Clone {
+    let ctx = ctx.clone();
+    warp::any().map(move || ctx.clone())
 }
 
 fn check_access_token(
