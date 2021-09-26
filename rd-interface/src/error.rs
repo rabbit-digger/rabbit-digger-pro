@@ -81,6 +81,9 @@ impl Error {
             _ => false,
         }
     }
+    pub fn other(string: impl Into<String>) -> Error {
+        Error::Other(string.into().into())
+    }
 }
 
 pub trait ErrorContext<T, E> {
