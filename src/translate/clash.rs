@@ -183,7 +183,7 @@ impl Clash {
     }
 
     fn proxy_group_name(&self, pg: impl AsRef<str>) -> String {
-        format!("proxy_groups.{}", pg.as_ref())
+        pg.as_ref().to_string()
     }
 
     fn prefix(&self, s: impl AsRef<str>) -> String {
