@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use dirs::cache_dir;
+use dirs::{cache_dir, data_local_dir};
 use fs2::FileExt;
 use rd_interface::async_trait;
 use serde::{Deserialize, Serialize};
@@ -18,25 +18,39 @@ use uuid::Uuid;
 
 pub use super::{Storage, StorageItem, StorageKey};
 
-const CACHE_DIR: &str = "rabbit_digger_pro";
+const PROGRAM_DIR: &str = "rabbit_digger_pro";
+
+pub enum FolderType {
+    Cache,
+    Data,
+}
+
+impl FolderType {
+    fn path(&self, folder: impl AsRef<Path>) -> Result<PathBuf> {
+        Ok(match self {
+            FolderType::Cache => cache_dir(),
+            FolderType::Data => data_local_dir(),
+        }
+        .ok_or_else(|| anyhow::anyhow!("no cache dir"))?
+        .join(PROGRAM_DIR)
+        .join(folder))
+    }
+}
 
 pub struct FileStorage {
-    cache_dir: PathBuf,
+    storage_dir: PathBuf,
     index_path: PathBuf,
 }
 
 impl FileStorage {
-    pub async fn new(folder: impl AsRef<Path>) -> Result<Self> {
-        let cache_dir = cache_dir()
-            .ok_or_else(|| anyhow::anyhow!("no cache dir"))?
-            .join(CACHE_DIR)
-            .join(folder);
-        create_dir_all(&cache_dir)
+    pub async fn new(folder_type: FolderType, folder: impl AsRef<Path>) -> Result<Self> {
+        let storage_dir = folder_type.path(folder)?;
+        create_dir_all(&storage_dir)
             .await
             .context("Failed to create cache dir")?;
-        let index_path = cache_dir.join("index.json");
+        let index_path = storage_dir.join("index.json");
         let cache = FileStorage {
-            cache_dir,
+            storage_dir,
             index_path: index_path.clone(),
         };
         if tokio::fs::metadata(index_path).await.is_err() {
@@ -54,7 +68,7 @@ impl FileStorage {
         let index = self.get_index().await?;
 
         Ok(match index.index.get(key) {
-            Some(item) => Some(self.cache_dir.join(&item.content)),
+            Some(item) => Some(self.storage_dir.join(&item.content)),
             None => None,
         })
     }
@@ -101,7 +115,7 @@ impl Storage for FileStorage {
         Ok(match index.index.get(key) {
             Some(item) => Some(StorageItem {
                 updated_at: item.updated_at,
-                content: read_to_string(self.cache_dir.join(&item.content)).await?,
+                content: read_to_string(self.storage_dir.join(&item.content)).await?,
             }),
             None => None,
         })
@@ -116,7 +130,7 @@ impl Storage for FileStorage {
             .map(|item| item.content.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        write(self.cache_dir.join(&filename), value).await?;
+        write(self.storage_dir.join(&filename), value).await?;
 
         index.index.insert(
             key.to_string(),
@@ -150,7 +164,7 @@ impl Storage for FileStorage {
             .map(|item| item.content.clone())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        remove_file(self.cache_dir.join(&filename)).await.ok();
+        remove_file(self.storage_dir.join(&filename)).await.ok();
 
         index.index.remove(key);
         self.set_index(index).await?;

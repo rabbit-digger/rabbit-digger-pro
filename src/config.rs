@@ -13,7 +13,7 @@ use std::{
 use tokio::{fs::read_to_string, time::sleep};
 
 use crate::{
-    storage::{FileStorage, Storage},
+    storage::{FileStorage, FolderType, Storage},
     util::DebounceStreamExt,
 };
 
@@ -74,7 +74,7 @@ impl ImportSource {
                 content
             }
             ImportSource::Storage(ImportStorage { folder, key }) => {
-                let storage = FileStorage::new(folder).await?;
+                let storage = FileStorage::new(FolderType::Data, folder).await?;
                 let item = storage
                     .get(&key)
                     .await?
@@ -114,7 +114,7 @@ impl ImportSource {
                 }
             }
             ImportSource::Storage(ImportStorage { folder, key }) => {
-                let storage = FileStorage::new(folder).await?;
+                let storage = FileStorage::new(FolderType::Data, folder).await?;
                 let path = storage
                     .get_path(&key)
                     .await?

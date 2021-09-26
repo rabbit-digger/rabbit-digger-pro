@@ -4,7 +4,10 @@ use anyhow::Result;
 use rd_interface::async_trait;
 use serde::{Deserialize, Serialize};
 
-pub use self::{file::FileStorage, memory::MemoryCache};
+pub use self::{
+    file::{FileStorage, FolderType},
+    memory::MemoryCache,
+};
 
 mod file;
 mod memory;

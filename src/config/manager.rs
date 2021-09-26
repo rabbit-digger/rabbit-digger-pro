@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     deserialize_config,
-    storage::{FileStorage, Storage},
+    storage::{FileStorage, FolderType, Storage},
 };
 
 use super::{select_map::SelectMap, ConfigExt, Import, ImportSource};
@@ -11,8 +11,8 @@ use async_stream::stream;
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use rabbit_digger::Config;
 
-const CFG_MGR_PREFIX: &'static str = "cfg_mgr.";
-const SELECT_PREFIX: &'static str = "select.";
+const CFG_MGR_PREFIX: &'static str = "cfg_mgr";
+const SELECT_PREFIX: &'static str = "select";
 
 struct Inner {
     file_cache: FileStorage,
@@ -26,8 +26,8 @@ pub struct ConfigManager {
 
 impl ConfigManager {
     pub async fn new() -> Result<Self> {
-        let file_cache = FileStorage::new(CFG_MGR_PREFIX).await?;
-        let select_storage = FileStorage::new(SELECT_PREFIX).await?;
+        let file_cache = FileStorage::new(FolderType::Cache, CFG_MGR_PREFIX).await?;
+        let select_storage = FileStorage::new(FolderType::Data, SELECT_PREFIX).await?;
 
         let mgr = ConfigManager {
             inner: Arc::new(Inner {

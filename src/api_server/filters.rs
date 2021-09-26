@@ -1,6 +1,6 @@
 use std::{convert::Infallible, future, path::PathBuf, sync::Arc};
 
-use crate::storage::FileStorage;
+use crate::storage::{FileStorage, FolderType};
 use anyhow::Result;
 
 use super::{
@@ -20,7 +20,7 @@ pub async fn api(
     let ctx = Ctx {
         rd: server.rabbit_digger.clone(),
         cfg_mgr: server.config_manager.clone(),
-        userdata: Arc::new(FileStorage::new("userdata").await?),
+        userdata: Arc::new(FileStorage::new(FolderType::Data, "userdata").await?),
     };
 
     let get_config = warp::path!("config")
