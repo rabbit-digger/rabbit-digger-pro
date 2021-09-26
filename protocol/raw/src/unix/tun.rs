@@ -5,25 +5,17 @@ use std::{
     str::FromStr,
 };
 
-use crate::server::{Layer, RawServer};
+use crate::{
+    config::TunNetConfig,
+    server::{Layer, RawServer},
+};
 use futures::{SinkExt, StreamExt};
 use rd_interface::{
-    async_trait, error::map_other, prelude::*, registry::ServerFactory, Error, IServer, Net, Result,
+    async_trait, error::map_other, registry::ServerFactory, Error, IServer, Net, Result,
 };
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use tokio_smoltcp::device::Packet;
 use tun_crate::{create_as_async, Configuration, Device, TunPacket};
-
-#[rd_config]
-pub struct TunNetConfig {
-    dev_name: Option<String>,
-    /// tun address
-    tun_addr: String,
-    /// ipcidr
-    server_addr: String,
-    ethernet_addr: Option<String>,
-    mtu: usize,
-}
 
 pub struct TunServer {
     net: Net,

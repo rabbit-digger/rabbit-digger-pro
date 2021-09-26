@@ -2,6 +2,7 @@ use net::RawNet;
 use rd_interface::{Registry, Result};
 use server::RawServer;
 
+mod config;
 mod device;
 mod gateway;
 mod interface_info;
