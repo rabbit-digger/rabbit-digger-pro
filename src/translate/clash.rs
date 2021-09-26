@@ -114,8 +114,9 @@ impl Clash {
             .into_iter()
             .map(|name| self.get_target(&name))
             .collect::<Result<Vec<String>>>()?;
+        let proxy_group_type = p.proxy_group_type.as_ref();
 
-        Ok(match p.proxy_group_type.as_ref() {
+        Ok(match proxy_group_type {
             "select" => Net::new(
                 "select",
                 json!({
@@ -123,6 +124,19 @@ impl Clash {
                     "list": net_list,
                 }),
             ),
+            "url-test" | "fallback" => {
+                tracing::warn!(
+                    "Unsupported proxy group type: {}, will use select as fallback.",
+                    proxy_group_type
+                );
+                Net::new(
+                    "select",
+                    json!({
+                        "selected": net_list.get(0).cloned().unwrap_or_else(|| "noop".to_string()),
+                        "list": net_list,
+                    }),
+                )
+            }
             _ => {
                 return Err(anyhow!(
                     "Unsupported proxy group type: {}",
@@ -222,6 +236,7 @@ impl Clash {
                 .into_iter()
                 .map(|i| (i.name.to_string(), i))
                 .collect::<Vec<_>>();
+
             for (old_name, pg) in proxy_groups {
                 let name = self.proxy_group_name(&old_name);
                 match self.proxy_group_to_net(pg) {

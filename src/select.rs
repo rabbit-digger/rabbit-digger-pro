@@ -9,7 +9,7 @@ use rd_interface::{
 #[derive(Debug, Clone)]
 pub struct SelectNetConfig {
     selected: NetRef,
-    list: Vec<String>,
+    list: Vec<NetRef>,
 }
 
 pub struct SelectNet(Option<Net>);
