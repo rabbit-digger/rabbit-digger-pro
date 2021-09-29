@@ -1,4 +1,5 @@
-use rd_interface::{config::EmptyConfig, registry::NetFactory, NotImplementedNet, Result};
+use crate::util::NotImplementedNet;
+use rd_interface::{config::EmptyConfig, registry::NetFactory, Result};
 
 pub struct NoopNet;
 

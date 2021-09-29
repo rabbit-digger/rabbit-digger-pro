@@ -6,7 +6,6 @@ pub use rd_derive::{rd_config, Config};
 pub use registry::Registry;
 pub use schemars;
 pub use serde_json::Value;
-pub use util::{CombineNet, NotImplementedNet};
 
 mod address;
 pub mod config;
@@ -16,7 +15,6 @@ pub mod error;
 mod interface;
 mod macros;
 pub mod registry;
-pub mod util;
 
 /// Prelude for easy defining `Config` struct.
 pub mod prelude {

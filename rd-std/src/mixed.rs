@@ -1,11 +1,11 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait, prelude::*, registry::ServerFactory, util::PeekableTcpStream, Address, Context,
-    IServer, IntoDyn, Net, Registry, Result, TcpStream,
+    async_trait, prelude::*, registry::ServerFactory, Address, Context, IServer, IntoDyn, Net,
+    Registry, Result, TcpStream,
 };
 
-use crate::{http::HttpServer, socks5::Socks5Server};
+use crate::{http::HttpServer, socks5::Socks5Server, util::PeekableTcpStream};
 
 #[derive(Clone)]
 struct HttpSocks5Server {
