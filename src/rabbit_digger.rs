@@ -11,7 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use futures::{
     future::{try_select, Either},
     stream::FuturesUnordered,
-    FutureExt, Stream, StreamExt, TryStreamExt,
+    Stream, StreamExt, TryStreamExt,
 };
 use rd_interface::{
     config::EmptyConfig, registry::NetGetter, schemars::schema::RootSchema, Arc, IntoDyn, Net,
@@ -90,18 +90,18 @@ impl fmt::Debug for RabbitDigger {
 impl RabbitDigger {
     async fn recv_event(mut rx: mpsc::UnboundedReceiver<Event>, conn_mgr: ConnectionManager) {
         loop {
-            let e = match rx.recv().now_or_never() {
-                Some(Some(e)) => e,
-                Some(None) => break,
-                None => {
-                    sleep(Duration::from_millis(100)).await;
+            let e = match rx.try_recv() {
+                Ok(e) => e,
+                Err(mpsc::error::TryRecvError::Disconnected) => break,
+                Err(mpsc::error::TryRecvError::Empty) => {
+                    sleep(Duration::from_millis(500)).await;
                     continue;
                 }
             };
 
-            let mut events = Vec::with_capacity(16);
+            let mut events = Vec::with_capacity(32);
             events.push(e);
-            while let Some(Some(e)) = rx.recv().now_or_never() {
+            while let Ok(e) = rx.try_recv() {
                 events.push(e);
             }
             conn_mgr.input_events(events.into_iter());
