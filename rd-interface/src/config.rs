@@ -135,6 +135,15 @@ mod impl_std {
     impl_empty_config! { IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6 }
     impl_container_config! { Vec, Option, VecDeque, Result, LinkedList }
     impl_key_container_config! { HashMap, BTreeMap }
+
+    impl<T1, T2> rd_interface::config::Config for (T1, T2) {
+        fn visit(
+            &mut self,
+            _visitor: &mut impl rd_interface::config::Visitor,
+        ) -> rd_interface::Result<()> {
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
