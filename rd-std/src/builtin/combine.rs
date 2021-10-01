@@ -31,6 +31,7 @@ impl INet for CombineNet {
     }
 }
 
+/// CombineNet merges multiple nets into one.
 #[rd_config]
 #[derive(Debug)]
 pub struct CombineNetConfig {

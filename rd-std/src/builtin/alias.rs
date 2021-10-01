@@ -32,6 +32,7 @@ impl INet for AliasNet {
     }
 }
 
+/// A net refering to another net.
 #[rd_config]
 #[derive(Debug)]
 pub struct AliasNetConfig {

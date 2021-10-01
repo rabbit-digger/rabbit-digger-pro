@@ -6,22 +6,23 @@ use rd_interface::{
     TcpListener, TcpStream,
 };
 
+/// A server that forwards all connections to target.
 #[rd_config]
 #[derive(Debug)]
-pub struct ForwardNetConfig {
+pub struct ForwardServerConfig {
     bind: Address,
     target: Address,
 }
 
-pub struct ForwardNet {
+pub struct ForwardServer {
     listen_net: Net,
     net: Net,
-    cfg: Arc<ForwardNetConfig>,
+    cfg: Arc<ForwardServerConfig>,
 }
 
-impl ForwardNet {
-    fn new(listen_net: Net, net: Net, cfg: ForwardNetConfig) -> ForwardNet {
-        ForwardNet {
+impl ForwardServer {
+    fn new(listen_net: Net, net: Net, cfg: ForwardServerConfig) -> ForwardServer {
+        ForwardServer {
             listen_net,
             net,
             cfg: Arc::new(cfg),
@@ -29,7 +30,7 @@ impl ForwardNet {
     }
 }
 #[async_trait]
-impl IServer for ForwardNet {
+impl IServer for ForwardServer {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
@@ -39,9 +40,9 @@ impl IServer for ForwardNet {
     }
 }
 
-impl ForwardNet {
+impl ForwardServer {
     async fn serve_connection(
-        cfg: Arc<ForwardNetConfig>,
+        cfg: Arc<ForwardServerConfig>,
         socket: TcpStream,
         net: Net,
         addr: SocketAddr,
@@ -65,12 +66,12 @@ impl ForwardNet {
     }
 }
 
-impl ServerFactory for ForwardNet {
+impl ServerFactory for ForwardServer {
     const NAME: &'static str = "forward";
-    type Config = ForwardNetConfig;
+    type Config = ForwardServerConfig;
     type Server = Self;
 
     fn new(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
-        Ok(ForwardNet::new(listen, net, cfg))
+        Ok(ForwardServer::new(listen, net, cfg))
     }
 }

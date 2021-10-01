@@ -14,7 +14,7 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_net::<noop::NoopNet>();
     registry.add_net::<resolve::ResolveNet>();
 
-    registry.add_server::<forward::ForwardNet>();
+    registry.add_server::<forward::ForwardServer>();
 
     Ok(())
 }

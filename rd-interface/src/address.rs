@@ -6,6 +6,7 @@ use std::{
     str::FromStr,
 };
 
+/// An address represents a network address using domain.
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord)]
 pub struct AddressDomain {
     pub domain: String,

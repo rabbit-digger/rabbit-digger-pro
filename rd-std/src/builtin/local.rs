@@ -12,6 +12,7 @@ use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
 use tracing::instrument;
 
+/// A local network.
 #[rd_config]
 #[derive(Debug, Clone, Default)]
 pub struct LocalNetConfig {
