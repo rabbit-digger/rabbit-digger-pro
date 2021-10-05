@@ -1,12 +1,14 @@
 use std::{
+    ffi::CString,
     io::{self},
     net::SocketAddr,
+    num::NonZeroU32,
     time::Duration,
 };
 
 use rd_interface::{
-    async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, INet, IntoDyn,
-    Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, error::map_other, impl_async_read_write, prelude::*, registry::NetFactory,
+    Address, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
@@ -42,11 +44,7 @@ impl LocalNet {
     pub fn new(config: LocalNetConfig) -> LocalNet {
         LocalNet(config)
     }
-    async fn tcp_connect_single(&self, addr: SocketAddr) -> Result<net::TcpStream> {
-        let socket = match addr {
-            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
-            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
-        };
+    fn set_socket(&self, socket: &Socket) -> Result<()> {
         socket.set_nonblocking(true)?;
 
         if let Some(ttl) = self.0.ttl {
@@ -67,6 +65,29 @@ impl LocalNet {
             socket.bind_device(Some(device.as_bytes()))?;
         }
 
+        #[cfg(target_os = "macos")]
+        if let Some(device) = &self.0.device {
+            println!("set device {}", device);
+            let device = CString::new(device.to_string()).map_err(map_other)?;
+            let idx =
+                unsafe { libc::if_nametoindex(device.to_bytes_with_nul().as_ptr() as *const i8) };
+            if idx == 0 {
+                return Err(io::Error::last_os_error().into());
+            }
+
+            socket.bind_device_by_index(NonZeroU32::new(idx))?;
+        }
+
+        Ok(())
+    }
+    async fn tcp_connect_single(&self, addr: SocketAddr) -> Result<net::TcpStream> {
+        let socket = match addr {
+            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
+        };
+
+        self.set_socket(&socket)?;
+
         let socket = net::TcpSocket::from_std_stream(socket.into());
 
         let tcp = match self.0.connect_timeout {
@@ -79,10 +100,6 @@ impl LocalNet {
     async fn tcp_bind_single(&self, addr: SocketAddr) -> Result<net::TcpListener> {
         let listener = net::TcpListener::bind(addr).await?;
 
-        if let Some(ttl) = self.0.ttl {
-            listener.set_ttl(ttl)?;
-        }
-
         Ok(listener)
     }
     async fn udp_bind_single(&self, addr: SocketAddr) -> Result<net::UdpSocket> {
@@ -91,20 +108,9 @@ impl LocalNet {
             SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::DGRAM, None)?,
         };
 
-        udp.set_nonblocking(true)?;
-        udp.bind(&addr.into())?;
-        if let Some(ttl) = self.0.ttl {
-            udp.set_ttl(ttl)?;
-        }
-        #[cfg(target_os = "linux")]
-        if let Some(mark) = self.0.mark {
-            udp.set_mark(mark)?;
-        }
+        self.set_socket(&udp)?;
 
-        #[cfg(target_os = "linux")]
-        if let Some(device) = &self.0.device {
-            udp.bind_device(Some(device.as_bytes()))?;
-        }
+        udp.bind(&addr.into())?;
 
         let udp = net::UdpSocket::from_std(udp.into())?;
 
