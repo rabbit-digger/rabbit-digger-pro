@@ -34,7 +34,7 @@ impl Rule {
             // if used geoip, init reader first.
             super::geoip::get_reader();
         }
-        let rule = config
+        let mut rule = config
             .rule
             .into_iter()
             .map(|config::RuleItem { target, matcher }| {
@@ -45,6 +45,9 @@ impl Rule {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+
+        rule.shrink_to_fit();
+
         let rule = Arc::new(rule);
         let cache = Arc::new(Mutex::new(LruCache::with_capacity(config.lru_cache_size)));
 
