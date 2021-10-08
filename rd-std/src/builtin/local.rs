@@ -1,8 +1,7 @@
 use std::{
     ffi::CString,
-    io::{self},
-    net::SocketAddr,
-    num::NonZeroU32,
+    io,
+    net::{IpAddr, SocketAddr},
     time::Duration,
 };
 
@@ -29,7 +28,10 @@ pub struct LocalNetConfig {
     pub mark: Option<u32>,
 
     /// bind to device
-    pub device: Option<String>,
+    pub bind_device: Option<String>,
+
+    /// bind to address
+    pub bind_addr: Option<IpAddr>,
 
     /// timeout of TCP connect, in seconds.
     pub connect_timeout: Option<u64>,
@@ -44,8 +46,12 @@ impl LocalNet {
     pub fn new(config: LocalNetConfig) -> LocalNet {
         LocalNet(config)
     }
-    fn set_socket(&self, socket: &Socket) -> Result<()> {
+    fn set_socket(&self, socket: &Socket, addr: SocketAddr) -> Result<()> {
         socket.set_nonblocking(true)?;
+
+        if let Some(local_addr) = self.0.bind_addr {
+            socket.bind(&SocketAddr::new(local_addr, 0).into())?;
+        }
 
         if let Some(ttl) = self.0.ttl {
             socket.set_ttl(ttl)?;
@@ -61,21 +67,41 @@ impl LocalNet {
         }
 
         #[cfg(target_os = "linux")]
-        if let Some(device) = &self.0.device {
+        if let Some(device) = &self.0.bind_device {
             socket.bind_device(Some(device.as_bytes()))?;
         }
 
         #[cfg(target_os = "macos")]
-        if let Some(device) = &self.0.device {
-            println!("set device {}", device);
-            let device = CString::new(device.to_string()).map_err(map_other)?;
-            let idx =
-                unsafe { libc::if_nametoindex(device.to_bytes_with_nul().as_ptr() as *const i8) };
-            if idx == 0 {
-                return Err(io::Error::last_os_error().into());
-            }
+        if let Some(device) = &self.0.bind_device {
+            let device = CString::new(device.as_bytes()).map_err(map_other)?;
+            unsafe {
+                let idx = libc::if_nametoindex(device.as_ptr());
+                if idx == 0 {
+                    return Err(io::Error::last_os_error().into());
+                }
 
-            socket.bind_device_by_index(NonZeroU32::new(idx))?;
+                const IPV6_BOUND_IF: libc::c_int = 125;
+                let ret = match addr {
+                    SocketAddr::V4(_) => libc::setsockopt(
+                        std::os::unix::prelude::AsRawFd::as_raw_fd(socket),
+                        libc::IPPROTO_IP,
+                        libc::IP_BOUND_IF,
+                        &idx as *const _ as *const libc::c_void,
+                        std::mem::size_of::<libc::c_uint>() as libc::socklen_t,
+                    ),
+                    SocketAddr::V6(_) => libc::setsockopt(
+                        std::os::unix::prelude::AsRawFd::as_raw_fd(socket),
+                        libc::IPPROTO_IPV6,
+                        IPV6_BOUND_IF,
+                        &idx as *const _ as *const libc::c_void,
+                        std::mem::size_of::<libc::c_uint>() as libc::socklen_t,
+                    ),
+                };
+
+                if ret == -1 {
+                    return Err(io::Error::last_os_error().into());
+                }
+            }
         }
 
         Ok(())
@@ -86,7 +112,7 @@ impl LocalNet {
             SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
         };
 
-        self.set_socket(&socket)?;
+        self.set_socket(&socket, addr)?;
 
         let socket = net::TcpSocket::from_std_stream(socket.into());
 
@@ -108,7 +134,7 @@ impl LocalNet {
             SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::DGRAM, None)?,
         };
 
-        self.set_socket(&udp)?;
+        self.set_socket(&udp, addr)?;
 
         udp.bind(&addr.into())?;
 
