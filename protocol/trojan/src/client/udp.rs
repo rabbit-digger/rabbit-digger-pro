@@ -6,10 +6,8 @@ use std::{
 };
 
 use super::ra2sa;
-use crate::tls::TlsStream;
-use rd_interface::{
-    async_trait, Address as RDAddress, IUdpSocket, Result, TcpStream, NOT_IMPLEMENTED,
-};
+use crate::stream::IOStream;
+use rd_interface::{async_trait, Address as RDAddress, IUdpSocket, Result, NOT_IMPLEMENTED};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
 use tokio::{
     io::{self, split, AsyncReadExt, ReadHalf, WriteHalf},
@@ -17,13 +15,13 @@ use tokio::{
 };
 
 pub(super) struct TrojanUdp {
-    read: Mutex<ReadHalf<TlsStream<TcpStream>>>,
-    write: Mutex<WriteHalf<TlsStream<TcpStream>>>,
+    read: Mutex<ReadHalf<Box<dyn IOStream>>>,
+    write: Mutex<WriteHalf<Box<dyn IOStream>>>,
     head: RwLock<Vec<u8>>,
 }
 
 impl TrojanUdp {
-    pub fn new(stream: TlsStream<TcpStream>, head: Vec<u8>) -> Self {
+    pub fn new(stream: Box<dyn IOStream>, head: Vec<u8>) -> Self {
         let (read, write) = split(stream);
         Self {
             read: Mutex::new(read),

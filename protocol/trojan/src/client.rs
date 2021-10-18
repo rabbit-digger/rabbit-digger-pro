@@ -1,6 +1,10 @@
 use std::io::{Cursor, Write};
 
-use crate::tls::{TlsConnector, TlsConnectorConfig};
+use crate::{
+    stream::IOStream,
+    tls::{TlsConnector, TlsConnectorConfig},
+    websocket::WebSocketStream,
+};
 use rd_interface::{
     async_trait, prelude::*, registry::NetRef, Address as RdAddress, Address, INet, IntoDyn, Net,
     Result, TcpStream, UdpSocket, NOT_ENABLED,
@@ -17,6 +21,7 @@ pub struct TrojanNet {
     connector: TlsConnector,
     password: String,
     udp: bool,
+    websocket: Option<WebSocket>,
 }
 
 impl TrojanNet {
@@ -34,8 +39,16 @@ impl TrojanNet {
             connector,
             password,
             udp: config.udp,
+            websocket: config.websocket,
         })
     }
+}
+
+#[rd_config]
+#[derive(Debug, Clone)]
+pub struct WebSocket {
+    host: String,
+    path: String,
 }
 
 #[rd_config]
@@ -58,6 +71,10 @@ pub struct TrojanNetConfig {
     /// skip certificate verify
     #[serde(default)]
     skip_cert_verify: bool,
+
+    /// enabled websocket support
+    #[serde(default)]
+    websocket: Option<WebSocket>,
 }
 
 impl TrojanNet {
@@ -75,6 +92,15 @@ impl TrojanNet {
 
         Ok(writer.into_inner())
     }
+    async fn get_stream(&self, ctx: &mut rd_interface::Context) -> Result<Box<dyn IOStream>> {
+        let stream = self.net.tcp_connect(ctx, &self.server).await?;
+        let stream = self.connector.connect(stream).await?;
+
+        Ok(match &self.websocket {
+            Some(ws) => Box::new(WebSocketStream::connect(stream, &ws.host, &ws.path).await?),
+            None => Box::new(stream),
+        })
+    }
 }
 
 pub(crate) fn ra2sa(addr: RdAddress) -> S5Addr {
@@ -91,8 +117,7 @@ impl INet for TrojanNet {
         ctx: &mut rd_interface::Context,
         addr: &RdAddress,
     ) -> Result<TcpStream> {
-        let stream = self.net.tcp_connect(ctx, &self.server).await?;
-        let stream = self.connector.connect(stream).await?;
+        let stream = self.get_stream(ctx).await?;
         let head = self.make_head(1, ra2sa(addr.clone()))?;
 
         let tcp = tcp::TrojanTcp::new(stream, head);
@@ -107,8 +132,7 @@ impl INet for TrojanNet {
         if !self.udp {
             return Err(NOT_ENABLED);
         }
-        let stream = self.net.tcp_connect(ctx, &self.server).await?;
-        let stream = self.connector.connect(stream).await?;
+        let stream = self.get_stream(ctx).await?;
         let head = self.make_head(3, ra2sa(addr.clone()))?;
 
         let udp = udp::TrojanUdp::new(stream, head);

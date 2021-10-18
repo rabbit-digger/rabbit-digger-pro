@@ -1,20 +1,18 @@
 use ::std::{io, pin::Pin, task};
 use std::net::SocketAddr;
 
-use crate::tls::TlsStream;
+use crate::stream::IOStream;
 use futures::ready;
-use rd_interface::{
-    async_trait, impl_async_read, AsyncWrite, ITcpStream, TcpStream, NOT_IMPLEMENTED,
-};
+use rd_interface::{async_trait, impl_async_read, AsyncWrite, ITcpStream, NOT_IMPLEMENTED};
 
 pub(super) struct TrojanTcp {
-    stream: TlsStream<TcpStream>,
+    stream: Box<dyn IOStream>,
     head: Option<Vec<u8>>,
     is_first: bool,
 }
 
 impl TrojanTcp {
-    pub fn new(stream: TlsStream<TcpStream>, head: Vec<u8>) -> Self {
+    pub fn new(stream: Box<dyn IOStream>, head: Vec<u8>) -> Self {
         Self {
             stream,
             head: Some(head),
