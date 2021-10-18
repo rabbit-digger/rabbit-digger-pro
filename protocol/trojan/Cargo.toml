@@ -13,6 +13,7 @@ hex = "0.4.3"
 socks5-protocol = "0.3.4"
 futures = "0.3"
 tokio = "1.0"
+tokio-tungstenite = "0.15.0"
 
 tokio-rustls = { version = "0.22.0", features = ["dangerous_configuration"], optional = true }
 webpki-roots = { version = "0.21.1", optional = true }
