@@ -1,13 +1,12 @@
 use std::{
-    ffi::CString,
     io,
     net::{IpAddr, SocketAddr},
     time::Duration,
 };
 
 use rd_interface::{
-    async_trait, error::map_other, impl_async_read_write, prelude::*, registry::NetFactory,
-    Address, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, INet, IntoDyn,
+    Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
@@ -46,7 +45,7 @@ impl LocalNet {
     pub fn new(config: LocalNetConfig) -> LocalNet {
         LocalNet(config)
     }
-    fn set_socket(&self, socket: &Socket, addr: SocketAddr) -> Result<()> {
+    fn set_socket(&self, socket: &Socket, _addr: SocketAddr) -> Result<()> {
         socket.set_nonblocking(true)?;
 
         if let Some(local_addr) = self.0.bind_addr {
@@ -73,7 +72,8 @@ impl LocalNet {
 
         #[cfg(target_os = "macos")]
         if let Some(device) = &self.0.bind_device {
-            let device = CString::new(device.as_bytes()).map_err(map_other)?;
+            let device = std::ffi::CString::new(device.as_bytes())
+                .map_err(rd_interface::error::map_other)?;
             unsafe {
                 let idx = libc::if_nametoindex(device.as_ptr());
                 if idx == 0 {
@@ -81,7 +81,7 @@ impl LocalNet {
                 }
 
                 const IPV6_BOUND_IF: libc::c_int = 125;
-                let ret = match addr {
+                let ret = match _addr {
                     SocketAddr::V4(_) => libc::setsockopt(
                         std::os::unix::prelude::AsRawFd::as_raw_fd(socket),
                         libc::IPPROTO_IP,
