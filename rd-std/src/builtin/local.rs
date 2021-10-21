@@ -19,7 +19,7 @@ pub struct LocalNetConfig {
     #[serde(default)]
     pub ttl: Option<u32>,
 
-    /// set nodelay
+    /// set nodelay. default is true
     #[serde(default)]
     pub nodelay: Option<bool>,
 
@@ -45,7 +45,7 @@ impl LocalNet {
     pub fn new(config: LocalNetConfig) -> LocalNet {
         LocalNet(config)
     }
-    fn set_socket(&self, socket: &Socket, _addr: SocketAddr) -> Result<()> {
+    fn set_socket(&self, socket: &Socket, _addr: SocketAddr, is_tcp: bool) -> Result<()> {
         socket.set_nonblocking(true)?;
 
         if let Some(local_addr) = self.0.bind_addr {
@@ -56,8 +56,8 @@ impl LocalNet {
             socket.set_ttl(ttl)?;
         }
 
-        if let Some(nodelay) = self.0.nodelay {
-            socket.set_nodelay(nodelay)?;
+        if is_tcp {
+            socket.set_nodelay(self.0.nodelay.unwrap_or(true))?;
         }
 
         #[cfg(target_os = "linux")]
@@ -112,7 +112,7 @@ impl LocalNet {
             SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
         };
 
-        self.set_socket(&socket, addr)?;
+        self.set_socket(&socket, addr, true)?;
 
         let socket = net::TcpSocket::from_std_stream(socket.into());
 
@@ -134,7 +134,7 @@ impl LocalNet {
             SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::DGRAM, None)?,
         };
 
-        self.set_socket(&udp, addr)?;
+        self.set_socket(&udp, addr, false)?;
 
         udp.bind(&addr.into())?;
 
@@ -182,9 +182,7 @@ impl rd_interface::ITcpListener for Listener {
         if let Some(ttl) = self.1.ttl {
             socket.set_ttl(ttl)?;
         }
-        if let Some(nodelay) = self.1.nodelay {
-            socket.set_nodelay(nodelay)?;
-        }
+        socket.set_nodelay(self.1.nodelay.unwrap_or(true))?;
         Ok((CompatTcp::new(socket).into_dyn(), addr))
     }
 
