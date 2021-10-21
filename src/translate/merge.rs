@@ -12,7 +12,7 @@ pub fn from_config(value: Value) -> Result<Merge> {
 
 impl Merge {
     pub async fn process(&mut self, config: &mut Config, content: String) -> Result<()> {
-        let other_content: Config = serde_json::from_str(&content)?;
+        let other_content: Config = serde_yaml::from_str(&content)?;
         config.merge(other_content);
         Ok(())
     }
