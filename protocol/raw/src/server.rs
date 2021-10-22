@@ -325,7 +325,7 @@ impl IServer for RawServer {
     async fn start(&self) -> Result<()> {
         let tcp_listener = self
             .smoltcp_net
-            .tcp_bind("0.0.0.0:20000".parse().unwrap())
+            .tcp_bind("0.0.0.0:20000".parse().map_err(map_other)?)
             .await?;
         let raw_socket = self
             .smoltcp_net
