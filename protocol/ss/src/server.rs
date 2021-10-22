@@ -5,6 +5,7 @@ use rd_interface::{async_trait, prelude::*, Address, Arc, IServer, Net, Result, 
 use rd_std::util::connect_tcp;
 use shadowsocks::{config::ServerType, context::Context, ServerConfig};
 use socks5_protocol::Address as S5Addr;
+use tokio::select;
 
 #[rd_config]
 #[derive(Debug, Clone)]
@@ -27,6 +28,33 @@ pub struct SSServer {
 #[async_trait]
 impl IServer for SSServer {
     async fn start(&self) -> Result<()> {
+        select! {
+            r = self.serve_tcp() => r,
+            r = self.serve_udp() => r,
+        }
+    }
+}
+
+impl SSServer {
+    pub fn new(listen: Net, net: Net, cfg: SSServerConfig) -> SSServer {
+        let context = Arc::new(Context::new(ServerType::Local));
+        SSServer {
+            context,
+            cfg: Arc::new(cfg),
+            listen,
+            net,
+        }
+    }
+    async fn serve_udp(&self) -> Result<()> {
+        std::future::pending::<()>().await;
+        let _listener = self
+            .listen
+            .udp_bind(&mut rd_interface::Context::new(), &self.cfg.bind)
+            .await?;
+        // TODO: add udp server
+        Ok(())
+    }
+    async fn serve_tcp(&self) -> Result<()> {
         let listener = self
             .listen
             .tcp_bind(&mut rd_interface::Context::new(), &self.cfg.bind)
@@ -41,18 +69,6 @@ impl IServer for SSServer {
                     tracing::error!("Error when serve_connection: {:?}", e);
                 }
             });
-        }
-    }
-}
-
-impl SSServer {
-    pub fn new(listen: Net, net: Net, cfg: SSServerConfig) -> SSServer {
-        let context = Arc::new(Context::new(ServerType::Local));
-        SSServer {
-            context,
-            cfg: Arc::new(cfg),
-            listen,
-            net,
         }
     }
     async fn serve_connection(
