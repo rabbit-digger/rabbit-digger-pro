@@ -75,7 +75,10 @@ impl INet for SSNet {
         if !self.udp {
             return Err(NOT_ENABLED);
         }
-        let socket = self.net.udp_bind(ctx, &addr.to_any_addr_port()?).await?;
+        let socket = self
+            .net
+            .udp_bind(ctx, &self.addr.to_any_addr_port()?)
+            .await?;
         let udp = WrapSSUdp::new(self.context().await, socket, &self.cfg);
         Ok(udp.into_dyn())
     }
