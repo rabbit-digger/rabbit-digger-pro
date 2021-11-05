@@ -71,19 +71,11 @@ impl INet for SSNet {
         Ok(WrapSSTcp(client).into_dyn())
     }
 
-    // TODO: do something with bind address?
-    async fn udp_bind(
-        &self,
-        ctx: &mut rd_interface::Context,
-        _addr: &Address,
-    ) -> Result<UdpSocket> {
+    async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
         if !self.udp {
             return Err(NOT_ENABLED);
         }
-        let socket = self
-            .net
-            .udp_bind(ctx, &self.addr.to_any_addr_port()?)
-            .await?;
+        let socket = self.net.udp_bind(ctx, &addr.to_any_addr_port()?).await?;
         let udp = WrapSSUdp::new(self.context().await, socket, &self.cfg);
         Ok(udp.into_dyn())
     }
