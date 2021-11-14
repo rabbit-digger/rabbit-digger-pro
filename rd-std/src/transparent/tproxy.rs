@@ -123,7 +123,7 @@ impl ServerFactory for TProxyServer {
 
 struct TransparentUdpCache {
     mark: Option<u32>,
-    cache: Mutex<LruCache<(SocketAddr, SocketAddr), TransparentUdp>>,
+    cache: Mutex<LruCache<SocketAddr, TransparentUdp>>,
 }
 
 impl TransparentUdpCache {
@@ -142,16 +142,14 @@ impl TransparentUdpCache {
         to_addr: SocketAddr,
         buf: &[u8],
     ) -> Result<usize> {
-        let key = (from_addr, to_addr);
         let mut cache = self.cache.lock().await;
-        let back_udp = match cache.get(&key) {
+        let back_udp = match cache.get(&from_addr) {
             Some(udp) => udp,
             None => {
                 let udp = TransparentUdp::bind_any(from_addr, self.mark).await?;
-                udp.connect(to_addr).await?;
-                cache.insert(key, udp);
+                cache.insert(from_addr, udp);
                 cache
-                    .get(&key)
+                    .get(&from_addr)
                     .expect("impossible: failed to get by from_addr")
             }
         };
@@ -162,7 +160,7 @@ impl TransparentUdpCache {
 
 struct UdpTunnel {
     tx: Sender<(SocketAddr, Vec<u8>)>,
-    handle: parking_lot::Mutex<Option<JoinHandle<Result<()>>>>,
+    handle: Mutex<Option<JoinHandle<Result<()>>>>,
 }
 
 impl UdpTunnel {
@@ -207,7 +205,7 @@ impl UdpTunnel {
         });
         UdpTunnel {
             tx,
-            handle: parking_lot::Mutex::new(handle.into()),
+            handle: Mutex::new(handle.into()),
         }
     }
     /// return false if the send queue is full
@@ -215,8 +213,8 @@ impl UdpTunnel {
         match self.tx.send((addr, buf.to_vec())) {
             Ok(_) => Ok(()),
             Err(_) => {
-                let handle = self.handle.lock().take();
-                if let Some(handle) = handle {
+                let mut handle = self.handle.lock().await;
+                if let Some(handle) = handle.take() {
                     let r = handle.await;
                     tracing::error!("Other side closed: {:?}", r);
                 }

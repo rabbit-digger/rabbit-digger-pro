@@ -240,9 +240,6 @@ impl TransparentUdp {
 
         Ok(socket)
     }
-    pub async fn connect(&self, addr: SocketAddr) -> io::Result<()> {
-        self.0.get_ref().connect(addr)
-    }
     pub async fn recv(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr, SocketAddr)> {
         loop {
             let mut guard = self.0.readable().await?;
