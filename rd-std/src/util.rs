@@ -3,7 +3,7 @@ pub use connect_udp::connect_udp;
 pub use net::{CombineNet, NotImplementedNet};
 pub use peekable_tcpstream::PeekableTcpStream;
 
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 mod connect_tcp;
 mod connect_udp;
@@ -28,4 +28,29 @@ pub fn resolve_mapped_socket_addr(addr: SocketAddr) -> SocketAddr {
     }
 
     return addr;
+}
+
+/// If the given address is reserved.
+pub fn is_reserved(addr: IpAddr) -> bool {
+    use smoltcp::wire::{Ipv4Address, Ipv4Cidr, Ipv6Address, Ipv6Cidr};
+
+    match addr {
+        IpAddr::V4(a) => {
+            let a = Ipv4Address::from(a);
+            Ipv4Cidr::new(Ipv4Address::new(0, 0, 0, 0), 8).contains_addr(&a)
+                || Ipv4Cidr::new(Ipv4Address::new(127, 0, 0, 0), 8).contains_addr(&a)
+                || Ipv4Cidr::new(Ipv4Address::new(10, 0, 0, 0), 8).contains_addr(&a)
+                || Ipv4Cidr::new(Ipv4Address::new(169, 254, 0, 0), 16).contains_addr(&a)
+                || Ipv4Cidr::new(Ipv4Address::new(192, 168, 0, 0), 16).contains_addr(&a)
+                || Ipv4Cidr::new(Ipv4Address::new(172, 16, 0, 0), 12).contains_addr(&a)
+                || Ipv4Cidr::new(Ipv4Address::new(224, 0, 0, 0), 4).contains_addr(&a)
+                || Ipv4Cidr::new(Ipv4Address::new(240, 0, 0, 0), 4).contains_addr(&a)
+        }
+        IpAddr::V6(a) => {
+            let a = Ipv6Address::from(a);
+            Ipv6Cidr::new(Ipv6Address::LOOPBACK, 128).contains_addr(&a)
+                || Ipv6Cidr::new(Ipv6Address::new(0xfc00, 0, 0, 0, 0, 0, 0, 0), 7).contains_addr(&a)
+                || a.is_link_local()
+        }
+    }
 }

@@ -3,7 +3,10 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use super::socket::{create_tcp_listener, TransparentUdp};
-use crate::{builtin::local::CompatTcp, util::connect_tcp};
+use crate::{
+    builtin::local::CompatTcp,
+    util::{connect_tcp, is_reserved},
+};
 use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
@@ -142,19 +145,25 @@ impl TransparentUdpCache {
         to_addr: SocketAddr,
         buf: &[u8],
     ) -> Result<usize> {
-        let mut cache = self.cache.lock().await;
-        let back_udp = match cache.get(&from_addr) {
-            Some(udp) => udp,
-            None => {
-                let udp = TransparentUdp::bind_any(from_addr, self.mark).await?;
-                cache.insert(from_addr, udp);
-                cache
-                    .get(&from_addr)
-                    .expect("impossible: failed to get by from_addr")
-            }
-        };
+        // Don't cache reserved address
+        if is_reserved(from_addr.ip()) {
+            let udp = TransparentUdp::bind_any(from_addr, self.mark).await?;
+            Ok(udp.send_to(buf, to_addr).await?)
+        } else {
+            let mut cache = self.cache.lock().await;
+            let back_udp = match cache.get(&from_addr) {
+                Some(udp) => udp,
+                None => {
+                    let udp = TransparentUdp::bind_any(from_addr, self.mark).await?;
+                    cache.insert(from_addr, udp);
+                    cache
+                        .get(&from_addr)
+                        .expect("impossible: failed to get by from_addr")
+                }
+            };
 
-        Ok(back_udp.send_to(buf, to_addr).await?)
+            Ok(back_udp.send_to(buf, to_addr).await?)
+        }
     }
 }
 
@@ -198,7 +207,7 @@ impl UdpTunnel {
             };
 
             if let Err(e) = &r {
-                tracing::error!("tproxy error {:?}", e);
+                tracing::error!("tproxy error {:?} src {}", e, src);
             }
 
             Ok(()) as Result<()>
