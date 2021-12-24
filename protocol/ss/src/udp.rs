@@ -28,8 +28,16 @@ use bytes::{BufMut, BytesMut};
 use shadowsocks::{
     context::Context,
     crypto::v1::{random_iv_or_salt, Cipher, CipherCategory, CipherKind},
-    relay::socks5::Address,
 };
+use socks5_protocol::{sync::FromIO, Address};
+
+#[must_use]
+fn write_to_buf<'a>(addr: &Address, buf: &'a mut BytesMut) -> io::Result<()> {
+    let mut writer = buf.writer();
+    addr.write_to(&mut writer).map_err(|e| e.to_io_err())?;
+
+    Ok(())
+}
 
 /// Encrypt payload into ShadowSocks UDP encrypted packet
 pub fn encrypt_payload(
@@ -39,16 +47,16 @@ pub fn encrypt_payload(
     addr: &Address,
     payload: &[u8],
     dst: &mut BytesMut,
-) {
-    match method.category() {
+) -> io::Result<()> {
+    Ok(match method.category() {
         CipherCategory::None => {
-            dst.reserve(addr.serialized_len() + payload.len());
-            addr.write_to_buf(dst);
+            dst.reserve(addr.serialized_len().map_err(|e| e.to_io_err())? + payload.len());
+            write_to_buf(addr, dst)?;
             dst.put_slice(payload);
         }
-        CipherCategory::Stream => encrypt_payload_stream(context, method, key, addr, payload, dst),
-        CipherCategory::Aead => encrypt_payload_aead(context, method, key, addr, payload, dst),
-    }
+        CipherCategory::Stream => encrypt_payload_stream(context, method, key, addr, payload, dst)?,
+        CipherCategory::Aead => encrypt_payload_aead(context, method, key, addr, payload, dst)?,
+    })
 }
 
 fn encrypt_payload_stream(
@@ -58,9 +66,9 @@ fn encrypt_payload_stream(
     addr: &Address,
     payload: &[u8],
     dst: &mut BytesMut,
-) {
+) -> io::Result<()> {
     let iv_len = method.iv_len();
-    let addr_len = addr.serialized_len();
+    let addr_len = addr.serialized_len().map_err(|e| e.to_io_err())?;
 
     // Packet = IV + ADDRESS + PAYLOAD
     dst.reserve(iv_len + addr_len + payload.len());
@@ -84,10 +92,12 @@ fn encrypt_payload_stream(
 
     let mut cipher = Cipher::new(method, key, &iv);
 
-    addr.write_to_buf(dst);
+    write_to_buf(addr, dst)?;
     dst.put_slice(payload);
     let m = &mut dst[iv_len..];
     cipher.encrypt_packet(m);
+
+    Ok(())
 }
 
 fn encrypt_payload_aead(
@@ -97,9 +107,9 @@ fn encrypt_payload_aead(
     addr: &Address,
     payload: &[u8],
     dst: &mut BytesMut,
-) {
+) -> io::Result<()> {
     let salt_len = method.salt_len();
-    let addr_len = addr.serialized_len();
+    let addr_len = addr.serialized_len().map_err(|e| e.to_io_err())?;
 
     // Packet = IV + ADDRESS + PAYLOAD + TAG
     dst.reserve(salt_len + addr_len + payload.len() + method.tag_len());
@@ -123,7 +133,7 @@ fn encrypt_payload_aead(
 
     let mut cipher = Cipher::new(method, key, salt);
 
-    addr.write_to_buf(dst);
+    write_to_buf(addr, dst)?;
     dst.put_slice(payload);
 
     unsafe {
@@ -132,10 +142,12 @@ fn encrypt_payload_aead(
 
     let m = &mut dst[salt_len..];
     cipher.encrypt_packet(m);
+
+    Ok(())
 }
 
 /// Decrypt payload from ShadowSocks UDP encrypted packet
-pub async fn decrypt_payload(
+pub fn decrypt_payload(
     context: &Context,
     method: CipherKind,
     key: &[u8],
@@ -144,7 +156,7 @@ pub async fn decrypt_payload(
     match method.category() {
         CipherCategory::None => {
             let mut cur = Cursor::new(payload);
-            match Address::read_from(&mut cur).await {
+            match Address::read_from(&mut cur) {
                 Ok(address) => {
                     let pos = cur.position() as usize;
                     let payload = cur.into_inner();
@@ -158,12 +170,12 @@ pub async fn decrypt_payload(
                 }
             }
         }
-        CipherCategory::Stream => decrypt_payload_stream(context, method, key, payload).await,
-        CipherCategory::Aead => decrypt_payload_aead(context, method, key, payload).await,
+        CipherCategory::Stream => decrypt_payload_stream(context, method, key, payload),
+        CipherCategory::Aead => decrypt_payload_aead(context, method, key, payload),
     }
 }
 
-async fn decrypt_payload_stream(
+fn decrypt_payload_stream(
     context: &Context,
     method: CipherKind,
     key: &[u8],
@@ -188,7 +200,7 @@ async fn decrypt_payload_stream(
 
     assert!(cipher.decrypt_packet(data));
 
-    let (dn, addr) = parse_packet(data).await?;
+    let (dn, addr) = parse_packet(data)?;
 
     let data_start_idx = iv_len + dn;
     let data_length = payload.len() - data_start_idx;
@@ -197,7 +209,7 @@ async fn decrypt_payload_stream(
     Ok((data_length, addr))
 }
 
-async fn decrypt_payload_aead(
+fn decrypt_payload_aead(
     context: &Context,
     method: CipherKind,
     key: &[u8],
@@ -239,7 +251,7 @@ async fn decrypt_payload_aead(
     let data_len = data.len() - tag_len;
     let data = &mut data[..data_len];
 
-    let (dn, addr) = parse_packet(data).await?;
+    let (dn, addr) = parse_packet(data)?;
 
     let data_length = data_len - dn;
     let data_start_idx = salt_len + dn;
@@ -250,9 +262,9 @@ async fn decrypt_payload_aead(
     Ok((data_length, addr))
 }
 
-async fn parse_packet(buf: &[u8]) -> io::Result<(usize, Address)> {
+fn parse_packet(buf: &[u8]) -> io::Result<(usize, Address)> {
     let mut cur = Cursor::new(buf);
-    match Address::read_from(&mut cur).await {
+    match Address::read_from(&mut cur) {
         Ok(address) => {
             let pos = cur.position() as usize;
             Ok((pos, address))
