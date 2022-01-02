@@ -104,7 +104,7 @@ impl INet for RawNet {
         _ctx: &mut Context,
         addr: &Address,
     ) -> Result<rd_interface::UdpSocket> {
-        let udp = UdpSocketWrap(self.net.udp_bind(addr.to_socket_addr()?).await?);
+        let udp = UdpSocketWrap::new(self.net.udp_bind(addr.to_socket_addr()?).await?);
         Ok(udp.into_dyn())
     }
 }
