@@ -151,7 +151,6 @@ impl ITcpStream for WrapSSTcp {
 }
 
 pub struct WrapSSUdp {
-    context: SharedContext,
     socket: UdpSocket,
     method: CipherKind,
     key: Box<[u8]>,
@@ -159,17 +158,11 @@ pub struct WrapSSUdp {
 }
 
 impl WrapSSUdp {
-    pub fn new(
-        context: SharedContext,
-        socket: UdpSocket,
-        svr_cfg: &ServerConfig,
-        server_addr: SocketAddr,
-    ) -> Self {
+    pub fn new(socket: UdpSocket, svr_cfg: &ServerConfig, server_addr: SocketAddr) -> Self {
         let key = svr_cfg.key().to_vec().into_boxed_slice();
         let method = svr_cfg.method();
 
         WrapSSUdp {
-            context,
             socket,
             method,
             key,
@@ -190,7 +183,7 @@ impl Stream for WrapSSUdp {
             Some(r) => r?,
             None => return task::Poll::Ready(None),
         };
-        let (n, addr) = decrypt_payload(&self.context, self.method, &self.key, &mut recv_buf[..])?;
+        let (n, addr) = decrypt_payload(self.method, &self.key, &mut recv_buf[..])?;
 
         Some(Ok((
             recv_buf.split_to(n),
@@ -219,14 +212,7 @@ impl Sink<(Bytes, SocketAddr)> for WrapSSUdp {
     ) -> Result<(), Self::Error> {
         let mut send_buf = BytesMut::new();
         let addr: S5Addr = target.into();
-        encrypt_payload(
-            &self.context,
-            self.method,
-            &self.key,
-            &addr,
-            &payload,
-            &mut send_buf,
-        )?;
+        encrypt_payload(self.method, &self.key, &addr, &payload, &mut send_buf)?;
 
         let server_addr = self.server_addr;
         self.socket

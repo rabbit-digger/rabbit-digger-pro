@@ -88,7 +88,7 @@ impl INet for SSNet {
                 "Failed to lookup domain",
             ))?;
         let socket = self.net.udp_bind(ctx, &addr.to_any_addr_port()?).await?;
-        let udp = WrapSSUdp::new(self.context().await, socket, &self.cfg, server_addr);
+        let udp = WrapSSUdp::new(socket, &self.cfg, server_addr);
         Ok(udp.into_dyn())
     }
 }

@@ -25,10 +25,7 @@ use std::io::{self, Cursor, ErrorKind};
 
 use byte_string::ByteStr;
 use bytes::{BufMut, BytesMut};
-use shadowsocks::{
-    context::Context,
-    crypto::v1::{random_iv_or_salt, Cipher, CipherCategory, CipherKind},
-};
+use shadowsocks::crypto::v1::{random_iv_or_salt, Cipher, CipherCategory, CipherKind};
 use socks5_protocol::{sync::FromIO, Address};
 
 #[must_use]
@@ -41,7 +38,6 @@ fn write_to_buf<'a>(addr: &Address, buf: &'a mut BytesMut) -> io::Result<()> {
 
 /// Encrypt payload into ShadowSocks UDP encrypted packet
 pub fn encrypt_payload(
-    context: &Context,
     method: CipherKind,
     key: &[u8],
     addr: &Address,
@@ -54,13 +50,12 @@ pub fn encrypt_payload(
             write_to_buf(addr, dst)?;
             dst.put_slice(payload);
         }
-        CipherCategory::Stream => encrypt_payload_stream(context, method, key, addr, payload, dst)?,
-        CipherCategory::Aead => encrypt_payload_aead(context, method, key, addr, payload, dst)?,
+        CipherCategory::Stream => encrypt_payload_stream(method, key, addr, payload, dst)?,
+        CipherCategory::Aead => encrypt_payload_aead(method, key, addr, payload, dst)?,
     })
 }
 
 fn encrypt_payload_stream(
-    context: &Context,
     method: CipherKind,
     key: &[u8],
     addr: &Address,
@@ -78,16 +73,9 @@ fn encrypt_payload_stream(
     let iv = &mut dst[..iv_len];
 
     if iv_len > 0 {
-        loop {
-            random_iv_or_salt(iv);
-            if !context.check_nonce_and_set(iv) {
-                break;
-            }
-        }
+        random_iv_or_salt(iv);
 
         tracing::trace!("UDP packet generated stream iv {:?}", ByteStr::new(iv));
-    } else {
-        context.check_nonce_and_set(iv);
     }
 
     let mut cipher = Cipher::new(method, key, &iv);
@@ -101,7 +89,6 @@ fn encrypt_payload_stream(
 }
 
 fn encrypt_payload_aead(
-    context: &Context,
     method: CipherKind,
     key: &[u8],
     addr: &Address,
@@ -119,16 +106,9 @@ fn encrypt_payload_aead(
     let salt = &mut dst[..salt_len];
 
     if salt_len > 0 {
-        loop {
-            random_iv_or_salt(salt);
-            if !context.check_nonce_and_set(salt) {
-                break;
-            }
-        }
+        random_iv_or_salt(salt);
 
         tracing::trace!("UDP packet generated aead salt {:?}", ByteStr::new(salt));
-    } else {
-        context.check_nonce_and_set(salt);
     }
 
     let mut cipher = Cipher::new(method, key, salt);
@@ -148,7 +128,6 @@ fn encrypt_payload_aead(
 
 /// Decrypt payload from ShadowSocks UDP encrypted packet
 pub fn decrypt_payload(
-    context: &Context,
     method: CipherKind,
     key: &[u8],
     payload: &mut [u8],
@@ -170,13 +149,12 @@ pub fn decrypt_payload(
                 }
             }
         }
-        CipherCategory::Stream => decrypt_payload_stream(context, method, key, payload),
-        CipherCategory::Aead => decrypt_payload_aead(context, method, key, payload),
+        CipherCategory::Stream => decrypt_payload_stream(method, key, payload),
+        CipherCategory::Aead => decrypt_payload_aead(method, key, payload),
     }
 }
 
 fn decrypt_payload_stream(
-    context: &Context,
     method: CipherKind,
     key: &[u8],
     payload: &mut [u8],
@@ -190,10 +168,6 @@ fn decrypt_payload_stream(
     }
 
     let (iv, data) = payload.split_at_mut(iv_len);
-    if context.check_nonce_and_set(iv) {
-        tracing::debug!("detected repeated iv {:?}", ByteStr::new(iv));
-        return Err(io::Error::new(io::ErrorKind::Other, "detected repeated iv"));
-    }
 
     tracing::trace!("UDP packet got stream IV {:?}", ByteStr::new(iv));
     let mut cipher = Cipher::new(method, key, iv);
@@ -210,7 +184,6 @@ fn decrypt_payload_stream(
 }
 
 fn decrypt_payload_aead(
-    context: &Context,
     method: CipherKind,
     key: &[u8],
     payload: &mut [u8],
@@ -223,13 +196,6 @@ fn decrypt_payload_aead(
     }
 
     let (salt, data) = payload.split_at_mut(salt_len);
-    if context.check_nonce_and_set(salt) {
-        tracing::debug!("detected repeated salt {:?}", ByteStr::new(salt));
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "detected repeated salt",
-        ));
-    }
 
     tracing::trace!("UDP packet got AEAD salt {:?}", ByteStr::new(salt));
 
