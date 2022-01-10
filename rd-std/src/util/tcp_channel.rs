@@ -77,8 +77,9 @@ impl AsyncWrite for TcpChannel {
 
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
+        cx: &mut Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
+        ready!(Pin::new(&mut self).poll_flush(cx))?;
         self.receiver.close();
         Poll::Ready(Ok(()))
     }

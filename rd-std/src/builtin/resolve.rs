@@ -55,32 +55,6 @@ impl ResolveNet {
 }
 
 #[async_trait]
-impl rd_interface::IUdpSocket for Udp {
-    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        self.0.recv_from(buf).await.map_err(Into::into)
-    }
-
-    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        let addr = addr
-            .resolve(&*self.1)
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "could not resolve to any address",
-                )
-            })?;
-        self.0.send_to(buf, addr.into()).await.map_err(Into::into)
-    }
-
-    async fn local_addr(&self) -> Result<SocketAddr> {
-        Ok(self.0.local_addr().await?)
-    }
-}
-
-#[async_trait]
 impl INet for ResolveNet {
     async fn tcp_connect(
         &self,

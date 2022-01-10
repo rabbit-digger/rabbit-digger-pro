@@ -1,6 +1,5 @@
-use socks5_protocol::{Address, Error};
-use std::io::{self, ErrorKind, Result};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use socks5_protocol::{sync::FromIO, Address, Error};
+use std::io::{self, ErrorKind, Read, Result, Write};
 
 pub fn map_err(e: Error) -> rd_interface::Error {
     match e {
@@ -9,13 +8,13 @@ pub fn map_err(e: Error) -> rd_interface::Error {
     }
 }
 
-pub async fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {
+pub fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {
     let mut cursor = std::io::Cursor::new(buf);
     let mut header = [0u8; 3];
-    cursor.read_exact(&mut header).await?;
+    cursor.read_exact(&mut header)?;
     let addr = match header[0..3] {
         // TODO: support fragment sequence or at least give another error
-        [0x00, 0x00, 0x00] => Address::read(&mut cursor).await.map_err(map_err)?,
+        [0x00, 0x00, 0x00] => Address::read_from(&mut cursor).map_err(map_err)?,
         _ => {
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
@@ -32,11 +31,11 @@ pub async fn parse_udp(buf: &[u8]) -> Result<(Address, &[u8])> {
     Ok((addr, &cursor.into_inner()[pos..]))
 }
 
-pub async fn pack_udp(addr: Address, buf: &[u8]) -> Result<Vec<u8>> {
+pub fn pack_udp(addr: Address, buf: &[u8]) -> Result<Vec<u8>> {
     let mut cursor = std::io::Cursor::new(Vec::new());
-    cursor.write_all(&[0x00, 0x00, 0x00]).await?;
-    addr.write(&mut cursor).await.map_err(map_err)?;
-    cursor.write_all(buf).await?;
+    cursor.write_all(&[0x00, 0x00, 0x00])?;
+    addr.write_to(&mut cursor).map_err(map_err)?;
+    cursor.write_all(buf)?;
 
     let bytes = cursor.into_inner();
 

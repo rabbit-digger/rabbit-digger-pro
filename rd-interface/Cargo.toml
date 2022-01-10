@@ -7,7 +7,9 @@ description = "Just a stub"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-futures-util = { version = "0.3.12", default-features = false }
+futures-util = { version = "0.3.12", default-features = false, features = [
+    "sink",
+] }
 async-trait = "0.1.42"
 thiserror = "1.0"
 serde_json = { version = "1.0", features = ["std", "preserve_order"] }
@@ -15,3 +17,4 @@ serde = { version = "1.0.119", features = ["rc", "derive"] }
 tokio = { version = "1.5", features = ["io-util", "time"] }
 rd-derive = { version = "0.1", path = "../rd-derive" }
 schemars = "0.8.3"
+bytes = "1.1.0"

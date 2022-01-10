@@ -1,4 +1,4 @@
-pub use dns_net::DNSNet;
+pub use dns_sniffer::DNSSnifferNet;
 use rd_interface::{
     prelude::*,
     rd_config,
@@ -6,7 +6,7 @@ use rd_interface::{
     Registry, Result,
 };
 
-mod dns_net;
+mod dns_sniffer;
 mod service;
 
 #[rd_config]
@@ -16,17 +16,17 @@ pub struct DNSNetConfig {
     net: NetRef,
 }
 
-impl NetFactory for DNSNet {
-    const NAME: &'static str = "dns";
+impl NetFactory for DNSSnifferNet {
+    const NAME: &'static str = "dns_sniffer";
     type Config = DNSNetConfig;
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        Ok(DNSNet::new((*config.net).clone()))
+        Ok(DNSSnifferNet::new((*config.net).clone()))
     }
 }
 
 pub fn init(registry: &mut Registry) -> Result<()> {
-    registry.add_net::<DNSNet>();
+    registry.add_net::<DNSSnifferNet>();
     Ok(())
 }

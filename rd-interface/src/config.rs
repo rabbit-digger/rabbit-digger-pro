@@ -195,8 +195,12 @@ impl JsonSchema for Address {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{rd_config, IntoDyn, NotImplementedNet};
+    use crate::{async_trait, rd_config, INet, IntoDyn};
     use std::{collections::HashMap, sync::Arc};
+
+    struct NotImplementedNet;
+    #[async_trait]
+    impl INet for NotImplementedNet {}
 
     #[test]
     fn test_net_ref() {

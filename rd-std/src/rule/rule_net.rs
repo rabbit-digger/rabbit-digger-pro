@@ -1,13 +1,14 @@
-use crate::rule::matcher::MatchContext;
+use std::net::SocketAddr;
+
+use crate::{rule::matcher::MatchContext, util::UdpConnector};
 
 use super::config;
 use super::matcher::Matcher;
-use super::udp::UdpRuleSocket;
 
 use lru_time_cache::LruCache;
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, Address, Arc, Context, INet, IntoDyn, Net, Result, TcpStream, UdpSocket,
+    async_trait, Address, Arc, Bytes, Context, INet, IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
 use tracing::instrument;
 
@@ -101,6 +102,16 @@ impl INet for RuleNet {
     }
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        Ok(UdpRuleSocket::new(self.rule.clone(), ctx.clone(), addr.clone()).into_dyn())
+        let rule = self.rule.clone();
+        let mut ctx = ctx.clone();
+        let addr = addr.clone();
+        let udp = UdpConnector::new(Box::new(move |item: &(Bytes, SocketAddr)| {
+            let target_addr = item.1.into();
+            Box::pin(async move {
+                let rule_item = rule.get_rule(&ctx, &target_addr).await?;
+                rule_item.target.udp_bind(&mut ctx, &addr).await
+            })
+        }));
+        Ok(udp.into_dyn())
     }
 }

@@ -65,3 +65,64 @@ macro_rules! impl_async_write {
         }
     };
 }
+
+#[macro_export]
+macro_rules! impl_stream_sink {
+    ($s:ident, $f:tt) => {
+        rd_interface::impl_stream!($s, $f);
+        rd_interface::impl_sink!($s, $f);
+    };
+}
+
+#[macro_export]
+macro_rules! impl_stream {
+    ($s:ident, $f:tt) => {
+        impl ::rd_interface::Stream for $s {
+            type Item = ::std::io::Result<(::rd_interface::BytesMut, ::std::net::SocketAddr)>;
+
+            fn poll_next(
+                mut self: ::std::pin::Pin<&mut Self>,
+                cx: &mut ::std::task::Context<'_>,
+            ) -> ::std::task::Poll<Option<Self::Item>> {
+                ::rd_interface::Stream::poll_next(::std::pin::Pin::new(&mut self.$f), cx)
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_sink {
+    ($s:ident, $f:tt) => {
+        impl ::rd_interface::Sink<(::rd_interface::Bytes, ::std::net::SocketAddr)> for $s {
+            type Error = ::std::io::Error;
+
+            fn poll_ready(
+                mut self: ::std::pin::Pin<&mut Self>,
+                cx: &mut ::std::task::Context<'_>,
+            ) -> ::std::task::Poll<::std::result::Result<(), Self::Error>> {
+                ::rd_interface::Sink::poll_ready(::std::pin::Pin::new(&mut self.$f), cx)
+            }
+
+            fn start_send(
+                mut self: ::std::pin::Pin<&mut Self>,
+                item: (::rd_interface::Bytes, SocketAddr),
+            ) -> ::std::result::Result<(), Self::Error> {
+                ::rd_interface::Sink::start_send(::std::pin::Pin::new(&mut self.$f), item)
+            }
+
+            fn poll_flush(
+                mut self: ::std::pin::Pin<&mut Self>,
+                cx: &mut std::task::Context<'_>,
+            ) -> ::std::task::Poll<::std::result::Result<(), Self::Error>> {
+                ::rd_interface::Sink::poll_flush(::std::pin::Pin::new(&mut self.$f), cx)
+            }
+
+            fn poll_close(
+                mut self: ::std::pin::Pin<&mut Self>,
+                cx: &mut std::task::Context<'_>,
+            ) -> ::std::task::Poll<::std::result::Result<(), Self::Error>> {
+                ::rd_interface::Sink::poll_close(::std::pin::Pin::new(&mut self.$f), cx)
+            }
+        }
+    };
+}

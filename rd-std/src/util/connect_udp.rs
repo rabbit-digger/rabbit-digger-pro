@@ -1,4 +1,6 @@
-use rd_interface::{constant::UDP_BUFFER_SIZE, Context, Result, UdpChannel, UdpSocket};
+use futures::{SinkExt, StreamExt};
+use rd_interface::{Context, UdpChannel, UdpSocket};
+use std::io::Result;
 use tokio::select;
 use tracing::instrument;
 
@@ -8,22 +10,11 @@ pub async fn connect_udp(
     udp_channel: UdpChannel,
     udp: UdpSocket,
 ) -> Result<()> {
-    let send = async {
-        let mut buf = [0u8; UDP_BUFFER_SIZE];
-        while let Ok((size, addr)) = udp_channel.recv_send_to(&mut buf).await {
-            let buf = &buf[..size];
-            udp.send_to(buf, addr).await?;
-        }
-        Ok(())
-    };
-    let recv = async {
-        let mut buf = [0u8; UDP_BUFFER_SIZE];
-        while let Ok((size, addr)) = udp.recv_from(&mut buf).await {
-            let buf = &buf[..size];
-            udp_channel.send_recv_from(buf, addr).await?;
-        }
-        Ok(())
-    };
+    let (tx1, rx1) = udp_channel.split();
+    let (tx2, rx2) = udp.split();
+
+    let send = rx1.forward(tx2.buffer(128));
+    let recv = rx2.forward(tx1.buffer(128));
 
     select! {
         r = send => r,

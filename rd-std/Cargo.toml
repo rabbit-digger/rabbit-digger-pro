@@ -11,13 +11,14 @@ license = "MIT OR Apache-2.0"
 rd-interface = { version = "0.4", path = "../rd-interface" }
 rd-derive = { version = "0.1", path = "../rd-derive" }
 futures = "0.3"
+futures-util = { version = "0.3", features = ["sink"] }
 serde = "1.0"
 tracing = "0.1.26"
 thiserror = "1.0"
 anyhow = "1.0"
 tokio = { version = "1.5.0", features = ["net", "rt", "macros"] }
 parking_lot = "0.11.1"
-tokio-util = "0.6"
+tokio-util = { version = "0.6", features = ["codec", "net"] }
 
 # socks5
 socks5-protocol = "0.3.2"

@@ -1,31 +1,29 @@
 // UDP: https://github.com/shadowsocks/shadowsocks-rust/blob/0433b3ec09bcaa26f7460a50287b56c67b687a34/crates/shadowsocks-service/src/local/redir/udprelay/sys/unix/linux.rs#L56
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{io, net::SocketAddr, pin::Pin, task, time::Duration};
 
 use super::socket::{create_tcp_listener, TransparentUdp};
 use crate::{
     builtin::local::CompatTcp,
-    util::{connect_tcp, is_reserved},
+    util::{
+        connect_tcp,
+        forward_udp::{forward_udp, RawUdpSource, UdpPacket},
+        is_reserved,
+    },
 };
+use futures::{ready, Sink, Stream};
 use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
     constant::UDP_BUFFER_SIZE,
-    error::map_other,
     registry::ServerFactory,
     schemars::{self, JsonSchema},
-    Address, Context, Error, IServer, IntoAddress, IntoDyn, Net, Result,
+    Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net, Result,
 };
 use serde::Deserialize;
 use tokio::{
     net::{TcpListener, TcpStream},
     select,
-    sync::{
-        mpsc::{unbounded_channel, UnboundedSender as Sender},
-        Mutex,
-    },
-    task::JoinHandle,
-    time::timeout,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -43,7 +41,7 @@ pub struct TProxyServer {
 impl IServer for TProxyServer {
     async fn start(&self) -> Result<()> {
         let tcp_listener = create_tcp_listener(self.cfg.bind.to_socket_addr()?).await?;
-        let udp_listener = TransparentUdp::listen(self.cfg.bind.to_socket_addr()?).await?;
+        let udp_listener = TransparentUdp::listen(self.cfg.bind.to_socket_addr()?)?;
 
         select! {
             r = self.serve_listener(tcp_listener) => r,
@@ -58,34 +56,11 @@ impl TProxyServer {
     }
 
     async fn serve_udp(&self, listener: TransparentUdp) -> Result<()> {
-        let mut buf = [0u8; 4096];
-        let net = self.net.clone();
-        let mut nat = LruCache::<SocketAddr, UdpTunnel>::with_expiry_duration_and_capacity(
-            Duration::from_secs(30),
-            128,
-        );
-        let cache = Arc::new(TransparentUdpCache::new(self.cfg.mark));
+        let source = UdpSource::new(listener, self.cfg.mark);
 
-        loop {
-            let (size, src, dst) = match listener.recv(&mut buf).await {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!("UDP recv error: {:?}", e);
-                    continue;
-                }
-            };
+        forward_udp(source, self.net.clone()).await?;
 
-            let payload = &buf[..size];
-
-            let udp = nat
-                .entry(src)
-                .or_insert_with(|| UdpTunnel::new(net.clone(), src, cache.clone()));
-
-            if let Err(e) = udp.send_to(payload, dst).await {
-                tracing::error!("Udp send_to {:?}", e);
-                nat.remove(&src);
-            }
-        }
+        Ok(())
     }
 
     async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
@@ -124,111 +99,112 @@ impl ServerFactory for TProxyServer {
     }
 }
 
-struct TransparentUdpCache {
+#[derive(Debug)]
+enum SendState {
+    Idle,
+    Sending(UdpPacket),
+}
+
+struct UdpSource {
+    recv_buf: Box<[u8]>,
+    tudp: TransparentUdp,
+
     mark: Option<u32>,
-    cache: Mutex<LruCache<SocketAddr, TransparentUdp>>,
+    cache: LruCache<SocketAddr, TransparentUdp>,
+    send_state: SendState,
 }
 
-impl TransparentUdpCache {
-    fn new(mark: Option<u32>) -> Self {
-        TransparentUdpCache {
+impl UdpSource {
+    fn new(tudp: TransparentUdp, mark: Option<u32>) -> Self {
+        UdpSource {
+            recv_buf: Box::new([0; UDP_BUFFER_SIZE]),
+            tudp,
             mark,
-            cache: Mutex::new(LruCache::with_expiry_duration_and_capacity(
-                Duration::from_secs(30),
-                128,
-            )),
+            cache: LruCache::with_expiry_duration_and_capacity(Duration::from_secs(30), 128),
+            send_state: SendState::Idle,
         }
     }
-    async fn send_to(
-        &self,
-        from_addr: SocketAddr,
-        to_addr: SocketAddr,
-        buf: &[u8],
-    ) -> Result<usize> {
-        // Don't cache reserved address
-        if is_reserved(from_addr.ip()) {
-            let udp = TransparentUdp::bind_any(from_addr, self.mark).await?;
-            Ok(udp.send_to(buf, to_addr).await?)
-        } else {
-            let mut cache = self.cache.lock().await;
-            let back_udp = match cache.get(&from_addr) {
-                Some(udp) => udp,
-                None => {
-                    let udp = TransparentUdp::bind_any(from_addr, self.mark).await?;
-                    cache.insert(from_addr, udp);
-                    cache
-                        .get(&from_addr)
-                        .expect("impossible: failed to get by from_addr")
+    fn poll_send_to(&mut self, cx: &mut task::Context<'_>) -> task::Poll<io::Result<()>> {
+        let UdpSource {
+            cache, send_state, ..
+        } = self;
+
+        match send_state {
+            SendState::Idle => {}
+            SendState::Sending(UdpPacket { from, to, data }) => {
+                let udp = match cache.get(&to) {
+                    Some(udp) => udp,
+                    None => {
+                        let udp = TransparentUdp::bind_any(*from, self.mark)?;
+                        cache.insert(*to, udp);
+                        cache
+                            .get(&to)
+                            .expect("impossible: failed to get by from_addr")
+                    }
+                };
+
+                ready!(udp.poll_send_to(cx, data, *to))?;
+
+                // Don't cache reserved address
+                if is_reserved(to.ip()) {
+                    cache.remove(&to);
                 }
-            };
-
-            Ok(back_udp.send_to(buf, to_addr).await?)
-        }
-    }
-}
-
-struct UdpTunnel {
-    tx: Sender<(SocketAddr, Vec<u8>)>,
-    handle: Mutex<Option<JoinHandle<Result<()>>>>,
-}
-
-impl UdpTunnel {
-    fn new(net: Net, src: SocketAddr, cache: Arc<TransparentUdpCache>) -> UdpTunnel {
-        let (tx, mut rx) = unbounded_channel::<(SocketAddr, Vec<u8>)>();
-        let handle = tokio::spawn(async move {
-            let udp = timeout(
-                Duration::from_secs(5),
-                net.udp_bind(
-                    &mut Context::from_socketaddr(src),
-                    &Address::any_addr_port(&src),
-                ),
-            )
-            .await
-            .map_err(map_other)??;
-
-            let send = async {
-                while let Some((addr, packet)) = rx.recv().await {
-                    udp.send_to(&packet, addr.into()).await?;
-                }
-                Ok(()) as Result<()>
-            };
-            let recv = async {
-                let mut buf = [0u8; UDP_BUFFER_SIZE];
-                loop {
-                    let (size, addr) = udp.recv_from(&mut buf).await?;
-
-                    cache.send_to(addr, src, &buf[..size]).await?;
-                }
-            };
-
-            let r: Result<()> = select! {
-                r = send => r,
-                r = recv => r,
-            };
-
-            if let Err(e) = &r {
-                tracing::error!("tproxy error {:?} src {}", e, src);
-            }
-
-            Ok(()) as Result<()>
-        });
-        UdpTunnel {
-            tx,
-            handle: Mutex::new(handle.into()),
-        }
-    }
-    /// return false if the send queue is full
-    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
-        match self.tx.send((addr, buf.to_vec())) {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                let mut handle = self.handle.lock().await;
-                if let Some(handle) = handle.take() {
-                    let r = handle.await;
-                    tracing::error!("Other side closed: {:?}", r);
-                }
-                Err(Error::Other("Other side closed".into()))
             }
         }
+
+        *send_state = SendState::Idle;
+
+        Ok(()).into()
     }
 }
+
+impl Stream for UdpSource {
+    type Item = io::Result<UdpPacket>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Option<Self::Item>> {
+        let UdpSource { recv_buf, tudp, .. } = self.get_mut();
+        let (size, from, to) = ready!(tudp.poll_recv(cx, &mut recv_buf[..]))?;
+
+        Some(Ok(UdpPacket::new(
+            Bytes::copy_from_slice(&recv_buf[..size]),
+            from,
+            to,
+        )))
+        .into()
+    }
+}
+
+impl Sink<UdpPacket> for UdpSource {
+    type Error = io::Error;
+
+    fn poll_ready(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Result<(), Self::Error>> {
+        self.poll_send_to(cx)
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: UdpPacket) -> Result<(), Self::Error> {
+        self.send_state = SendState::Sending(item);
+        Ok(())
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Result<(), Self::Error>> {
+        self.poll_ready(cx)
+    }
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Result<(), Self::Error>> {
+        self.poll_flush(cx)
+    }
+}
+
+impl RawUdpSource for UdpSource {}

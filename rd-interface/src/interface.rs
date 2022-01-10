@@ -4,6 +4,9 @@ pub use crate::Context;
 use crate::NOT_IMPLEMENTED;
 pub use crate::{Address, Error, Result};
 pub use async_trait::async_trait;
+pub use bytes::{Bytes, BytesMut};
+pub use futures_util::{Sink, Stream};
+use std::io;
 pub use std::sync::Arc;
 pub use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
@@ -49,9 +52,13 @@ impl<T: ITcpStream> IntoDyn<TcpStream> for T {
 
 /// A UdpSocket.
 #[async_trait]
-pub trait IUdpSocket: Unpin + Send + Sync {
-    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)>;
-    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize>;
+pub trait IUdpSocket:
+    Stream<Item = io::Result<(BytesMut, SocketAddr)>>
+    + Sink<(Bytes, SocketAddr), Error = io::Error>
+    + Unpin
+    + Send
+    + Sync
+{
     async fn local_addr(&self) -> Result<SocketAddr>;
 }
 pub type UdpSocket = Box<dyn IUdpSocket>;
@@ -110,10 +117,13 @@ impl<T: IServer> IntoDyn<Server> for T {
 }
 
 /// The other side of an UdpSocket
-#[async_trait]
-pub trait IUdpChannel: Send + Sync {
-    async fn recv_send_to(&self, data: &mut [u8]) -> Result<(usize, Address)>;
-    async fn send_recv_from(&self, data: &[u8], addr: SocketAddr) -> Result<usize>;
+pub trait IUdpChannel:
+    Stream<Item = io::Result<(Bytes, SocketAddr)>>
+    + Sink<(BytesMut, SocketAddr), Error = io::Error>
+    + Unpin
+    + Send
+    + Sync
+{
 }
 pub type UdpChannel = Box<dyn IUdpChannel>;
 

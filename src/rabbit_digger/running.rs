@@ -7,15 +7,14 @@ use std::{
     task::{self, Poll},
 };
 
-use futures::{future::poll_fn, FutureExt};
+use futures::{ready, FutureExt, SinkExt, Stream, StreamExt};
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net,
-    ReadBuf, Result, TcpListener, TcpStream, UdpSocket, Value,
+    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Bytes, BytesMut, Context, INet, IUdpSocket,
+    IntoAddress, IntoDyn, Net, ReadBuf, Result, Sink, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
-    pin,
     sync::{oneshot, RwLock, Semaphore},
     task::JoinHandle,
 };
@@ -188,39 +187,68 @@ impl WrapUdpSocket {
     }
 }
 
-#[async_trait]
-impl IUdpSocket for WrapUdpSocket {
-    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+impl Stream for WrapUdpSocket {
+    type Item = io::Result<(BytesMut, SocketAddr)>;
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context,
+    ) -> Poll<Option<io::Result<(BytesMut, SocketAddr)>>> {
         let WrapUdpSocket {
             inner,
             conn,
             stopped,
-        } = self;
-        let fut = async {
-            let (size, addr) = inner.recv_from(buf).await?;
-            conn.send(EventType::UdpInbound(addr.into(), size as u64));
-            Ok((size, addr))
+        } = &mut *self;
+        if let Poll::Ready(_) = stopped.lock().poll_unpin(cx) {
+            return Poll::Ready(Some(Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "Aborted by user",
+            )
+            .into())));
+        }
+        let (buf, addr) = match ready!(inner.poll_next_unpin(cx)?) {
+            Some(v) => v,
+            None => return Poll::Ready(None),
         };
-        pin!(fut);
-        poll_fn(|cx| {
-            if let Poll::Ready(_) = stopped.lock().poll_unpin(cx) {
-                return Poll::Ready(Err(io::Error::new(
-                    io::ErrorKind::ConnectionAborted,
-                    "Aborted by user",
-                )
-                .into()));
-            }
-            fut.poll_unpin(cx)
-        })
-        .await
+        conn.send(EventType::UdpInbound(addr.into(), buf.len() as u64));
+        Poll::Ready(Some(Ok((buf, addr))))
+    }
+}
+
+impl Sink<(Bytes, SocketAddr)> for WrapUdpSocket {
+    type Error = io::Error;
+
+    fn poll_ready(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready_unpin(cx)
     }
 
-    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        self.conn
-            .send(EventType::UdpOutbound(addr.clone(), buf.len() as u64));
-        self.inner.send_to(buf, addr).await
+    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
+        self.conn.send(EventType::UdpOutbound(
+            item.1.clone().into_address()?,
+            item.0.len() as u64,
+        ));
+        self.inner.start_send_unpin(item)
     }
 
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_flush_unpin(cx)
+    }
+
+    fn poll_close(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_close_unpin(cx)
+    }
+}
+
+#[async_trait]
+impl IUdpSocket for WrapUdpSocket {
     async fn local_addr(&self) -> Result<SocketAddr> {
         self.inner.local_addr().await
     }

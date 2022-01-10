@@ -1,3 +1,4 @@
+use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use socks5_protocol::{
     AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
 };
@@ -6,10 +7,15 @@ use crate::socks5::common::map_err;
 
 use super::common::{pack_udp, parse_udp, ra2sa};
 use rd_interface::{
-    async_trait, impl_async_read_write, Address, INet, ITcpStream, IUdpSocket, IntoAddress,
-    IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, Address, Bytes, BytesMut, INet, ITcpStream, IUdpSocket,
+    IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
-use std::net::SocketAddr;
+use std::{
+    io,
+    net::SocketAddr,
+    pin::Pin,
+    task::{self, Poll},
+};
 use tokio::io::{split, AsyncWriteExt, BufWriter};
 
 pub struct Socks5Client {
@@ -23,33 +29,67 @@ impl_async_read_write!(Socks5TcpStream, 0);
 
 pub struct Socks5UdpSocket(UdpSocket, TcpStream, SocketAddr);
 
-#[async_trait]
-impl IUdpSocket for Socks5UdpSocket {
-    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+impl Stream for Socks5UdpSocket {
+    type Item = io::Result<(BytesMut, SocketAddr)>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
         // 259 is max size of address, atype 1 + domain len 1 + domain 255 + port 2
-        let bytes_size = 259 + buf.len();
-        let mut bytes = vec![0u8; bytes_size];
-        let recv_len = loop {
-            let (len, addr) = self.0.recv_from(&mut bytes).await?;
+        let bytes = loop {
+            let (bytes, addr) = match ready!(self.0.poll_next_unpin(cx)) {
+                Some(r) => r?,
+                None => return Poll::Ready(None),
+            };
             if addr == self.2 {
-                break len;
+                break bytes;
             }
         };
-        bytes.truncate(recv_len);
 
-        let (addr, payload) = parse_udp(&bytes).await?;
-        let to_copy = payload.len().min(buf.len());
-        buf[..to_copy].copy_from_slice(&payload[..to_copy]);
+        let (addr, payload) = parse_udp(&bytes)?;
 
-        Ok((to_copy, addr.to_socket_addr().map_err(map_err)?))
+        Poll::Ready(Some(Ok((
+            BytesMut::from(payload),
+            addr.to_socket_addr().map_err(map_err)?,
+        ))))
+    }
+}
+
+impl Sink<(Bytes, SocketAddr)> for Socks5UdpSocket {
+    type Error = io::Error;
+
+    fn poll_ready(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.0.poll_ready_unpin(cx)
     }
 
-    async fn send_to(&self, buf: &[u8], addr: rd_interface::Address) -> Result<usize> {
-        let bytes = pack_udp(ra2sa(addr), buf).await?;
+    fn start_send(
+        mut self: Pin<&mut Self>,
+        (buf, addr): (Bytes, SocketAddr),
+    ) -> Result<(), Self::Error> {
+        let Socks5UdpSocket(sink, _, server_addr) = &mut *self;
+        let bytes = pack_udp(addr.into(), &buf)?;
 
-        self.0.send_to(&bytes, self.2.into()).await
+        sink.start_send_unpin((bytes.into(), server_addr.clone().into()))
     }
 
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.0.poll_flush_unpin(cx)
+    }
+
+    fn poll_close(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.0.poll_close_unpin(cx)
+    }
+}
+
+#[async_trait]
+impl IUdpSocket for Socks5UdpSocket {
     async fn local_addr(&self) -> Result<SocketAddr> {
         self.0.local_addr().await
     }

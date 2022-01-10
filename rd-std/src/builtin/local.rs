@@ -5,11 +5,12 @@ use std::{
 };
 
 use rd_interface::{
-    async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, INet, IntoDyn,
-    Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, impl_async_read_write, impl_stream_sink, prelude::*, registry::NetFactory,
+    Address, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
+use tokio_util::{codec::BytesCodec, udp::UdpFramed};
 use tracing::instrument;
 
 /// A local network.
@@ -40,7 +41,7 @@ pub struct LocalNetConfig {
 pub struct LocalNet(LocalNetConfig);
 pub struct CompatTcp(pub(crate) net::TcpStream);
 pub struct Listener(net::TcpListener, LocalNetConfig);
-pub struct Udp(net::UdpSocket);
+pub struct Udp(UdpFramed<BytesCodec, net::UdpSocket>);
 
 impl LocalNet {
     pub fn new(config: LocalNetConfig) -> LocalNet {
@@ -193,32 +194,17 @@ impl rd_interface::ITcpListener for Listener {
 }
 
 impl Udp {
-    async fn send_to_single(&self, buf: &[u8], addr: SocketAddr) -> Result<usize> {
-        self.0.send_to(buf, addr).await.map_err(Into::into)
+    fn new(socket: net::UdpSocket) -> Udp {
+        Udp(UdpFramed::new(socket, BytesCodec::new()))
     }
 }
 
+impl_stream_sink!(Udp, 0);
+
 #[async_trait]
 impl rd_interface::IUdpSocket for Udp {
-    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        self.0.recv_from(buf).await.map_err(Into::into)
-    }
-
-    async fn send_to(&self, buf: &[u8], addr: Address) -> Result<usize> {
-        let addrs = addr.resolve(lookup_host).await?;
-
-        match addrs.into_iter().next() {
-            Some(target) => self.send_to_single(buf, target).await,
-            None => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "no addresses to send data to",
-            )
-            .into()),
-        }
-    }
-
     async fn local_addr(&self) -> Result<SocketAddr> {
-        self.0.local_addr().map_err(Into::into)
+        self.0.get_ref().local_addr().map_err(Into::into)
     }
 }
 
@@ -285,7 +271,7 @@ impl INet for LocalNet {
 
         for addr in addrs {
             match self.udp_bind_single(addr).await {
-                Ok(udp) => return Ok(Udp(udp).into_dyn()),
+                Ok(udp) => return Ok(Udp::new(udp).into_dyn()),
                 Err(e) => last_err = Some(e),
             }
         }

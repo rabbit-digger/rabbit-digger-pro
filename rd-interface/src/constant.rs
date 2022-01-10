@@ -1,1 +1,1 @@
-pub const UDP_BUFFER_SIZE: usize = 2048;
+pub const UDP_BUFFER_SIZE: usize = 8 * 1024;

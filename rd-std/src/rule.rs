@@ -5,7 +5,6 @@ mod geoip;
 mod ipcidr;
 mod matcher;
 mod rule_net;
-mod udp;
 
 use rd_interface::{registry::NetFactory, Registry, Result};
 
