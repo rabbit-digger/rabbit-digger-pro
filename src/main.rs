@@ -137,7 +137,7 @@ async fn main(args: Args) -> Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug",
+            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug,ss=debug",
         )
     }
     let tr = tracing_subscriber::registry();

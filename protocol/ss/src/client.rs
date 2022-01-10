@@ -1,3 +1,5 @@
+use std::io;
+
 use super::wrapper::{Cipher, WrapAddress, WrapSSTcp, WrapSSUdp};
 use rd_interface::{
     async_trait, prelude::*, registry::NetRef, Address, INet, IntoDyn, Net, Result, TcpStream,
@@ -8,7 +10,6 @@ use shadowsocks::{
     context::{Context, SharedContext},
     ProxyClientStream,
 };
-use tokio::sync::OnceCell;
 
 #[rd_config]
 #[derive(Debug, Clone)]
@@ -25,7 +26,7 @@ pub struct SSNetConfig {
 }
 
 pub struct SSNet {
-    context: OnceCell<SharedContext>,
+    context: SharedContext,
     cfg: ServerConfig,
     addr: Address,
     udp: bool,
@@ -35,7 +36,7 @@ pub struct SSNet {
 impl SSNet {
     pub fn new(config: SSNetConfig) -> SSNet {
         SSNet {
-            context: OnceCell::new(),
+            context: Context::new_shared(ServerType::Local),
             addr: config.server.clone(),
             cfg: ServerConfig::new(
                 (config.server.host(), config.server.port()),
@@ -45,12 +46,6 @@ impl SSNet {
             udp: config.udp,
             net: (*config.net).clone(),
         }
-    }
-    pub async fn context(&self) -> SharedContext {
-        self.context
-            .get_or_init(|| async { Context::new_shared(ServerType::Local) })
-            .await
-            .clone()
     }
 }
 
@@ -63,7 +58,7 @@ impl INet for SSNet {
     ) -> Result<TcpStream> {
         let stream = self.net.tcp_connect(ctx, &self.addr).await?;
         let client = ProxyClientStream::from_stream(
-            self.context().await,
+            self.context.clone(),
             stream,
             &self.cfg,
             WrapAddress(addr.clone()),
@@ -75,8 +70,18 @@ impl INet for SSNet {
         if !self.udp {
             return Err(NOT_ENABLED);
         }
+        let server_addr = self
+            .net
+            .lookup_host(&self.addr)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                "Failed to lookup domain",
+            ))?;
         let socket = self.net.udp_bind(ctx, &addr.to_any_addr_port()?).await?;
-        let udp = WrapSSUdp::new(self.context().await, socket, &self.cfg);
+        let udp = WrapSSUdp::new(socket, &self.cfg, server_addr);
         Ok(udp.into_dyn())
     }
 }

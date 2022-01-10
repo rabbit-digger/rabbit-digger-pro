@@ -8,11 +8,15 @@ edition = "2018"
 rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.4" }
 rd-std = { path = "../../rabbit-digger/rd-std/", version = "0.1" }
 # rd-interface = "0.3"
-shadowsocks = { version = "1.10.3", default-features = false, features = [ "stream-cipher", "aead-cipher-extra" ] }
+shadowsocks = { version = "1.12.3", default-features = false, features = [
+    "stream-cipher",
+    "aead-cipher-extra",
+] }
 serde = "1.0"
 bytes = "1.0"
 tracing = "0.1.26"
 byte_string = "1.0"
 serde_json = "1.0"
 tokio = { version = "1.5.0", features = ["rt"] }
-socks5-protocol = "0.3"
+socks5-protocol = "0.3.5"
+futures = "0.3"

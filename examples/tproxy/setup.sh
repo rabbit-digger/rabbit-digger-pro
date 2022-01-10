@@ -12,6 +12,7 @@ RD_DISABLE_IPV6="${RD_DISABLE_IPV6:=0}"
 RD_ENABLE_SELF="${RD_ENABLE_SELF:=0}"
 RD_EXCLUDE_IP="$RD_EXCLUDE_IP"
 RD_EXCLUDE_MAC="$RD_EXCLUDE_MAC"
+RD_HIJACK_DNS="${RD_HIJACK_DNS:=1}"
 
 if [ "$(id -u)" != "0" ]; then
    echo "This script must be run as root" 1>&2
@@ -27,7 +28,7 @@ if [ "$RD_DISABLE_IPV6" != "1" ]; then
    ip -6 rule add fwmark $RD_FW_MARK table $RD_TABLE
 
    ip6tables -t mangle -N RD_OUTPUT
-   if [ "$RD_ENABLE_SELF" == "1" ]; then
+   if [ "$RD_ENABLE_SELF" = "1" ]; then
       ip6tables -t mangle -A RD_OUTPUT -d ::1/128 -j RETURN
       ip6tables -t mangle -A RD_OUTPUT -d fc00::/7 -j RETURN
       ip6tables -t mangle -A RD_OUTPUT -d fe80::/10 -j RETURN
@@ -49,7 +50,9 @@ if [ "$RD_DISABLE_IPV6" != "1" ]; then
       ip6tables -t mangle -A RD_PREROUTING -m mac --mac-source $i -j RETURN 2>/dev/null || true
    done
    ip6tables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
-   ip6tables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT6 --tproxy-mark $RD_FW_MARK
+   if [ "$RD_HIJACK_DNS" = "1" ]; then
+      ip6tables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT6 --tproxy-mark $RD_FW_MARK
+   fi
    ip6tables -t mangle -A RD_PREROUTING -d ::1/128 -j RETURN
    ip6tables -t mangle -A RD_PREROUTING -d fc00::/7 -j RETURN
    ip6tables -t mangle -A RD_PREROUTING -d fe80::/10 -j RETURN
@@ -61,7 +64,7 @@ if [ "$RD_DISABLE_IPV6" != "1" ]; then
 fi
 
 iptables -t mangle -N RD_OUTPUT
-if [ "$RD_ENABLE_SELF" == "1" ]; then
+if [ "$RD_ENABLE_SELF" = "1" ]; then
    iptables -t mangle -A RD_OUTPUT -d 0/8 -j RETURN
    iptables -t mangle -A RD_OUTPUT -d 127/8 -j RETURN
    iptables -t mangle -A RD_OUTPUT -d 10/8 -j RETURN
@@ -88,7 +91,9 @@ for i in $(echo $RD_EXCLUDE_MAC | tr "," "\n"); do
    iptables -t mangle -A RD_PREROUTING -m mac --mac-source $i -j RETURN 2>/dev/null || true
 done
 iptables -t mangle -A RD_PREROUTING -m mark --mark $RD_MARK -j RETURN
-iptables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
+if [ "$RD_HIJACK_DNS" = "1" ]; then
+   iptables -t mangle -A RD_PREROUTING -p udp --dport 53 -j TPROXY --on-port $RD_PORT --tproxy-mark $RD_FW_MARK
+fi
 iptables -t mangle -A RD_PREROUTING -d 0/8 -j RETURN
 iptables -t mangle -A RD_PREROUTING -d 127/8 -j RETURN
 iptables -t mangle -A RD_PREROUTING -d 10/8 -j RETURN

@@ -1,16 +1,24 @@
 use std::{
+    io,
     net::{SocketAddr, SocketAddrV4},
+    pin::Pin,
     str::FromStr,
-    time::Duration,
+    task,
 };
 
-use futures::{future::ready, StreamExt};
-use lru_time_cache::LruCache;
-use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, error::map_other, prelude::*, registry::ServerFactory,
-    Address, Context, Error, IServer, IntoAddress, Net, Result,
+use crate::{
+    device,
+    gateway::{GatewayInterface, MapTable},
 };
-use rd_std::util::connect_tcp;
+use futures::{ready, Sink, Stream, StreamExt};
+use rd_interface::{
+    async_trait, error::map_other, prelude::*, registry::ServerFactory, Bytes, Context, Error,
+    IServer, IntoAddress, Net, Result,
+};
+use rd_std::util::{
+    connect_tcp,
+    forward_udp::{self, RawUdpSource},
+};
 use smoltcp::{
     phy::{Checksum, ChecksumCapabilities, Medium},
     wire::{
@@ -18,19 +26,10 @@ use smoltcp::{
         Ipv4Address, Ipv4Packet, Ipv4Repr, UdpPacket, UdpRepr,
     },
 };
-use tokio::{
-    select, spawn,
-    sync::mpsc::{unbounded_channel, UnboundedSender as Sender},
-    time::timeout,
-};
+use tokio::{select, spawn};
 use tokio_smoltcp::{
     device::{FutureDevice, Interface, Packet},
     BufferSize, NetConfig, RawSocket, TcpListener,
-};
-
-use crate::{
-    device,
-    gateway::{GatewayInterface, MapTable},
 };
 
 #[rd_config]
@@ -145,7 +144,9 @@ impl RawServer {
         };
 
         let device = GatewayInterface::new(
-            dev.filter(move |p: &Packet| ready(filter_packet(p, ethernet_addr, ip_addr, layer))),
+            dev.filter(move |p: &Packet| {
+                std::future::ready(filter_packet(p, ethernet_addr, ip_addr, layer))
+            }),
             lru_size,
             SocketAddrV4::new(addr.into(), 20000),
             layer,
@@ -216,60 +217,106 @@ impl RawServer {
         }
     }
     async fn serve_udp(&self, raw: RawSocket) -> Result<()> {
-        let (send_raw, mut send_rx) = unbounded_channel::<(SocketAddr, SocketAddr, Vec<u8>)>();
+        let source = Source::new(raw);
 
-        let mut buf = [0u8; UDP_BUFFER_SIZE];
-        let mut nat = LruCache::<SocketAddr, UdpTunnel>::with_expiry_duration_and_capacity(
-            Duration::from_secs(30),
-            128,
-        );
-        let net = self.net.clone();
-
-        let recv = async {
-            loop {
-                let size = raw.recv(&mut buf).await?;
-                let (src, dst, payload) = match parse_udp(&buf[..size]) {
-                    Ok(v) => v,
-                    _ => break,
-                };
-
-                let udp = nat
-                    .entry(src)
-                    .or_insert_with(|| UdpTunnel::new(net.clone(), src, send_raw.clone()));
-                if let Err(e) = udp.send_to(payload, dst).await {
-                    tracing::error!("Udp send_to {:?}", e);
-                    nat.remove(&src);
-                }
-            }
-
-            Ok(()) as Result<()>
-        };
-
-        let send = async {
-            while let Some((src, dst, payload)) = send_rx.recv().await {
-                if let Some(ip_packet) = pack_udp(src, dst, &payload) {
-                    if let Err(e) = raw.send(&ip_packet).await {
-                        tracing::error!(
-                            "Raw send error: {:?}, dropping udp size: {}",
-                            e,
-                            ip_packet.len()
-                        );
-                    }
-                } else {
-                    tracing::debug!("Unsupported src/dst");
-                }
-            }
-            Ok(()) as Result<()>
-        };
-
-        select! {
-            r = send => r?,
-            r = recv => r?,
-        }
+        forward_udp::forward_udp(source, self.net.clone()).await?;
 
         Ok(())
     }
 }
+
+struct Source {
+    raw: RawSocket,
+    recv_buf: Box<[u8]>,
+    send_buf: Option<Vec<u8>>,
+}
+
+impl Source {
+    pub fn new(raw: RawSocket) -> Source {
+        Source {
+            raw,
+            recv_buf: Box::new([0u8; 65536]),
+            send_buf: None,
+        }
+    }
+}
+
+impl Stream for Source {
+    type Item = io::Result<forward_udp::UdpPacket>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Option<Self::Item>> {
+        let Source { raw, recv_buf, .. } = &mut *self;
+
+        let (from, to, data) = loop {
+            let size = ready!(raw.poll_recv(cx, recv_buf))?;
+
+            match parse_udp(&recv_buf[..size]) {
+                Ok(v) => break v,
+                _ => {}
+            };
+        };
+
+        let data = Bytes::copy_from_slice(data);
+
+        Some(Ok(forward_udp::UdpPacket { from, to, data })).into()
+    }
+}
+
+impl Sink<forward_udp::UdpPacket> for Source {
+    type Error = io::Error;
+
+    fn poll_ready(
+        self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Result<(), Self::Error>> {
+        if self.send_buf.is_some() {
+            return self.poll_flush(cx);
+        }
+
+        Ok(()).into()
+    }
+
+    fn start_send(
+        mut self: Pin<&mut Self>,
+        forward_udp::UdpPacket { from, to, data }: forward_udp::UdpPacket,
+    ) -> Result<(), Self::Error> {
+        if let Some(ip_packet) = pack_udp(from, to, &data) {
+            self.send_buf = Some(ip_packet);
+        } else {
+            tracing::debug!("Unsupported src/dst");
+        }
+        Ok(())
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Result<(), Self::Error>> {
+        let Source { raw, send_buf, .. } = &mut *self;
+
+        match send_buf {
+            Some(buf) => {
+                ready!(raw.poll_send(cx, buf))?;
+                *send_buf = None;
+            }
+            None => {}
+        }
+
+        Ok(()).into()
+    }
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Result<(), Self::Error>> {
+        self.poll_flush(cx)
+    }
+}
+
+impl RawUdpSource for Source {}
 
 /// buf is a ip packet
 fn parse_udp(buf: &[u8]) -> smoltcp::Result<(SocketAddr, SocketAddr, &[u8])> {
@@ -352,64 +399,5 @@ impl ServerFactory for RawServer {
 
     fn new(_listen: Net, net: Net, config: Self::Config) -> Result<Self::Server> {
         RawServer::new(net, config)
-    }
-}
-
-struct UdpTunnel {
-    tx: Sender<(SocketAddr, Vec<u8>)>,
-}
-
-impl UdpTunnel {
-    fn new(
-        net: Net,
-        src: SocketAddr,
-        send_raw: Sender<(SocketAddr, SocketAddr, Vec<u8>)>,
-    ) -> UdpTunnel {
-        let (tx, mut rx) = unbounded_channel::<(SocketAddr, Vec<u8>)>();
-        tokio::spawn(async move {
-            let udp = timeout(
-                Duration::from_secs(5),
-                net.udp_bind(
-                    &mut Context::from_socketaddr(src),
-                    &Address::any_addr_port(&src),
-                ),
-            )
-            .await
-            .map_err(map_other)??;
-
-            let send = async {
-                while let Some((addr, packet)) = rx.recv().await {
-                    udp.send_to(&packet, addr.into()).await?;
-                }
-                Ok(())
-            };
-            let recv = async {
-                let mut buf = [0u8; UDP_BUFFER_SIZE];
-                loop {
-                    let (size, addr) = udp.recv_from(&mut buf).await?;
-
-                    if send_raw.send((addr, src, buf[..size].to_vec())).is_err() {
-                        break;
-                    }
-                }
-                tracing::trace!("send_raw return error");
-                Ok(())
-            };
-
-            let r: Result<()> = select! {
-                r = send => r,
-                r = recv => r,
-            };
-
-            r
-        });
-        UdpTunnel { tx }
-    }
-    /// return false if the send queue is full
-    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<()> {
-        match self.tx.send((addr, buf.to_vec())) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(Error::Other("Other side closed".into())),
-        }
     }
 }
