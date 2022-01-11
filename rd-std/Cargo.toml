@@ -19,6 +19,8 @@ anyhow = "1.0"
 tokio = { version = "1.5.0", features = ["net", "rt", "macros"] }
 parking_lot = "0.11.1"
 tokio-util = { version = "0.6", features = ["codec", "net"] }
+dashmap = { version = "5.0.0" }
+pin-project-lite = "0.2.8"
 
 # socks5
 socks5-protocol = "0.3.2"

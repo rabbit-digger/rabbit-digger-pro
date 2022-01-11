@@ -100,6 +100,12 @@ fn host_to_address(host: &str, port: u16) -> Address {
     }
 }
 
+impl IntoAddress for &Address {
+    fn into_address(self) -> Result<Address> {
+        Ok(self.clone())
+    }
+}
+
 impl IntoAddress for &str {
     fn into_address(self) -> Result<Address> {
         let mut parts = self.rsplitn(2, ':');
