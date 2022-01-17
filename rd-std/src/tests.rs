@@ -33,8 +33,7 @@ pub async fn spawn_echo_server(net: &Net, addr: impl IntoAddress) {
         .unwrap();
     tokio::spawn(async move {
         loop {
-            let (tcp, addr) = listener.accept().await.unwrap();
-            println!("echo server accepted from: {:?}", addr);
+            let (tcp, _) = listener.accept().await.unwrap();
             tokio::spawn(async move {
                 let (mut rx, mut tx) = io::split(tcp);
                 io::copy(&mut rx, &mut tx).await.unwrap();
@@ -49,13 +48,10 @@ pub async fn assert_echo(net: &Net, addr: impl IntoAddress) {
         .tcp_connect(&mut Context::new(), &addr.into_address().unwrap())
         .await
         .unwrap();
-    println!("write 1");
     tcp.write_all(&BUF).await.unwrap();
-    println!("write 2");
 
     let mut buf = [0u8; BUF.len()];
     tcp.read_exact(&mut buf).await.unwrap();
-    println!("read");
 
     assert_eq!(buf, BUF);
 }
