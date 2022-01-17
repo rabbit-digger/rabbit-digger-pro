@@ -7,7 +7,7 @@ use std::{
 use super::service::ReverseLookup;
 use futures::{ready, Stream, StreamExt};
 use rd_interface::{
-    async_trait, context::common_field::DestDomain, impl_sink, Address, AddressDomain, Bytes,
+    async_trait, context::common_field::DestDomain, impl_sink, Address, AddressDomain, BytesMut,
     Context, INet, IUdpSocket, IntoDyn, Net, Result, UdpSocket,
 };
 
@@ -78,7 +78,7 @@ impl INet for DNSSnifferNet {
 struct MitmUdp(UdpSocket, ReverseLookup);
 
 impl Stream for MitmUdp {
-    type Item = std::io::Result<(Bytes, SocketAddr)>;
+    type Item = std::io::Result<(BytesMut, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context) -> Poll<Option<Self::Item>> {
         let this = &mut *self;

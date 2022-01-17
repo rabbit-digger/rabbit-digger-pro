@@ -11,8 +11,8 @@ use futures::{ready, FutureExt, SinkExt, Stream, StreamExt};
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Bytes, Context, INet, IUdpSocket, IntoDyn,
-    Net, ReadBuf, Result, Sink, TcpListener, TcpStream, UdpSocket, Value,
+    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Bytes, BytesMut, Context, INet, IUdpSocket,
+    IntoDyn, Net, ReadBuf, Result, Sink, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
     sync::{oneshot, RwLock, Semaphore},
@@ -188,11 +188,11 @@ impl WrapUdpSocket {
 }
 
 impl Stream for WrapUdpSocket {
-    type Item = io::Result<(Bytes, SocketAddr)>;
+    type Item = io::Result<(BytesMut, SocketAddr)>;
     fn poll_next(
         mut self: Pin<&mut Self>,
         cx: &mut task::Context,
-    ) -> Poll<Option<io::Result<(Bytes, SocketAddr)>>> {
+    ) -> Poll<Option<io::Result<(BytesMut, SocketAddr)>>> {
         let WrapUdpSocket {
             inner,
             conn,

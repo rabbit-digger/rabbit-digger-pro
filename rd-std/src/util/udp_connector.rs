@@ -9,7 +9,7 @@ use std::{
 
 use futures::{ready, Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
-use rd_interface::{async_trait, Address, Bytes, IUdpSocket, Result, UdpSocket};
+use rd_interface::{async_trait, Address, Bytes, BytesMut, IUdpSocket, Result, UdpSocket};
 use tokio::{sync::Semaphore, time::timeout};
 use tokio_util::sync::PollSemaphore;
 
@@ -46,7 +46,7 @@ impl UdpConnector {
 }
 
 impl Stream for UdpConnector {
-    type Item = std::io::Result<(Bytes, SocketAddr)>;
+    type Item = std::io::Result<(BytesMut, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
         loop {

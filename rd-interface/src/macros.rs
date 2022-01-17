@@ -78,7 +78,7 @@ macro_rules! impl_stream_sink {
 macro_rules! impl_stream {
     ($s:ident, $f:tt) => {
         impl ::rd_interface::Stream for $s {
-            type Item = ::std::io::Result<(::rd_interface::Bytes, ::std::net::SocketAddr)>;
+            type Item = ::std::io::Result<(::rd_interface::BytesMut, ::std::net::SocketAddr)>;
 
             fn poll_next(
                 mut self: ::std::pin::Pin<&mut Self>,

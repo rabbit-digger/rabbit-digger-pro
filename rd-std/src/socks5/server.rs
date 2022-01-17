@@ -2,8 +2,8 @@ use super::common::{pack_udp, parse_udp, sa2ra};
 use crate::util::{connect_tcp, connect_udp};
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use rd_interface::{
-    async_trait, Address as RdAddr, Address as RDAddr, Bytes, Context, IServer, IUdpChannel,
-    IntoDyn, Net, Result, TcpStream, UdpSocket,
+    async_trait, Address as RdAddr, Address as RDAddr, Bytes, BytesMut, Context, IServer,
+    IUdpChannel, IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
 use socks5_protocol::{
     Address, AuthMethod, AuthRequest, AuthResponse, Command, CommandReply, CommandRequest,
@@ -158,13 +158,13 @@ impl Stream for Socks5UdpSocket {
             self.endpoint = Some(from_addr);
         }
 
-        let (addr, payload) = parse_udp(&bytes)?;
+        let (addr, payload) = parse_udp(bytes.freeze())?;
 
-        Some(Ok((Bytes::copy_from_slice(payload), addr))).into()
+        Some(Ok((payload, addr))).into()
     }
 }
 
-impl Sink<(Bytes, SocketAddr)> for Socks5UdpSocket {
+impl Sink<(BytesMut, SocketAddr)> for Socks5UdpSocket {
     type Error = io::Error;
 
     fn poll_ready(
@@ -176,7 +176,7 @@ impl Sink<(Bytes, SocketAddr)> for Socks5UdpSocket {
 
     fn start_send(
         mut self: Pin<&mut Self>,
-        (buf, saddr): (Bytes, SocketAddr),
+        (buf, saddr): (BytesMut, SocketAddr),
     ) -> Result<(), Self::Error> {
         let bytes = Bytes::copy_from_slice(&pack_udp(saddr.into(), &buf[..])?[..]);
         match self.endpoint {

@@ -1,4 +1,4 @@
-use rd_interface::Address as RDAddr;
+use rd_interface::{Address as RDAddr, Bytes};
 use socks5_protocol::{sync::FromIO, Address, Error};
 use std::io::{self, ErrorKind, Read, Result, Write};
 
@@ -9,7 +9,7 @@ pub fn map_err(e: Error) -> rd_interface::Error {
     }
 }
 
-pub fn parse_udp(buf: &[u8]) -> Result<(RDAddr, &[u8])> {
+pub fn parse_udp(buf: Bytes) -> Result<(RDAddr, Bytes)> {
     let mut cursor = std::io::Cursor::new(buf);
     let mut header = [0u8; 3];
     cursor.read_exact(&mut header)?;
@@ -29,7 +29,7 @@ pub fn parse_udp(buf: &[u8]) -> Result<(RDAddr, &[u8])> {
 
     let pos = cursor.position() as usize;
 
-    Ok((sa2ra(addr), &cursor.into_inner()[pos..]))
+    Ok((sa2ra(addr), cursor.into_inner().slice(pos..)))
 }
 
 pub fn pack_udp(addr: RDAddr, buf: &[u8]) -> Result<Vec<u8>> {

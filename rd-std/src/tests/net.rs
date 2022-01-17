@@ -12,8 +12,9 @@ use std::{
 use super::channel::Channel;
 use futures::{lock::Mutex, ready, Future, Sink, SinkExt, Stream, StreamExt};
 use rd_interface::{
-    async_trait, Address, Arc, AsyncRead, AsyncWrite, Bytes, Context, Error, INet, ITcpListener,
-    ITcpStream, IUdpSocket, IntoDyn, ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, Address, Arc, AsyncRead, AsyncWrite, Bytes, BytesMut, Context, Error, INet,
+    ITcpListener, ITcpStream, IUdpSocket, IntoDyn, ReadBuf, Result, TcpListener, TcpStream,
+    UdpSocket,
 };
 use tokio::sync::mpsc::error::SendError;
 
@@ -135,14 +136,14 @@ pub struct TcpData {
 pub struct UdpData {
     inner: Arc<Mutex<Inner>>,
     local_addr: Port,
-    buf: Option<(Bytes, u16)>,
+    buf: Option<(BytesMut, u16)>,
     flushing: Option<u16>,
 }
 pub type MyTcpStream = Pipe<Vec<u8>, TcpData>;
 #[derive(Debug)]
 pub struct MyTcpListener(Mutex<Pipe<MyTcpStream, Port>>);
 #[derive(Debug)]
-pub struct MyUdpSocket(Pipe<(Bytes, SocketAddr), UdpData>);
+pub struct MyUdpSocket(Pipe<(BytesMut, SocketAddr), UdpData>);
 
 #[derive(Debug, PartialOrd, PartialEq, Ord, Eq, Copy, Clone, Hash)]
 enum Protocol {
@@ -153,7 +154,7 @@ enum Protocol {
 #[derive(Debug)]
 enum Value {
     TcpListener(Pipe<MyTcpStream, Port>),
-    UdpSocket(Pipe<(Bytes, SocketAddr), UdpData>),
+    UdpSocket(Pipe<(BytesMut, SocketAddr), UdpData>),
 }
 
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -281,7 +282,7 @@ fn map_err<T>(_e: SendError<T>) -> io::Error {
 }
 
 impl Stream for MyUdpSocket {
-    type Item = io::Result<(Bytes, SocketAddr)>;
+    type Item = io::Result<(BytesMut, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
         self.0.channel.poll_next_unpin(cx).map(|i| i.map(|j| Ok(j)))
@@ -291,7 +292,7 @@ impl Stream for MyUdpSocket {
 impl MyUdpSocket {
     fn poll_udp_port<F, R>(inner: &mut Inner, port: u16, func: F, default: R) -> R
     where
-        F: FnOnce(&mut Pipe<(Bytes, SocketAddr), UdpData>) -> R,
+        F: FnOnce(&mut Pipe<(BytesMut, SocketAddr), UdpData>) -> R,
     {
         let target_key = Port(Protocol::Udp, port);
         match inner.ports.get_mut(&target_key) {
@@ -368,7 +369,7 @@ impl Sink<(Bytes, Address)> for MyUdpSocket {
         mut self: Pin<&mut Self>,
         (buf, addr): (Bytes, Address),
     ) -> Result<(), Self::Error> {
-        self.0.data.buf = Some((buf, addr.port()));
+        self.0.data.buf = Some((BytesMut::from(&buf[..]), addr.port()));
         Ok(())
     }
 
@@ -412,7 +413,7 @@ impl Value {
             _ => Err(ErrorKind::ConnectionRefused.into()),
         }
     }
-    fn get_udp_socket(&mut self) -> io::Result<&mut Pipe<(Bytes, SocketAddr), UdpData>> {
+    fn get_udp_socket(&mut self) -> io::Result<&mut Pipe<(BytesMut, SocketAddr), UdpData>> {
         match self {
             Value::UdpSocket(s) => Ok(s),
             _ => Err(ErrorKind::ConnectionRefused.into()),

@@ -21,7 +21,7 @@ pub async fn spawn_echo_server_udp(net: &Net, addr: impl IntoAddress) {
     tokio::spawn(async move {
         loop {
             let (buf, addr) = udp.next().await.unwrap().unwrap();
-            udp.send((buf, addr.into())).await.unwrap();
+            udp.send((buf.freeze(), addr.into())).await.unwrap();
         }
     });
 }

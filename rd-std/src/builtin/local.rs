@@ -6,11 +6,11 @@ use std::{
     time::Duration,
 };
 
-use futures::{ready, Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use futures::{ready, Future, FutureExt, Sink, SinkExt};
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, Bytes, INet,
-    IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, impl_async_read_write, impl_stream, prelude::*, registry::NetFactory, Address,
+    Bytes, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
@@ -244,15 +244,7 @@ impl Udp {
     }
 }
 
-impl Stream for Udp {
-    type Item = io::Result<(Bytes, SocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
-        self.inner
-            .poll_next_unpin(cx)
-            .map(|r| r.map(|r| r.map(|(bytes, addr)| (bytes.freeze(), addr))))
-    }
-}
+impl_stream!(Udp, inner);
 
 impl Sink<(Bytes, Address)> for Udp {
     type Error = io::Error;
