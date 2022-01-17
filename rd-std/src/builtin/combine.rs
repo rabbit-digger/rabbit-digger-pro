@@ -62,3 +62,33 @@ impl NetFactory for CombineNet {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::IntoDyn;
+
+    use super::*;
+    use crate::tests::{
+        assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet,
+    };
+
+    #[tokio::test]
+    async fn test_combine_net() {
+        let net1 = TestNet::new().into_dyn();
+        let net2 = TestNet::new().into_dyn();
+        let net3 = TestNet::new().into_dyn();
+        let net = CombineNet {
+            tcp_connect: net1.clone(),
+            tcp_bind: net2.clone(),
+            udp_bind: net3.clone(),
+            lookup_host: net1.clone(),
+        }
+        .into_dyn();
+
+        spawn_echo_server(&net, "127.0.0.1:26666").await;
+        assert_echo(&net2, "127.0.0.1:26666").await;
+
+        spawn_echo_server_udp(&net, "127.0.0.1:26666").await;
+        assert_echo_udp(&net3, "127.0.0.1:26666").await;
+    }
+}

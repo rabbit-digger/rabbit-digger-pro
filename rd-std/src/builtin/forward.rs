@@ -75,3 +75,30 @@ impl ServerFactory for ForwardServer {
         Ok(ForwardServer::new(listen, net, cfg))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use rd_interface::{IntoAddress, IntoDyn};
+    use tokio::time::sleep;
+
+    use super::*;
+    use crate::tests::{assert_echo, spawn_echo_server, TestNet};
+
+    #[tokio::test]
+    async fn test_forward_server() {
+        let net = TestNet::new().into_dyn();
+        let cfg = ForwardServerConfig {
+            bind: "127.0.0.1:1234".into_address().unwrap(),
+            target: "127.0.0.1:4321".into_address().unwrap(),
+        };
+        let server = ForwardServer::new(net.clone(), net.clone(), cfg);
+        tokio::spawn(async move { server.start().await.unwrap() });
+        spawn_echo_server(&net, "127.0.0.1:4321").await;
+
+        sleep(Duration::from_millis(1)).await;
+
+        assert_echo(&net, "127.0.0.1:1234").await;
+    }
+}

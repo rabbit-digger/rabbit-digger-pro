@@ -48,3 +48,25 @@ impl NetFactory for AliasNet {
         Ok(AliasNet::new((*config.net).clone()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::IntoDyn;
+
+    use super::*;
+    use crate::tests::{
+        assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet,
+    };
+
+    #[tokio::test]
+    async fn test_alias_net() {
+        let parent_net = TestNet::new().into_dyn();
+        let net = AliasNet::new(parent_net.clone()).into_dyn();
+
+        spawn_echo_server(&net, "127.0.0.1:26666").await;
+        assert_echo(&parent_net, "127.0.0.1:26666").await;
+
+        spawn_echo_server_udp(&parent_net, "127.0.0.1:26666").await;
+        assert_echo_udp(&net, "127.0.0.1:26666").await;
+    }
+}

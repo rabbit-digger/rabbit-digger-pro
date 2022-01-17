@@ -104,3 +104,69 @@ impl IUdpSocket for MitmUdp {
         self.0.local_addr().await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use futures::SinkExt;
+    use rd_interface::{Bytes, IntoAddress};
+
+    use crate::tests::TestNet;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_dns_sniffer() {
+        let test_net = TestNet::new().into_dyn();
+        let net = DNSSnifferNet::new(test_net.clone());
+
+        let mut ctx = Context::new();
+        let mut dns_server = net
+            .udp_bind(&mut ctx, &"127.0.0.1:53".into_address().unwrap())
+            .await
+            .unwrap();
+        let mut client = net
+            .udp_bind(&mut ctx, &"127.0.0.1:0".into_address().unwrap())
+            .await
+            .unwrap();
+
+        // dns request to baidu.com
+        client
+            .send((
+                Bytes::from_static(&[
+                    0x00, 0x02, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,
+                    0x62, 0x61, 0x69, 0x64, 0x75, 0x03, 0x63, 0x6F, 0x6D, 0x00, 0x00, 0x01, 0x00,
+                    0x01,
+                ]),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 53),
+            ))
+            .await
+            .unwrap();
+        let (_, addr) = dns_server.next().await.unwrap().unwrap();
+
+        assert_eq!(addr, client.local_addr().await.unwrap());
+
+        // dns response to baidu.com. 220.181.38.148, 220.181.38.251
+        dns_server
+            .send((
+                Bytes::from_static(&[
+                    0x00, 0x02, 0x81, 0x80, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x05,
+                    0x62, 0x61, 0x69, 0x64, 0x75, 0x03, 0x63, 0x6F, 0x6D, 0x00, 0x00, 0x01, 0x00,
+                    0x01, 0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0xFA, 0x00, 0x04,
+                    0xDC, 0xB5, 0x26, 0x94, 0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01,
+                    0xFA, 0x00, 0x04, 0xDC, 0xB5, 0x26, 0xFB,
+                ]),
+                addr,
+            ))
+            .await
+            .unwrap();
+        let _ = client.next().await.unwrap().unwrap();
+
+        assert_eq!(
+            net.rl
+                .reverse_lookup(Ipv4Addr::new(220, 181, 38, 148).into()),
+            Some("baidu.com".to_string()),
+        );
+    }
+}

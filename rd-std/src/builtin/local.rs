@@ -301,3 +301,20 @@ impl NetFactory for LocalNet {
         Ok(LocalNet::new(config))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp};
+
+    #[tokio::test]
+    async fn test_local_net() {
+        let net = LocalNet::new(LocalNetConfig::default()).into_dyn();
+
+        spawn_echo_server(&net, "127.0.0.1:26666").await;
+        assert_echo(&net, "127.0.0.1:26666").await;
+
+        spawn_echo_server_udp(&net, "127.0.0.1:26666").await;
+        assert_echo_udp(&net, "127.0.0.1:26666").await;
+    }
+}

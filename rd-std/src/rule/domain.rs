@@ -37,3 +37,70 @@ impl Matcher for DomainMatcher {
         .into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::{Context, IntoAddress};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_domain_matcher() {
+        // test keyword
+        let matcher = DomainMatcher {
+            domain: "example".to_string(),
+            method: Method::Keyword,
+        };
+        let mut match_context = MatchContext::from_context_address(
+            &Context::new(),
+            &"example.com:26666".into_address().unwrap(),
+        )
+        .unwrap();
+        assert!(matcher.match_rule(&mut match_context).await);
+
+        let mut match_context = MatchContext::from_context_address(
+            &Context::new(),
+            &"exampl.com:26666".into_address().unwrap(),
+        )
+        .unwrap();
+        assert!(!matcher.match_rule(&mut match_context).await);
+
+        // test match
+        let matcher = DomainMatcher {
+            domain: "example.com".to_string(),
+            method: Method::Match,
+        };
+        let mut match_context = MatchContext::from_context_address(
+            &Context::new(),
+            &"example.com:26666".into_address().unwrap(),
+        )
+        .unwrap();
+        assert!(matcher.match_rule(&mut match_context).await);
+
+        let mut match_context = MatchContext::from_context_address(
+            &Context::new(),
+            &"sub.example.com:26666".into_address().unwrap(),
+        )
+        .unwrap();
+        assert!(!matcher.match_rule(&mut match_context).await);
+
+        // test suffix
+        let matcher = DomainMatcher {
+            domain: ".com".to_string(),
+            method: Method::Suffix,
+        };
+        let mut match_context = MatchContext::from_context_address(
+            &Context::new(),
+            &"example.com:26666".into_address().unwrap(),
+        )
+        .unwrap();
+        assert!(matcher.match_rule(&mut match_context).await);
+
+        let mut match_context = MatchContext::from_context_address(
+            &Context::new(),
+            &"example.cn:26666".into_address().unwrap(),
+        )
+        .unwrap();
+        assert!(!matcher.match_rule(&mut match_context).await);
+    }
+}

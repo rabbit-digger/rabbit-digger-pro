@@ -168,3 +168,42 @@ impl IUdpSocket for UdpConnector {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::{Context, IntoAddress, IntoDyn};
+
+    use crate::tests::{spawn_echo_server_udp, TestNet};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_udp_connector() {
+        let net = TestNet::new().into_dyn();
+        let net2 = net.clone();
+        let mut udp = UdpConnector::new(Box::new(move |_| {
+            Box::pin(async move {
+                let udp = net2
+                    .udp_bind(&mut Context::new(), &"0.0.0.0:0".into_address().unwrap())
+                    .await
+                    .unwrap();
+
+                Ok(udp)
+            })
+        }))
+        .into_dyn();
+
+        spawn_echo_server_udp(&net, "127.0.0.1:26666").await;
+
+        let target_addr = "127.0.0.1:26666".parse().unwrap();
+
+        udp.send((Bytes::from_static(b"hello"), target_addr))
+            .await
+            .unwrap();
+
+        let (buf, addr) = udp.next().await.unwrap().unwrap();
+
+        assert_eq!(&buf[..], b"hello");
+        assert_eq!(addr, target_addr);
+    }
+}

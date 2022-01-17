@@ -428,10 +428,10 @@ impl Value {
 mod tests {
     use std::str::FromStr;
 
-    use crate::tests::{assert_echo, spawn_echo_server, spawn_echo_server_udp};
+    use crate::tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp};
 
     use super::*;
-    use rd_interface::{Bytes, Context};
+    use rd_interface::Context;
 
     #[tokio::test]
     async fn test_tcp() {
@@ -492,22 +492,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_udp() -> std::io::Result<()> {
-        let addr = "127.0.0.1:1234".parse().unwrap();
+    async fn test_udp() {
+        let addr = Address::from_str("127.0.0.1:1234").unwrap();
 
         let net = TestNet::new().into_dyn();
-        spawn_echo_server_udp(&net, addr).await;
-        let mut socket = net
-            .udp_bind(&mut Context::new(), &"0.0.0.0:0".parse().unwrap())
-            .await?;
-        assert_eq!(socket.local_addr().await?, "127.0.0.1:1".parse().unwrap());
-
-        socket.send((Bytes::from_static(b"hello"), addr)).await?;
-        let (buf, addr) = socket.next().await.unwrap()?;
-
-        assert_eq!(&buf[..], b"hello");
-        assert_eq!(addr, "127.0.0.1:1234".parse().unwrap());
-
-        Ok(())
+        spawn_echo_server_udp(&net, &addr).await;
+        assert_echo_udp(&net, &addr).await;
     }
 }

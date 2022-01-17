@@ -5,7 +5,7 @@ use rd_interface::{
     async_trait,
     prelude::*,
     registry::{NetFactory, NetRef},
-    Address, Arc, INet, Result, TcpListener, TcpStream, UdpSocket,
+    Address, Arc, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
 
 type Resolver =
@@ -29,15 +29,12 @@ fn bool_true() -> bool {
 }
 
 pub struct ResolveNet {
-    config: ResolveConfig,
+    net: Net,
     resolver: Resolver,
 }
 
 impl ResolveNet {
-    pub fn new(config: ResolveConfig) -> ResolveNet {
-        let (ipv4, ipv6) = (config.ipv4, config.ipv6);
-        let resolve_net = (*config.resolve_net).clone();
-
+    pub fn new(net: Net, resolve_net: Net, ipv4: bool, ipv6: bool) -> ResolveNet {
         let resolver: Resolver = Arc::new(move |domain: String, port: u16| {
             let resolve_net = resolve_net.clone();
             async move {
@@ -50,7 +47,7 @@ impl ResolveNet {
             }
             .boxed()
         });
-        ResolveNet { config, resolver }
+        ResolveNet { net, resolver }
     }
 }
 
@@ -65,18 +62,14 @@ impl INet for ResolveNet {
         let mut last_err = None;
 
         for addr in addrs {
-            match self.config.net.tcp_connect(ctx, &addr.into()).await {
+            match self.net.tcp_connect(ctx, &addr.into()).await {
                 Ok(stream) => return Ok(stream),
                 Err(e) => last_err = Some(e),
             }
         }
 
         Err(last_err.unwrap_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "could not resolve to any address",
-            )
-            .into()
+            io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address").into()
         }))
     }
 
@@ -85,7 +78,7 @@ impl INet for ResolveNet {
         ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpListener> {
-        self.config.net.tcp_bind(ctx, addr).await
+        self.net.tcp_bind(ctx, addr).await
     }
 
     async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
@@ -93,19 +86,19 @@ impl INet for ResolveNet {
         let mut last_err = None;
 
         for addr in addrs {
-            match self.config.net.udp_bind(ctx, &addr.into()).await {
+            match self.net.udp_bind(ctx, &addr.into()).await {
                 Ok(udp) => return Ok(udp),
                 Err(e) => last_err = Some(e),
             }
         }
 
         Err(last_err.unwrap_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "could not resolve to any address",
-            )
-            .into()
+            io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address").into()
         }))
+    }
+
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.net.lookup_host(addr).await
     }
 }
 
@@ -115,6 +108,35 @@ impl NetFactory for ResolveNet {
     type Net = Self;
 
     fn new(config: Self::Config) -> Result<Self> {
-        Ok(ResolveNet::new(config))
+        Ok(ResolveNet::new(
+            (*config.net).clone(),
+            (*config.resolve_net).clone(),
+            config.ipv4,
+            config.ipv6,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::IntoDyn;
+
+    use crate::tests::{assert_echo, spawn_echo_server, TestNet};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_resolve_net() {
+        let test_net = TestNet::new().into_dyn();
+        let net = ResolveNet::new(test_net.clone(), test_net, true, true).into_dyn();
+
+        let addr = Address::Domain("localhost".to_string(), 80);
+        let addrs = net.lookup_host(&addr).await.unwrap();
+        let wanted = vec![SocketAddr::from(([127, 0, 0, 1], 80))];
+
+        assert_eq!(addrs, wanted);
+
+        spawn_echo_server(&net, "127.0.0.1:1234").await;
+        assert_echo(&net, "localhost:1234").await;
     }
 }

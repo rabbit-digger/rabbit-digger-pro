@@ -1,7 +1,7 @@
 pub use self::net::TestNet;
 use crate::builtin;
 use futures::{SinkExt, StreamExt};
-use rd_interface::{Context, IntoAddress, Net, Registry};
+use rd_interface::{Bytes, Context, IntoAddress, Net, Registry};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 
 mod channel;
@@ -24,6 +24,23 @@ pub async fn spawn_echo_server_udp(net: &Net, addr: impl IntoAddress) {
             udp.send((buf.freeze(), addr)).await.unwrap();
         }
     });
+}
+
+pub async fn assert_echo_udp(net: &Net, addr: impl IntoAddress) {
+    let target_addr = addr.into_address().unwrap().to_socket_addr().unwrap();
+    let mut socket = net
+        .udp_bind(&mut Context::new(), &"0.0.0.0:0".parse().unwrap())
+        .await
+        .unwrap();
+
+    socket
+        .send((Bytes::from_static(b"hello"), target_addr))
+        .await
+        .unwrap();
+    let (buf, addr) = socket.next().await.unwrap().unwrap();
+
+    assert_eq!(&buf[..], b"hello");
+    assert_eq!(addr, target_addr);
 }
 
 pub async fn spawn_echo_server(net: &Net, addr: impl IntoAddress) {

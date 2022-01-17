@@ -18,3 +18,57 @@ impl Matcher for IpCidrMatcher {
         .into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn test_ipcidr() {
+        use super::*;
+        use crate::rule::config;
+        use rd_interface::{Context, IntoAddress};
+        use smoltcp::wire::{IpAddress, IpCidr};
+
+        let matcher = IpCidrMatcher {
+            ipcidr: config::IpCidr(IpCidr::new(IpAddress::v4(192, 168, 1, 1), 24)),
+        };
+
+        assert_eq!(
+            matcher
+                .match_rule(
+                    &MatchContext::from_context_address(
+                        &Context::new(),
+                        &"192.168.1.2:26666".into_address().unwrap()
+                    )
+                    .unwrap()
+                )
+                .await,
+            true
+        );
+
+        assert_eq!(
+            matcher
+                .match_rule(
+                    &MatchContext::from_context_address(
+                        &Context::new(),
+                        &"192.168.2.2:1234".into_address().unwrap()
+                    )
+                    .unwrap()
+                )
+                .await,
+            false
+        );
+
+        assert_eq!(
+            matcher
+                .match_rule(
+                    &MatchContext::from_context_address(
+                        &Context::new(),
+                        &"192.168.1.1:1234".into_address().unwrap()
+                    )
+                    .unwrap()
+                )
+                .await,
+            true
+        );
+    }
+}
