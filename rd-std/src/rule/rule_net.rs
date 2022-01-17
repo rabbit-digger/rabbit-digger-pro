@@ -1,5 +1,3 @@
-use std::net::SocketAddr;
-
 use crate::{rule::matcher::MatchContext, util::UdpConnector};
 
 use super::config;
@@ -105,8 +103,8 @@ impl INet for RuleNet {
         let rule = self.rule.clone();
         let mut ctx = ctx.clone();
         let addr = addr.clone();
-        let udp = UdpConnector::new(Box::new(move |item: &(Bytes, SocketAddr)| {
-            let target_addr = item.1.into();
+        let udp = UdpConnector::new(Box::new(move |item: &(Bytes, Address)| {
+            let target_addr = item.1.clone();
             Box::pin(async move {
                 let rule_item = rule.get_rule(&ctx, &target_addr).await?;
                 rule_item.target.udp_bind(&mut ctx, &addr).await

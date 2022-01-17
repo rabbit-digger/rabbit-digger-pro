@@ -7,8 +7,8 @@ use crate::socks5::common::map_err;
 
 use super::common::{pack_udp, parse_udp, ra2sa};
 use rd_interface::{
-    async_trait, impl_async_read_write, Address, Bytes, BytesMut, INet, ITcpStream, IUdpSocket,
-    IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, Address, Bytes, INet, ITcpStream, IUdpSocket, IntoAddress,
+    IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use std::{
     io,
@@ -30,7 +30,7 @@ impl_async_read_write!(Socks5TcpStream, 0);
 pub struct Socks5UdpSocket(UdpSocket, TcpStream, SocketAddr);
 
 impl Stream for Socks5UdpSocket {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
+    type Item = io::Result<(Bytes, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
         // 259 is max size of address, atype 1 + domain len 1 + domain 255 + port 2
@@ -47,13 +47,13 @@ impl Stream for Socks5UdpSocket {
         let (addr, payload) = parse_udp(&bytes)?;
 
         Poll::Ready(Some(Ok((
-            BytesMut::from(payload),
-            addr.to_socket_addr().map_err(map_err)?,
+            Bytes::copy_from_slice(payload),
+            addr.to_socket_addr()?,
         ))))
     }
 }
 
-impl Sink<(Bytes, SocketAddr)> for Socks5UdpSocket {
+impl Sink<(Bytes, Address)> for Socks5UdpSocket {
     type Error = io::Error;
 
     fn poll_ready(
@@ -65,7 +65,7 @@ impl Sink<(Bytes, SocketAddr)> for Socks5UdpSocket {
 
     fn start_send(
         mut self: Pin<&mut Self>,
-        (buf, addr): (Bytes, SocketAddr),
+        (buf, addr): (Bytes, Address),
     ) -> Result<(), Self::Error> {
         let Socks5UdpSocket(sink, _, server_addr) = &mut *self;
         let bytes = pack_udp(addr.into(), &buf)?;

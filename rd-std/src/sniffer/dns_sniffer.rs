@@ -7,7 +7,7 @@ use std::{
 use super::service::ReverseLookup;
 use futures::{ready, Stream, StreamExt};
 use rd_interface::{
-    async_trait, context::common_field::DestDomain, impl_sink, Address, AddressDomain, BytesMut,
+    async_trait, context::common_field::DestDomain, impl_sink, Address, AddressDomain, Bytes,
     Context, INet, IUdpSocket, IntoDyn, Net, Result, UdpSocket,
 };
 
@@ -78,7 +78,7 @@ impl INet for DNSSnifferNet {
 struct MitmUdp(UdpSocket, ReverseLookup);
 
 impl Stream for MitmUdp {
-    type Item = std::io::Result<(BytesMut, SocketAddr)>;
+    type Item = std::io::Result<(Bytes, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context) -> Poll<Option<Self::Item>> {
         let this = &mut *self;
@@ -139,7 +139,7 @@ mod tests {
                     0x62, 0x61, 0x69, 0x64, 0x75, 0x03, 0x63, 0x6F, 0x6D, 0x00, 0x00, 0x01, 0x00,
                     0x01,
                 ]),
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 53),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 53).into(),
             ))
             .await
             .unwrap();
@@ -157,7 +157,7 @@ mod tests {
                     0xDC, 0xB5, 0x26, 0x94, 0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01,
                     0xFA, 0x00, 0x04, 0xDC, 0xB5, 0x26, 0xFB,
                 ]),
-                addr,
+                addr.into(),
             ))
             .await
             .unwrap();

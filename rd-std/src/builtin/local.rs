@@ -1,12 +1,16 @@
 use std::{
     io,
     net::{IpAddr, SocketAddr},
+    pin::Pin,
+    task::{self, Poll},
     time::Duration,
 };
 
+use futures::{ready, Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, impl_async_read_write, impl_stream_sink, prelude::*, registry::NetFactory,
-    Address, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, impl_async_read_write, prelude::*, registry::NetFactory, Address, Bytes, INet,
+    IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
@@ -38,10 +42,24 @@ pub struct LocalNetConfig {
     pub connect_timeout: Option<u64>,
 }
 
+type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
+enum UdpState {
+    Idle,
+    LookupHost {
+        data: Bytes,
+        fut: Mutex<BoxFuture<io::Result<Vec<SocketAddr>>>>,
+    },
+    Sending((Bytes, SocketAddr)),
+    Flusing,
+}
+
 pub struct LocalNet(LocalNetConfig);
 pub struct CompatTcp(pub(crate) net::TcpStream);
 pub struct Listener(net::TcpListener, LocalNetConfig);
-pub struct Udp(UdpFramed<BytesCodec, net::UdpSocket>);
+pub struct Udp {
+    inner: UdpFramed<BytesCodec, net::UdpSocket>,
+    state: UdpState,
+}
 
 impl LocalNet {
     pub fn new(config: LocalNetConfig) -> LocalNet {
@@ -195,16 +213,100 @@ impl rd_interface::ITcpListener for Listener {
 
 impl Udp {
     fn new(socket: net::UdpSocket) -> Udp {
-        Udp(UdpFramed::new(socket, BytesCodec::new()))
+        Udp {
+            inner: UdpFramed::new(socket, BytesCodec::new()),
+            state: UdpState::Idle,
+        }
+    }
+    fn poll_send_to_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+        let Udp { inner, state } = self;
+
+        loop {
+            match state {
+                UdpState::Idle => return Poll::Ready(Ok(())),
+                UdpState::LookupHost { data, fut } => {
+                    let addr = *ready!(fut.lock().poll_unpin(cx))?
+                        .first()
+                        .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
+                    *state = UdpState::Sending((data.clone(), addr))
+                }
+                UdpState::Sending((data, addr)) => {
+                    ready!(inner.poll_ready_unpin(cx))?;
+                    inner.start_send_unpin((data.clone(), *addr))?;
+                    *state = UdpState::Flusing;
+                }
+                UdpState::Flusing => {
+                    ready!(inner.poll_flush_unpin(cx))?;
+                    *state = UdpState::Idle;
+                }
+            }
+        }
     }
 }
 
-impl_stream_sink!(Udp, 0);
+impl Stream for Udp {
+    type Item = io::Result<(Bytes, SocketAddr)>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
+        self.inner
+            .poll_next_unpin(cx)
+            .map(|r| r.map(|r| r.map(|(bytes, addr)| (bytes.freeze(), addr))))
+    }
+}
+
+impl Sink<(Bytes, Address)> for Udp {
+    type Error = io::Error;
+
+    fn poll_ready(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.poll_send_to_ready(cx)
+    }
+
+    fn start_send(
+        mut self: Pin<&mut Self>,
+        (data, addr): (Bytes, Address),
+    ) -> Result<(), Self::Error> {
+        match self.state {
+            UdpState::Idle => {
+                match addr {
+                    Address::SocketAddr(s) => {
+                        self.state = UdpState::Sending((data, s));
+                    }
+                    Address::Domain(domain, port) => {
+                        let fut = Mutex::new(lookup_host(domain, port).boxed());
+                        self.state = UdpState::LookupHost { data, fut };
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Udp is already sending",
+            )),
+        }
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.poll_send_to_ready(cx)
+    }
+
+    fn poll_close(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_close_unpin(cx)
+    }
+}
 
 #[async_trait]
 impl rd_interface::IUdpSocket for Udp {
     async fn local_addr(&self) -> Result<SocketAddr> {
-        self.0.get_ref().local_addr().map_err(Into::into)
+        self.inner.get_ref().local_addr().map_err(Into::into)
     }
 }
 

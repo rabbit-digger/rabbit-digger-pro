@@ -11,8 +11,8 @@ use futures::{ready, FutureExt, SinkExt, Stream, StreamExt};
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Bytes, BytesMut, Context, INet, IUdpSocket,
-    IntoAddress, IntoDyn, Net, ReadBuf, Result, Sink, TcpListener, TcpStream, UdpSocket, Value,
+    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Bytes, Context, INet, IUdpSocket, IntoDyn,
+    Net, ReadBuf, Result, Sink, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
     sync::{oneshot, RwLock, Semaphore},
@@ -188,11 +188,11 @@ impl WrapUdpSocket {
 }
 
 impl Stream for WrapUdpSocket {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
+    type Item = io::Result<(Bytes, SocketAddr)>;
     fn poll_next(
         mut self: Pin<&mut Self>,
         cx: &mut task::Context,
-    ) -> Poll<Option<io::Result<(BytesMut, SocketAddr)>>> {
+    ) -> Poll<Option<io::Result<(Bytes, SocketAddr)>>> {
         let WrapUdpSocket {
             inner,
             conn,
@@ -214,7 +214,7 @@ impl Stream for WrapUdpSocket {
     }
 }
 
-impl Sink<(Bytes, SocketAddr)> for WrapUdpSocket {
+impl Sink<(Bytes, Address)> for WrapUdpSocket {
     type Error = io::Error;
 
     fn poll_ready(
@@ -224,11 +224,9 @@ impl Sink<(Bytes, SocketAddr)> for WrapUdpSocket {
         self.inner.poll_ready_unpin(cx)
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
-        self.conn.send(EventType::UdpOutbound(
-            item.1.clone().into_address()?,
-            item.0.len() as u64,
-        ));
+    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, Address)) -> Result<(), Self::Error> {
+        self.conn
+            .send(EventType::UdpOutbound(item.1.clone(), item.0.len() as u64));
         self.inner.start_send_unpin(item)
     }
 

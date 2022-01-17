@@ -9,12 +9,12 @@ use std::{
 
 use futures::{ready, Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
-use rd_interface::{async_trait, Bytes, BytesMut, IUdpSocket, Result, UdpSocket};
+use rd_interface::{async_trait, Address, Bytes, IUdpSocket, Result, UdpSocket};
 use tokio::{sync::Semaphore, time::timeout};
 use tokio_util::sync::PollSemaphore;
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
-type Connector = Box<dyn FnOnce(&(Bytes, SocketAddr)) -> BoxFuture<Result<UdpSocket>> + Send>;
+type Connector = Box<dyn FnOnce(&(Bytes, Address)) -> BoxFuture<Result<UdpSocket>> + Send>;
 
 enum State {
     Idle {
@@ -46,7 +46,7 @@ impl UdpConnector {
 }
 
 impl Stream for UdpConnector {
-    type Item = std::io::Result<(BytesMut, SocketAddr)>;
+    type Item = std::io::Result<(Bytes, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
@@ -61,7 +61,7 @@ impl Stream for UdpConnector {
     }
 }
 
-async fn send_first_packet(connector: Connector, item: (Bytes, SocketAddr)) -> Result<UdpSocket> {
+async fn send_first_packet(connector: Connector, item: (Bytes, Address)) -> Result<UdpSocket> {
     let mut udp = timeout(Duration::from_secs(5), connector(&item)).await??;
 
     udp.send(item).await?;
@@ -69,7 +69,7 @@ async fn send_first_packet(connector: Connector, item: (Bytes, SocketAddr)) -> R
     Ok(udp)
 }
 
-impl Sink<(Bytes, SocketAddr)> for UdpConnector {
+impl Sink<(Bytes, Address)> for UdpConnector {
     type Error = std::io::Error;
 
     fn poll_ready(
@@ -90,7 +90,7 @@ impl Sink<(Bytes, SocketAddr)> for UdpConnector {
         }
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
+    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, Address)) -> Result<(), Self::Error> {
         let result: Result<(), Self::Error>;
 
         let old_state = replace(&mut self.state, State::Dummy);
@@ -195,15 +195,15 @@ mod tests {
 
         spawn_echo_server_udp(&net, "127.0.0.1:26666").await;
 
-        let target_addr = "127.0.0.1:26666".parse().unwrap();
+        let target_addr: Address = "127.0.0.1:26666".parse().unwrap();
 
-        udp.send((Bytes::from_static(b"hello"), target_addr))
+        udp.send((Bytes::from_static(b"hello"), target_addr.clone()))
             .await
             .unwrap();
 
         let (buf, addr) = udp.next().await.unwrap().unwrap();
 
         assert_eq!(&buf[..], b"hello");
-        assert_eq!(addr, target_addr);
+        assert_eq!(Address::SocketAddr(addr), target_addr);
     }
 }

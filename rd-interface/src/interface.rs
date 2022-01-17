@@ -53,8 +53,8 @@ impl<T: ITcpStream> IntoDyn<TcpStream> for T {
 /// A UdpSocket.
 #[async_trait]
 pub trait IUdpSocket:
-    Stream<Item = io::Result<(BytesMut, SocketAddr)>>
-    + Sink<(Bytes, SocketAddr), Error = io::Error>
+    Stream<Item = io::Result<(Bytes, SocketAddr)>>
+    + Sink<(Bytes, Address), Error = io::Error>
     + Unpin
     + Send
     + Sync
@@ -118,8 +118,8 @@ impl<T: IServer> IntoDyn<Server> for T {
 
 /// The other side of an UdpSocket
 pub trait IUdpChannel:
-    Stream<Item = io::Result<(Bytes, SocketAddr)>>
-    + Sink<(BytesMut, SocketAddr), Error = io::Error>
+    Stream<Item = io::Result<(Bytes, Address)>>
+    + Sink<(Bytes, SocketAddr), Error = io::Error>
     + Unpin
     + Send
     + Sync

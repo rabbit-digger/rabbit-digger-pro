@@ -78,7 +78,7 @@ macro_rules! impl_stream_sink {
 macro_rules! impl_stream {
     ($s:ident, $f:tt) => {
         impl ::rd_interface::Stream for $s {
-            type Item = ::std::io::Result<(::rd_interface::BytesMut, ::std::net::SocketAddr)>;
+            type Item = ::std::io::Result<(::rd_interface::Bytes, ::std::net::SocketAddr)>;
 
             fn poll_next(
                 mut self: ::std::pin::Pin<&mut Self>,
@@ -93,7 +93,7 @@ macro_rules! impl_stream {
 #[macro_export]
 macro_rules! impl_sink {
     ($s:ident, $f:tt) => {
-        impl ::rd_interface::Sink<(::rd_interface::Bytes, ::std::net::SocketAddr)> for $s {
+        impl ::rd_interface::Sink<(::rd_interface::Bytes, ::rd_interface::Address)> for $s {
             type Error = ::std::io::Error;
 
             fn poll_ready(
@@ -105,7 +105,7 @@ macro_rules! impl_sink {
 
             fn start_send(
                 mut self: ::std::pin::Pin<&mut Self>,
-                item: (::rd_interface::Bytes, SocketAddr),
+                item: (::rd_interface::Bytes, ::rd_interface::Address),
             ) -> ::std::result::Result<(), Self::Error> {
                 ::rd_interface::Sink::start_send(::std::pin::Pin::new(&mut self.$f), item)
             }

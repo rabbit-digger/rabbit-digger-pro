@@ -2,8 +2,8 @@ use super::common::{pack_udp, parse_udp, sa2ra};
 use crate::util::{connect_tcp, connect_udp};
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use rd_interface::{
-    async_trait, Address as RdAddr, Bytes, BytesMut, Context, IServer, IUdpChannel, IntoDyn, Net,
-    Result, TcpStream, UdpSocket,
+    async_trait, Address as RdAddr, Address as RDAddr, Bytes, Context, IServer, IUdpChannel,
+    IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
 use socks5_protocol::{
     Address, AuthMethod, AuthRequest, AuthResponse, Command, CommandReply, CommandRequest,
@@ -144,7 +144,7 @@ pub struct Socks5UdpSocket {
 }
 
 impl Stream for Socks5UdpSocket {
-    type Item = io::Result<(Bytes, SocketAddr)>;
+    type Item = io::Result<(Bytes, RDAddr)>;
 
     fn poll_next(
         mut self: Pin<&mut Self>,
@@ -160,15 +160,11 @@ impl Stream for Socks5UdpSocket {
 
         let (addr, payload) = parse_udp(&bytes)?;
 
-        let addr = addr
-            .to_socket_addr()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid udp packet"))?;
-
         Some(Ok((Bytes::copy_from_slice(payload), addr))).into()
     }
 }
 
-impl Sink<(BytesMut, SocketAddr)> for Socks5UdpSocket {
+impl Sink<(Bytes, SocketAddr)> for Socks5UdpSocket {
     type Error = io::Error;
 
     fn poll_ready(
@@ -180,11 +176,11 @@ impl Sink<(BytesMut, SocketAddr)> for Socks5UdpSocket {
 
     fn start_send(
         mut self: Pin<&mut Self>,
-        (buf, saddr): (BytesMut, SocketAddr),
+        (buf, saddr): (Bytes, SocketAddr),
     ) -> Result<(), Self::Error> {
         let bytes = Bytes::copy_from_slice(&pack_udp(saddr.into(), &buf[..])?[..]);
         match self.endpoint {
-            Some(endpoint) => self.udp.start_send_unpin((bytes, endpoint)),
+            Some(endpoint) => self.udp.start_send_unpin((bytes, endpoint.into())),
             None => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "udp endpoint not set",

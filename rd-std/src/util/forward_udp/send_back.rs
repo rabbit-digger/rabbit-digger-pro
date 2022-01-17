@@ -2,7 +2,7 @@ use std::{io, net::SocketAddr, pin::Pin, task};
 
 use super::UdpPacket;
 use futures::{ready, Sink, SinkExt, Stream};
-use rd_interface::{Bytes, BytesMut, IUdpChannel};
+use rd_interface::{Address, Bytes, IUdpChannel};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::PollSender;
 
@@ -29,18 +29,18 @@ impl BackChannel {
 impl IUdpChannel for BackChannel {}
 
 impl Stream for BackChannel {
-    type Item = io::Result<(Bytes, SocketAddr)>;
+    type Item = io::Result<(Bytes, Address)>;
 
     fn poll_next(
         mut self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
     ) -> task::Poll<Option<Self::Item>> {
         let item = ready!(self.receiver.poll_recv(cx));
-        task::Poll::Ready(item.map(|i| Ok(i)))
+        task::Poll::Ready(item.map(|(buf, addr)| Ok((buf, addr.into()))))
     }
 }
 
-impl Sink<(BytesMut, SocketAddr)> for BackChannel {
+impl Sink<(Bytes, SocketAddr)> for BackChannel {
     type Error = io::Error;
 
     fn poll_ready(
@@ -55,15 +55,11 @@ impl Sink<(BytesMut, SocketAddr)> for BackChannel {
 
     fn start_send(
         mut self: Pin<&mut Self>,
-        (data, from): (BytesMut, SocketAddr),
+        (data, from): (Bytes, SocketAddr),
     ) -> Result<(), Self::Error> {
         let to = self.to;
         self.sender
-            .start_send_unpin(UdpPacket {
-                from,
-                to,
-                data: data.freeze(),
-            })
+            .start_send_unpin(UdpPacket { from, to, data })
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
