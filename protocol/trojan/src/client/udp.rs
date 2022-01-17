@@ -3,7 +3,7 @@ use std::{io, net::SocketAddr};
 use crate::stream::IOStream;
 use bytes::{Buf, BufMut};
 use rd_interface::{
-    async_trait, impl_stream_sink, Bytes, BytesMut, IUdpSocket, Result, NOT_IMPLEMENTED,
+    async_trait, impl_stream_sink, Address, Bytes, BytesMut, IUdpSocket, Result, NOT_IMPLEMENTED,
 };
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
 use tokio_util::codec::{Decoder, Encoder, Framed};
@@ -15,10 +15,10 @@ struct UdpCodec {
     head: Vec<u8>,
 }
 
-impl Encoder<(Bytes, SocketAddr)> for UdpCodec {
+impl Encoder<(Bytes, Address)> for UdpCodec {
     type Error = io::Error;
 
-    fn encode(&mut self, item: (Bytes, SocketAddr), dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: (Bytes, Address), dst: &mut BytesMut) -> Result<(), Self::Error> {
         if item.0.len() > UDP_MAX_SIZE {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -26,7 +26,10 @@ impl Encoder<(Bytes, SocketAddr)> for UdpCodec {
             ));
         }
 
-        let addr = S5Addr::from(item.1);
+        let addr = match item.1 {
+            Address::Domain(domain, port) => S5Addr::Domain(domain, port),
+            Address::SocketAddr(s) => S5Addr::SocketAddr(s),
+        };
         dst.reserve(
             self.head.len() + addr.serialized_len().map_err(|e| e.to_io_err())? + item.0.len(),
         );

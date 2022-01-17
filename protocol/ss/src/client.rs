@@ -1,5 +1,3 @@
-use std::io;
-
 use super::wrapper::{Cipher, WrapAddress, WrapSSTcp, WrapSSUdp};
 use rd_interface::{
     async_trait, prelude::*, registry::NetRef, Address, INet, IntoDyn, Net, Result, TcpStream,
@@ -70,18 +68,9 @@ impl INet for SSNet {
         if !self.udp {
             return Err(NOT_ENABLED);
         }
-        let server_addr = self
-            .net
-            .lookup_host(&self.addr)
-            .await?
-            .into_iter()
-            .next()
-            .ok_or(io::Error::new(
-                io::ErrorKind::AddrNotAvailable,
-                "Failed to lookup domain",
-            ))?;
+
         let socket = self.net.udp_bind(ctx, &addr.to_any_addr_port()?).await?;
-        let udp = WrapSSUdp::new(socket, &self.cfg, server_addr);
+        let udp = WrapSSUdp::new(socket, &self.cfg, self.addr.clone());
         Ok(udp.into_dyn())
     }
 }

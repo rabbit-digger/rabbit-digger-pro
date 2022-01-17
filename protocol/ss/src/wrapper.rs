@@ -31,6 +31,15 @@ impl From<WrapAddress> for SSAddress {
     }
 }
 
+impl From<WrapAddress> for S5Addr {
+    fn from(w: WrapAddress) -> Self {
+        match w.0 {
+            RDAddress::Domain(domain, port) => S5Addr::Domain(domain, port),
+            RDAddress::SocketAddr(s) => S5Addr::SocketAddr(s),
+        }
+    }
+}
+
 #[rd_config]
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone)]
@@ -154,11 +163,11 @@ pub struct WrapSSUdp {
     socket: UdpSocket,
     method: CipherKind,
     key: Box<[u8]>,
-    server_addr: SocketAddr,
+    server_addr: RDAddress,
 }
 
 impl WrapSSUdp {
-    pub fn new(socket: UdpSocket, svr_cfg: &ServerConfig, server_addr: SocketAddr) -> Self {
+    pub fn new(socket: UdpSocket, svr_cfg: &ServerConfig, server_addr: RDAddress) -> Self {
         let key = svr_cfg.key().to_vec().into_boxed_slice();
         let method = svr_cfg.method();
 
@@ -196,7 +205,7 @@ impl Stream for WrapSSUdp {
     }
 }
 
-impl Sink<(Bytes, SocketAddr)> for WrapSSUdp {
+impl Sink<(Bytes, RDAddress)> for WrapSSUdp {
     type Error = io::Error;
 
     fn poll_ready(
@@ -208,13 +217,13 @@ impl Sink<(Bytes, SocketAddr)> for WrapSSUdp {
 
     fn start_send(
         mut self: Pin<&mut Self>,
-        (payload, target): (Bytes, SocketAddr),
+        (payload, target): (Bytes, RDAddress),
     ) -> Result<(), Self::Error> {
         let mut send_buf = BytesMut::new();
-        let addr: S5Addr = target.into();
+        let addr: S5Addr = WrapAddress::from(target).into();
         encrypt_payload(self.method, &self.key, &addr, &payload, &mut send_buf)?;
 
-        let server_addr = self.server_addr;
+        let server_addr = self.server_addr.clone();
         self.socket
             .start_send_unpin((send_buf.freeze(), server_addr))
     }

@@ -2,8 +2,8 @@ use std::{io, net::SocketAddr, pin::Pin, task};
 
 use futures::{ready, Sink, Stream};
 use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, Bytes, BytesMut, ITcpListener,
-    ITcpStream, IUdpSocket, IntoDyn, Result,
+    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, Address, Bytes, BytesMut,
+    ITcpListener, ITcpStream, IUdpSocket, IntoDyn, Result,
 };
 use tokio::sync::Mutex;
 use tokio_smoltcp::{TcpListener, TcpSocket, UdpSocket};
@@ -39,7 +39,7 @@ impl ITcpListener for TcpListenerWrap {
 pub struct UdpSocketWrap {
     inner: UdpSocket,
     recv_buf: Box<[u8]>,
-    send_buf: Option<(Bytes, SocketAddr)>,
+    send_buf: Option<(Bytes, Address)>,
 }
 
 impl UdpSocketWrap {
@@ -65,12 +65,11 @@ impl Stream for UdpSocketWrap {
             ..
         } = &mut *self;
         let (size, from) = ready!(inner.poll_recv_from(cx, buf))?;
-        let buf = BytesMut::from(&buf[..size]);
-        Some(Ok((buf, from))).into()
+        Some(Ok((BytesMut::from(&buf[..size]), from))).into()
     }
 }
 
-impl Sink<(Bytes, SocketAddr)> for UdpSocketWrap {
+impl Sink<(Bytes, Address)> for UdpSocketWrap {
     type Error = io::Error;
 
     fn poll_ready(
@@ -83,7 +82,7 @@ impl Sink<(Bytes, SocketAddr)> for UdpSocketWrap {
         Ok(()).into()
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, SocketAddr)) -> Result<(), Self::Error> {
+    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, Address)) -> Result<(), Self::Error> {
         self.send_buf = Some(item);
 
         Ok(())
@@ -99,7 +98,8 @@ impl Sink<(Bytes, SocketAddr)> for UdpSocketWrap {
             ..
         } = &mut *self;
         if let Some((buf, to)) = buf {
-            let size = ready!(inner.poll_send_to(cx, buf, *to))?;
+            // TODO: support domain
+            let size = ready!(inner.poll_send_to(cx, buf, to.to_socket_addr()?))?;
             if size != buf.len() {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
