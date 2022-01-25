@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     device,
-    gateway::{GatewayInterface, MapTable},
+    gateway::{GatewayDevice, MapTable},
 };
 use futures::{ready, Sink, Stream, StreamExt};
 use rd_interface::{
@@ -19,31 +19,19 @@ use rd_std::util::{
     connect_tcp,
     forward_udp::{self, RawUdpSource},
 };
-use smoltcp::{
-    phy::{Checksum, ChecksumCapabilities, Medium},
-    wire::{
-        EthernetAddress, EthernetFrame, EthernetProtocol, IpCidr, IpProtocol, IpVersion,
-        Ipv4Address, Ipv4Packet, Ipv4Repr, UdpPacket, UdpRepr,
-    },
-};
 use tokio::{select, spawn};
 use tokio_smoltcp::{
-    device::{FutureDevice, Interface, Packet},
+    device::{AsyncDevice, Packet},
+    smoltcp::{
+        self,
+        phy::{Checksum, ChecksumCapabilities, Medium},
+        wire::{
+            EthernetAddress, EthernetFrame, EthernetProtocol, IpCidr, IpProtocol, IpVersion,
+            Ipv4Address, Ipv4Packet, Ipv4Repr, UdpPacket, UdpRepr,
+        },
+    },
     BufferSize, NetConfig, RawSocket, TcpListener,
 };
-
-#[rd_config]
-#[derive(Clone, Copy)]
-pub enum Layer {
-    L2,
-    L3,
-}
-
-impl Default for Layer {
-    fn default() -> Self {
-        Layer::L2
-    }
-}
 
 #[rd_config]
 pub struct RawServerConfig {
@@ -106,7 +94,7 @@ impl RawServer {
     pub fn new_device(
         net: Net,
         dev_name: &str,
-        dev: impl Interface + 'static,
+        dev: impl AsyncDevice + 'static,
         ethernet_addr: Option<EthernetAddress>,
         ip_addr: IpCidr,
         lru_size: usize,
@@ -116,7 +104,7 @@ impl RawServer {
         let ethernet_addr = match (ethernet_addr, layer) {
             (Some(ethernet_addr), _) => ethernet_addr,
             (None, Layer::L2) => {
-                crate::interface_info::get_interface_info(dev_name)
+                crate::device::get_interface_info(dev_name)
                     .map_err(map_other)?
                     .ethernet_address
             }
@@ -143,7 +131,7 @@ impl RawServer {
             _ => return Err(Error::Other("Ipv6 is not supported".into())),
         };
 
-        let device = GatewayInterface::new(
+        let device = GatewayDevice::new(
             dev.filter(move |p: &Packet| {
                 std::future::ready(filter_packet(p, ethernet_addr, ip_addr, layer))
             }),
@@ -162,8 +150,7 @@ impl RawServer {
         device.caps.checksum = ChecksumCapabilities::ignored();
         device.caps.checksum.ipv4 = Checksum::Tx;
 
-        let (smoltcp_net, fut) = tokio_smoltcp::Net::new(device, net_config);
-        tokio::spawn(fut);
+        let smoltcp_net = tokio_smoltcp::Net::new(device, net_config);
 
         Ok(RawServer {
             net,

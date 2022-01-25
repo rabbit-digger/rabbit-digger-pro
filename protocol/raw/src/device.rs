@@ -1,6 +1,9 @@
+pub use interface_info::get_interface_info;
 use pcap::{Capture, Device};
 use rd_interface::{Error, ErrorContext, Result};
-use tokio_smoltcp::device::Interface;
+use tokio_smoltcp::device::AsyncDevice;
+
+mod interface_info;
 
 pub fn get_device_name(name: &str) -> Result<Device> {
     let mut devices = Device::list().context("Failed to list device")?;
@@ -23,11 +26,12 @@ pub fn get_device_name(name: &str) -> Result<Device> {
 }
 
 #[cfg(unix)]
-pub fn get_by_device(device: Device) -> Result<impl Interface> {
-    use futures::StreamExt;
-    use std::future::ready;
+pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
     use std::io;
-    use tokio_smoltcp::util::AsyncCapture;
+    use tokio_smoltcp::{
+        device::{AsyncCapture, DeviceCapabilities},
+        smoltcp::phy::Checksum,
+    };
 
     let cap = Capture::from_device(device.clone())
         .context("Failed to capture device")?
@@ -44,6 +48,13 @@ pub fn get_by_device(device: Device) -> Result<impl Interface> {
             other => io::Error::new(io::ErrorKind::Other, other),
         }
     }
+    let mut caps = DeviceCapabilities::default();
+    caps.max_transmission_unit = 1500;
+    caps.checksum.ipv4 = Checksum::Tx;
+    caps.checksum.tcp = Checksum::Tx;
+    caps.checksum.udp = Checksum::Tx;
+    caps.checksum.icmpv4 = Checksum::Tx;
+    caps.checksum.icmpv6 = Checksum::Tx;
 
     Ok(AsyncCapture::new(
         cap.setnonblock().context("Failed to set nonblock")?,
@@ -57,10 +68,9 @@ pub fn get_by_device(device: Device) -> Result<impl Interface> {
             // eprintln!("send {:?}", r);
             r
         },
+        caps,
     )
-    .context("Failed to create async capture")?
-    .take_while(|i| ready(i.is_ok()))
-    .map(|i| i.unwrap()))
+    .context("Failed to create async capture")?)
 }
 
 #[cfg(windows)]
