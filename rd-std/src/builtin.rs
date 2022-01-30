@@ -2,6 +2,7 @@ use rd_interface::{Registry, Result};
 
 pub mod alias;
 pub mod combine;
+pub mod echo;
 pub mod forward;
 pub mod local;
 pub mod noop;
@@ -14,6 +15,7 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_net::<noop::NoopNet>();
     registry.add_net::<resolve::ResolveNet>();
 
+    registry.add_server::<echo::EchoServer>();
     registry.add_server::<forward::ForwardServer>();
 
     Ok(())
