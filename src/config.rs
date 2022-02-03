@@ -68,6 +68,7 @@ impl Config {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Reserved {
     #[serde(default, skip_serializing)]

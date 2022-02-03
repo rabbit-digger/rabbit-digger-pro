@@ -359,6 +359,7 @@ enum State {
 
 #[derive(Clone)]
 pub struct RunningServer {
+    #[allow(dead_code)]
     name: String,
     server_type: String,
     net: Net,

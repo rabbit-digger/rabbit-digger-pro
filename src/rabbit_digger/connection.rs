@@ -8,6 +8,7 @@ use super::event::{Event, EventType};
 #[derive(Debug, Clone)]
 pub struct ConnectionConfig {
     sender: UnboundedSender<Event>,
+    #[allow(dead_code)]
     timeout: Option<Duration>,
 }
 
