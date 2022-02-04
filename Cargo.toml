@@ -19,17 +19,17 @@ tokio = { version = "1.12.0", features = ["full"] }
 structopt = { version = "0.3.21", default-features = false, features = ["paw"] }
 paw = "1.0.0"
 tracing = "0.1.26"
-tracing-subscriber = { version = "0.2.18", optional = true }
+tracing-subscriber = { version = "0.3.7", optional = true }
 dotenv = "0.15.0"
 serde_yaml = "0.8.15"
 serde_json = "1.0"
-smoltcp = "0.7.0"
-uuid = { version = "0.8.2", features = [ "v4", "serde" ] }
+smoltcp = "0.8.0"
+uuid = { version = "0.8.2", features = ["v4", "serde"] }
 topological-sort = "0.1"
 lru_time_cache = "0.11"
-parking_lot = "0.11.1"
+parking_lot = "0.12.0"
 atomic-shim = "0.2.0"
-dashmap = { version = "4.0.2", features = ["serde"] }
+dashmap = { version = "5.0.0", features = ["serde"] }
 indexmap = { version = "1.7.0", features = ["serde"] }
 
 [dev-dependencies]
@@ -37,14 +37,10 @@ rusty-hook = "0.11.0"
 tokio = { version = "1.5.0", features = ["macros"] }
 
 [features]
-default = [ "rd-std" ]
+default = ["rd-std"]
 
 [workspace]
-members = [
-    "rd-interface",
-    "rd-std",
-    "rd-derive",
-]
+members = ["rd-interface", "rd-std", "rd-derive"]
 
 [profile.release]
 lto = true
