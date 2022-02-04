@@ -68,6 +68,7 @@ pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let ident = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let visitor_body = call_all(
         &input,
@@ -76,7 +77,7 @@ pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     );
 
     let expanded = quote! {
-        impl rd_interface::config::Config for #ident {
+        impl #impl_generics rd_interface::config::Config for #ident #ty_generics #where_clause {
             fn visit(&mut self, visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
                 #visitor_body
                 Ok(())
