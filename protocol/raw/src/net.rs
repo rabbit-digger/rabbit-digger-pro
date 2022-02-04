@@ -5,35 +5,20 @@ use std::{
 };
 
 use crate::{
-    config::Layer,
+    config::{Layer, RawNetConfig},
     device,
     forward::forward_net,
     gateway::GatewayDevice,
     wrap::{TcpListenerWrap, TcpStreamWrap, UdpSocketWrap},
 };
 use rd_interface::{
-    async_trait, config::NetRef, error::map_other, prelude::*, registry::NetFactory, Address, Arc,
-    Context, Error, INet, IntoDyn, Result,
+    async_trait, registry::NetFactory, Address, Arc, Context, Error, INet, IntoDyn, Result,
 };
 use tokio::{sync::Mutex, task::JoinHandle};
 use tokio_smoltcp::{
-    smoltcp::wire::{EthernetAddress, IpAddress, IpCidr},
+    smoltcp::wire::{IpAddress, IpCidr},
     BufferSize, Net as SmoltcpNet, NetConfig,
 };
-
-#[rd_config]
-pub struct RawNetConfig {
-    #[serde(default)]
-    net: NetRef,
-    device: String,
-    mtu: usize,
-    ethernet_addr: Option<String>,
-    ip_addr: String,
-    gateway: Option<String>,
-
-    #[serde(default)]
-    forward: bool,
-}
 
 pub struct RawNet {
     smoltcp_net: Arc<SmoltcpNet>,
@@ -42,15 +27,6 @@ pub struct RawNet {
 
 impl RawNet {
     fn new(config: RawNetConfig) -> Result<RawNet> {
-        let ethernet_addr = match config.ethernet_addr {
-            Some(addr) => EthernetAddress::from_str(&addr)
-                .map_err(|_| Error::Other("Failed to parse ethernet_addr".into()))?,
-            None => {
-                crate::device::get_interface_info(&config.device)
-                    .map_err(map_other)?
-                    .ethernet_address
-            }
-        };
         let ip_cidr = IpCidr::from_str(&config.ip_addr)
             .map_err(|_| Error::Other("Failed to parse ip_addr".into()))?;
         let ip_addr = match IpAddr::from(ip_cidr.address()) {
@@ -59,12 +35,13 @@ impl RawNet {
         };
         let gateway = config
             .gateway
+            .as_ref()
             .map(|gateway| {
                 IpAddress::from_str(&gateway)
                     .map_err(|_| Error::Other("Failed to parse gateway".into()))
             })
             .transpose()?;
-        let device = device::get_device_name(&config.device)?;
+        let (ethernet_addr, device) = device::get_device(&config)?;
 
         let net_config = NetConfig {
             ethernet_addr,
@@ -82,7 +59,6 @@ impl RawNet {
         };
 
         let net = (*config.net).clone();
-        let device = device::get_by_device(device)?;
         let mut forward_handle = None;
 
         let smoltcp_net = if config.forward {

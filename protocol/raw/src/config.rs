@@ -1,43 +1,35 @@
-use rd_interface::prelude::*;
+use rd_interface::{
+    config::{Config, NetRef},
+    prelude::*,
+};
 
 #[rd_config]
-pub struct TunNetConfig {
-    pub dev_name: Option<String>,
-    /// tun address
-    pub tun_addr: String,
-    /// ipcidr
-    pub server_addr: String,
-    pub ethernet_addr: Option<String>,
-    pub mtu: usize,
+#[serde(rename_all = "lowercase")]
+pub enum TunTap {
+    Tap,
+    Tun,
 }
 
 #[rd_config]
-pub struct TapNetConfig {
-    pub dev_name: Option<String>,
-    /// tap address
-    pub tap_addr: String,
-    /// ipcidr
-    pub server_addr: String,
-    pub ethernet_addr: Option<String>,
-    pub mtu: usize,
+pub struct TunTapConfig {
+    #[serde(rename = "type")]
+    pub tuntap: TunTap,
+    pub name: Option<String>,
+    /// host address
+    pub host_addr: String,
 }
 
 #[rd_config]
-pub enum DeviceConfig {
-    Named(String),
-    Tun(TunNetConfig),
-    Tap(TapNetConfig),
+#[serde(untagged)]
+pub enum MaybeString<T>
+where
+    T: Config,
+{
+    String(String),
+    Other(T),
 }
 
-#[rd_config]
-pub struct RawNetConfig {
-    pub device: DeviceConfig,
-
-    /// ipcidr
-    pub server_addr: String,
-    pub ethernet_addr: Option<String>,
-    pub mtu: usize,
-}
+pub type DeviceConfig = MaybeString<TunTapConfig>;
 
 #[rd_config]
 #[derive(Clone, Copy)]
@@ -50,4 +42,20 @@ impl Default for Layer {
     fn default() -> Self {
         Layer::L2
     }
+}
+
+#[rd_config]
+pub struct RawNetConfig {
+    #[serde(default)]
+    pub net: NetRef,
+    pub device: DeviceConfig,
+    pub gateway: Option<String>,
+
+    /// IP Cidr
+    pub ip_addr: String,
+    pub ethernet_addr: Option<String>,
+    pub mtu: usize,
+
+    #[serde(default)]
+    pub forward: bool,
 }
