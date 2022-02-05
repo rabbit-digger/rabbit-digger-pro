@@ -1,6 +1,6 @@
 use client::{SSNet, SSNetConfig};
 use rd_interface::{
-    registry::{NetFactory, ServerFactory},
+    registry::{NetBuilder, ServerBuilder},
     Net, Registry, Result,
 };
 use server::{SSServer, SSServerConfig};
@@ -10,22 +10,22 @@ mod server;
 mod udp;
 mod wrapper;
 
-impl NetFactory for SSNet {
+impl NetBuilder for SSNet {
     const NAME: &'static str = "shadowsocks";
     type Config = SSNetConfig;
     type Net = Self;
 
-    fn new(config: Self::Config) -> Result<Self> {
+    fn build(config: Self::Config) -> Result<Self> {
         Ok(SSNet::new(config))
     }
 }
 
-impl ServerFactory for SSServer {
+impl ServerBuilder for SSServer {
     const NAME: &'static str = "shadowsocks";
     type Config = SSServerConfig;
     type Server = Self;
 
-    fn new(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
+    fn build(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
         Ok(SSServer::new(listen, net, cfg))
     }
 }

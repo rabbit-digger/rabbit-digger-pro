@@ -2,7 +2,7 @@ use net::RemoteNet;
 use protocol::get_protocol;
 use rd_interface::{
     prelude::*,
-    registry::{NetFactory, NetRef, ServerFactory},
+    registry::{NetBuilder, NetRef, ServerBuilder},
     Net, Registry, Result,
 };
 use server::RemoteServer;
@@ -19,23 +19,23 @@ pub struct RemoteNetConfig {
     config: protocol::Config,
 }
 
-impl NetFactory for RemoteNet {
+impl NetBuilder for RemoteNet {
     const NAME: &'static str = "remote";
     type Config = RemoteNetConfig;
     type Net = Self;
 
-    fn new(config: Self::Config) -> Result<Self> {
+    fn build(config: Self::Config) -> Result<Self> {
         let protocol = get_protocol((*config.net).clone(), config.config)?;
         Ok(RemoteNet::new(protocol))
     }
 }
 
-impl ServerFactory for RemoteServer {
+impl ServerBuilder for RemoteServer {
     const NAME: &'static str = "remote";
     type Config = protocol::Config;
     type Server = Self;
 
-    fn new(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
+    fn build(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
         let protocol = get_protocol(listen, cfg)?;
         Ok(RemoteServer::new(protocol, net))
     }

@@ -2,21 +2,21 @@ use std::net::SocketAddr;
 
 use obfs_net::{ObfsNet, ObfsNetConfig};
 use rd_interface::{
-    prelude::*, registry::NetFactory, Address, Context, Registry, Result, TcpStream,
+    prelude::*, registry::NetBuilder, Address, Context, Registry, Result, TcpStream,
 };
 
 mod http_simple;
 mod obfs_net;
 mod plain;
 
-impl NetFactory for ObfsNet {
+impl NetBuilder for ObfsNet {
     const NAME: &'static str = "obfs";
 
     type Config = ObfsNetConfig;
 
     type Net = ObfsNet;
 
-    fn new(config: Self::Config) -> Result<Self::Net> {
+    fn build(config: Self::Config) -> Result<Self::Net> {
         ObfsNet::new(config)
     }
 }

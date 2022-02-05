@@ -1,7 +1,7 @@
 use rd_interface::{
     async_trait,
     prelude::*,
-    registry::{NetFactory, NetRef},
+    registry::{NetBuilder, NetRef},
     Address, Context, Error, INet, Net, Registry, Result, TcpListener, TcpStream, UdpSocket,
 };
 
@@ -48,12 +48,12 @@ impl INet for SelectNet {
     }
 }
 
-impl NetFactory for SelectNet {
+impl NetBuilder for SelectNet {
     const NAME: &'static str = "select";
     type Config = SelectNetConfig;
     type Net = Self;
 
-    fn new(config: Self::Config) -> Result<Self> {
+    fn build(config: Self::Config) -> Result<Self> {
         SelectNet::new(config)
     }
 }

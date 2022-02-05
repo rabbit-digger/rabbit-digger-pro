@@ -12,7 +12,7 @@ use crate::{
     wrap::{TcpListenerWrap, TcpStreamWrap, UdpSocketWrap},
 };
 use rd_interface::{
-    async_trait, registry::NetFactory, Address, Arc, Context, Error, INet, IntoDyn, Result,
+    async_trait, registry::NetBuilder, Address, Arc, Context, Error, INet, IntoDyn, Result,
 };
 use tokio::{sync::Mutex, task::JoinHandle};
 use tokio_smoltcp::{
@@ -89,13 +89,13 @@ impl Drop for RawNet {
     }
 }
 
-impl NetFactory for RawNet {
+impl NetBuilder for RawNet {
     const NAME: &'static str = "raw";
 
     type Config = RawNetConfig;
     type Net = RawNet;
 
-    fn new(config: Self::Config) -> Result<Self::Net> {
+    fn build(config: Self::Config) -> Result<Self::Net> {
         RawNet::new(config)
     }
 }
