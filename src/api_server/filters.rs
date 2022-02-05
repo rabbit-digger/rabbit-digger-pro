@@ -16,7 +16,6 @@ pub async fn api(
 ) -> Result<impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone> {
     let at = check_access_token(server.access_token);
     let prefix = warp::path!("api" / ..);
-    // TODO: read or write userdata by API
     let ctx = Ctx {
         rd: server.rabbit_digger.clone(),
         cfg_mgr: server.config_manager.clone(),
