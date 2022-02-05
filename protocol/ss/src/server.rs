@@ -1,11 +1,14 @@
 use std::net::SocketAddr;
 
+use self::source::UdpSource;
 use super::wrapper::{Cipher, CryptoStream};
 use rd_interface::{async_trait, prelude::*, Address, Arc, IServer, Net, Result, TcpStream};
-use rd_std::util::connect_tcp;
+use rd_std::util::{connect_tcp, forward_udp};
 use shadowsocks::{config::ServerType, context::Context, ServerConfig};
 use socks5_protocol::Address as S5Addr;
 use tokio::select;
+
+mod source;
 
 #[rd_config]
 #[derive(Debug, Clone)]
@@ -47,11 +50,21 @@ impl SSServer {
     }
     async fn serve_udp(&self) -> Result<()> {
         std::future::pending::<()>().await;
-        let _listener = self
+        let udp_listener = self
             .listen
             .udp_bind(&mut rd_interface::Context::new(), &self.cfg.bind)
             .await?;
-        // TODO: add udp server
+
+        forward_udp(
+            UdpSource::new(
+                self.cfg.cipher.into(),
+                self.cfg.password.as_bytes().into(),
+                udp_listener,
+            ),
+            self.net.clone(),
+        )
+        .await?;
+
         Ok(())
     }
     async fn serve_tcp(&self) -> Result<()> {
