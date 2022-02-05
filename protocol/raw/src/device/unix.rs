@@ -11,7 +11,7 @@ use rd_interface::{error::map_other, Result};
 use tokio_smoltcp::{
     device::{AsyncDevice, DeviceCapabilities, Packet},
     smoltcp::{
-        phy::{Checksum, Medium},
+        phy::Checksum,
         wire::{IpAddress, IpCidr},
     },
 };
@@ -44,10 +44,7 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<TunAsyncDevice> {
             _ => unreachable!(),
         })
         .netmask(netmask)
-        .layer(match cfg.layer {
-            Layer::L2 => tun_crate::Layer::L2,
-            Layer::L3 => tun_crate::Layer::L3,
-        })
+        .layer(cfg.layer.into())
         .up();
 
     if let Some(name) = &cfg.name {
@@ -61,10 +58,7 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<TunAsyncDevice> {
     tracing::info!("tun created: {}", device_name);
 
     let mut caps = DeviceCapabilities::default();
-    caps.medium = match cfg.layer {
-        Layer::L2 => Medium::Ethernet,
-        Layer::L3 => Medium::Ip,
-    };
+    caps.medium = cfg.layer.into();
     caps.max_transmission_unit = 1500;
     caps.checksum.ipv4 = Checksum::Tx;
     caps.checksum.tcp = Checksum::Tx;

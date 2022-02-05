@@ -1,6 +1,6 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use crate::config::{DeviceConfig, Layer, RawNetConfig, TunTap};
+use crate::config::{DeviceConfig, RawNetConfig, TunTap};
 use boxed::BoxedAsyncDevice;
 pub use interface_info::get_interface_info;
 use pcap::{Capture, Device};
@@ -39,10 +39,7 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
                 addr: host_addr,
                 destination_addr,
                 mtu: config.mtu,
-                layer: match cfg.tuntap {
-                    TunTap::Tap => Layer::L2,
-                    TunTap::Tun => Layer::L3,
-                },
+                layer: cfg.tuntap.into(),
             };
             let device = Box::new(get_tun(setup)?);
             let ethernet_addr = match cfg.tuntap {

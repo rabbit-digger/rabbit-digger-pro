@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    config::{Layer, RawNetConfig},
+    config::RawNetConfig,
     device,
     forward::forward_net,
     gateway::GatewayDevice,
@@ -16,6 +16,7 @@ use rd_interface::{
 };
 use tokio::{sync::Mutex, task::JoinHandle};
 use tokio_smoltcp::{
+    device::AsyncDevice,
     smoltcp::wire::{IpAddress, IpCidr},
     BufferSize, Net as SmoltcpNet, NetConfig,
 };
@@ -62,8 +63,8 @@ impl RawNet {
         let mut forward_handle = None;
 
         let smoltcp_net = if config.forward {
-            let device =
-                GatewayDevice::new(device, ethernet_addr, 100, ip_cidr, ip_addr, Layer::L2);
+            let layer = device.capabilities().medium.into();
+            let device = GatewayDevice::new(device, ethernet_addr, 100, ip_cidr, ip_addr, layer);
             let map = device.get_map();
             let smoltcp_net = Arc::new(SmoltcpNet::new(device, net_config));
 

@@ -2,9 +2,11 @@ use rd_interface::{
     config::{Config, NetRef},
     prelude::*,
 };
+use tokio_smoltcp::smoltcp::phy::Medium;
 
 #[rd_config]
 #[serde(rename_all = "lowercase")]
+#[derive(Copy, Clone)]
 pub enum TunTap {
     Tap,
     Tun,
@@ -41,6 +43,43 @@ pub enum Layer {
 impl Default for Layer {
     fn default() -> Self {
         Layer::L2
+    }
+}
+
+impl From<Layer> for tun_crate::Layer {
+    fn from(l: Layer) -> Self {
+        match l {
+            Layer::L2 => tun_crate::Layer::L2,
+            Layer::L3 => tun_crate::Layer::L3,
+        }
+    }
+}
+
+impl From<TunTap> for Layer {
+    fn from(t: TunTap) -> Self {
+        match t {
+            TunTap::Tap => Layer::L2,
+            TunTap::Tun => Layer::L3,
+        }
+    }
+}
+
+impl From<Medium> for Layer {
+    fn from(m: Medium) -> Self {
+        match m {
+            Medium::Ethernet => Layer::L2,
+            Medium::Ip => Layer::L3,
+            _ => panic!("unsupported medium"),
+        }
+    }
+}
+
+impl From<Layer> for Medium {
+    fn from(l: Layer) -> Self {
+        match l {
+            Layer::L2 => Medium::Ethernet,
+            Layer::L3 => Medium::Ip,
+        }
     }
 }
 
