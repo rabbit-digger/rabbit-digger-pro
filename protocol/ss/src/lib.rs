@@ -7,6 +7,8 @@ use server::{SSServer, SSServerConfig};
 
 mod client;
 mod server;
+#[cfg(test)]
+mod tests;
 mod udp;
 mod wrapper;
 

@@ -12,15 +12,15 @@ use shadowsocks::{
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct SSNetConfig {
-    server: Address,
-    password: String,
+    pub(crate) server: Address,
+    pub(crate) password: String,
     #[serde(default)]
-    udp: bool,
+    pub(crate) udp: bool,
 
-    cipher: Cipher,
+    pub(crate) cipher: Cipher,
 
     #[serde(default)]
-    net: NetRef,
+    pub(crate) net: NetRef,
 }
 
 pub struct SSNet {

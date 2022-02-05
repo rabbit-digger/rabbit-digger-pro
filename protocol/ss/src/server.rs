@@ -13,17 +13,18 @@ mod source;
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct SSServerConfig {
-    bind: Address,
-    password: String,
+    pub(crate) bind: Address,
+    pub(crate) password: String,
     #[serde(default)]
-    udp: bool,
+    pub(crate) udp: bool,
 
-    cipher: Cipher,
+    pub(crate) cipher: Cipher,
 }
 
 pub struct SSServer {
+    bind: Address,
     context: Arc<Context>,
-    cfg: Arc<SSServerConfig>,
+    cfg: Arc<ServerConfig>,
     listen: Net,
     net: Net,
 }
@@ -41,24 +42,27 @@ impl IServer for SSServer {
 impl SSServer {
     pub fn new(listen: Net, net: Net, cfg: SSServerConfig) -> SSServer {
         let context = Arc::new(Context::new(ServerType::Local));
+        let svr_cfg =
+            ServerConfig::new(("example.com", 0), cfg.password.clone(), cfg.cipher.into());
+
         SSServer {
+            bind: cfg.bind,
             context,
-            cfg: Arc::new(cfg),
+            cfg: Arc::new(svr_cfg),
             listen,
             net,
         }
     }
     async fn serve_udp(&self) -> Result<()> {
-        std::future::pending::<()>().await;
         let udp_listener = self
             .listen
-            .udp_bind(&mut rd_interface::Context::new(), &self.cfg.bind)
+            .udp_bind(&mut rd_interface::Context::new(), &self.bind)
             .await?;
 
         forward_udp(
             UdpSource::new(
-                self.cfg.cipher.into(),
-                self.cfg.password.as_bytes().into(),
+                self.cfg.method(),
+                self.cfg.key().to_vec().into_boxed_slice(),
                 udp_listener,
             ),
             self.net.clone(),
@@ -70,7 +74,7 @@ impl SSServer {
     async fn serve_tcp(&self) -> Result<()> {
         let listener = self
             .listen
-            .tcp_bind(&mut rd_interface::Context::new(), &self.cfg.bind)
+            .tcp_bind(&mut rd_interface::Context::new(), &self.bind)
             .await?;
         loop {
             let (socket, addr) = listener.accept().await?;
@@ -85,16 +89,13 @@ impl SSServer {
         }
     }
     async fn serve_connection(
-        cfg: Arc<SSServerConfig>,
+        cfg: Arc<ServerConfig>,
         context: Arc<Context>,
         socket: TcpStream,
         net: Net,
         addr: SocketAddr,
     ) -> Result<()> {
-        let svr_cfg =
-            ServerConfig::new(("example.com", 0), cfg.password.clone(), cfg.cipher.into());
-        let mut socket =
-            CryptoStream::from_stream(context, socket, cfg.cipher.into(), svr_cfg.key());
+        let mut socket = CryptoStream::from_stream(context, socket, cfg.method(), cfg.key());
         let target = S5Addr::read(&mut socket).await.map_err(|e| e.to_io_err())?;
 
         let ctx = &mut rd_interface::Context::from_socketaddr(addr);
