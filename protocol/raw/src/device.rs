@@ -1,4 +1,4 @@
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{io, net::Ipv4Addr, str::FromStr};
 
 use crate::config::{DeviceConfig, RawNetConfig, TunTap, TunTapSetup};
 use boxed::BoxedAsyncDevice;
@@ -6,8 +6,11 @@ pub use interface_info::get_interface_info;
 use pcap::{Capture, Device};
 use rd_interface::{Error, ErrorContext, Result};
 use tokio_smoltcp::{
-    device::AsyncDevice,
-    smoltcp::wire::{EthernetAddress, IpCidr},
+    device::{AsyncDevice, DeviceCapabilities},
+    smoltcp::{
+        phy::Checksum,
+        wire::{EthernetAddress, IpCidr},
+    },
 };
 
 mod boxed;
@@ -49,6 +52,13 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
             let device = Box::new(get_tun(setup)?);
             let ethernet_addr = match cfg.tuntap {
                 TunTap::Tun => EthernetAddress::BROADCAST,
+                #[cfg(unix)]
+                TunTap::Tap => {
+                    crate::device::get_interface_info(&device.name())
+                        .context("Failed to get interface info")?
+                        .ethernet_address
+                }
+                #[cfg(windows)]
                 TunTap::Tap => unreachable!(),
             };
 
@@ -125,13 +135,8 @@ pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
 
 #[cfg(windows)]
 pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
-    use std::io;
-
     use tokio::sync::mpsc::{Receiver, Sender};
-    use tokio_smoltcp::{
-        device::{ChannelCapture, DeviceCapabilities},
-        smoltcp::phy::Checksum,
-    };
+    use tokio_smoltcp::device::ChannelCapture;
 
     let mut cap = Capture::from_device(device.clone())
         .context("Failed to capture device")?
