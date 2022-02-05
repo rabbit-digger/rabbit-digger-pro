@@ -1,5 +1,5 @@
 use rd_interface::{
-    async_trait, prelude::*, registry::ServerFactory, Address, Context, IServer, Net, Result,
+    async_trait, prelude::*, registry::ServerBuilder, Address, Context, IServer, Net, Result,
     TcpListener, TcpStream,
 };
 use tokio::io;
@@ -50,12 +50,12 @@ impl EchoServer {
     }
 }
 
-impl ServerFactory for EchoServer {
+impl ServerBuilder for EchoServer {
     const NAME: &'static str = "echo";
     type Config = EchoServerConfig;
     type Server = Self;
 
-    fn new(listen: Net, _net: Net, cfg: Self::Config) -> Result<Self> {
+    fn build(listen: Net, _net: Net, cfg: Self::Config) -> Result<Self> {
         Ok(EchoServer::new(listen, cfg))
     }
 }

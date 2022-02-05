@@ -36,21 +36,21 @@ impl Registry {
             server: BTreeMap::new(),
         }
     }
-    pub fn add_net<N: NetFactory>(&mut self) {
+    pub fn add_net<N: NetBuilder>(&mut self) {
         self.net.insert(N::NAME.into(), NetResolver::new::<N>());
     }
-    pub fn add_server<S: ServerFactory>(&mut self) {
+    pub fn add_server<S: ServerBuilder>(&mut self) {
         self.server
             .insert(S::NAME.into(), ServerResolver::new::<S>());
     }
 }
 
-pub trait NetFactory {
+pub trait NetBuilder {
     const NAME: &'static str;
     type Config: DeserializeOwned + JsonSchema + Config;
     type Net: INet + Sized + 'static;
 
-    fn new(config: Self::Config) -> Result<Self::Net>;
+    fn build(config: Self::Config) -> Result<Self::Net>;
 }
 
 pub struct NetResolver {
@@ -60,7 +60,7 @@ pub struct NetResolver {
 }
 
 impl NetResolver {
-    fn new<N: NetFactory>() -> Self {
+    fn new<N: NetBuilder>() -> Self {
         let schema = schema_for!(N::Config);
         Self {
             build: |nets, cfg| {
@@ -70,7 +70,7 @@ impl NetResolver {
                         cfg.resolve_net(nets)?;
                         Ok(cfg)
                     })
-                    .and_then(N::new)
+                    .and_then(N::build)
                     .map(|n| n.into_dyn())
             },
             get_dependency: |cfg| {
@@ -92,12 +92,12 @@ impl NetResolver {
     }
 }
 
-pub trait ServerFactory {
+pub trait ServerBuilder {
     const NAME: &'static str;
     type Config: DeserializeOwned + JsonSchema;
     type Server: IServer + Sized + 'static;
 
-    fn new(listen: Net, net: Net, config: Self::Config) -> Result<Self::Server>;
+    fn build(listen: Net, net: Net, config: Self::Config) -> Result<Self::Server>;
 }
 
 pub struct ServerResolver {
@@ -106,7 +106,7 @@ pub struct ServerResolver {
 }
 
 impl ServerResolver {
-    fn new<N: ServerFactory>() -> Self {
+    fn new<N: ServerBuilder>() -> Self {
         let mut schema = schema_for!(N::Config);
         let net_schema = schema_for!(NetRef);
         schema
@@ -123,7 +123,7 @@ impl ServerResolver {
             build: |listen_net, net: Net, cfg| {
                 serde_json::from_value(cfg)
                     .map_err(Into::<crate::Error>::into)
-                    .and_then(|cfg| N::new(listen_net, net, cfg))
+                    .and_then(|cfg| N::build(listen_net, net, cfg))
                     .map(|n| n.into_dyn())
             },
             schema,

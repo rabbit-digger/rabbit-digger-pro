@@ -6,14 +6,14 @@ mod ipcidr;
 mod matcher;
 mod rule_net;
 
-use rd_interface::{registry::NetFactory, Registry, Result};
+use rd_interface::{registry::NetBuilder, Registry, Result};
 
-impl NetFactory for rule_net::RuleNet {
+impl NetBuilder for rule_net::RuleNet {
     const NAME: &'static str = "rule";
     type Config = config::RuleNetConfig;
     type Net = Self;
 
-    fn new(config: Self::Config) -> Result<Self> {
+    fn build(config: Self::Config) -> Result<Self> {
         rule_net::RuleNet::new(config)
     }
 }

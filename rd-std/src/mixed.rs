@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait, prelude::*, registry::ServerFactory, Address, Context, IServer, IntoDyn, Net,
+    async_trait, prelude::*, registry::ServerBuilder, Address, Context, IServer, IntoDyn, Net,
     Registry, Result, TcpStream,
 };
 
@@ -77,12 +77,12 @@ pub struct MixedServerConfig {
     bind: Address,
 }
 
-impl ServerFactory for HttpSocks5 {
+impl ServerBuilder for HttpSocks5 {
     const NAME: &'static str = "http+socks5";
     type Config = MixedServerConfig;
     type Server = Self;
 
-    fn new(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
+    fn build(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
         Ok(HttpSocks5::new(listen, net, bind))
     }
 }

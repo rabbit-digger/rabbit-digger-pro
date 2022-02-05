@@ -2,7 +2,7 @@ pub use dns_sniffer::DNSSnifferNet;
 use rd_interface::{
     prelude::*,
     rd_config,
-    registry::{NetFactory, NetRef},
+    registry::{NetBuilder, NetRef},
     Registry, Result,
 };
 
@@ -16,12 +16,12 @@ pub struct DNSNetConfig {
     net: NetRef,
 }
 
-impl NetFactory for DNSSnifferNet {
+impl NetBuilder for DNSSnifferNet {
     const NAME: &'static str = "dns_sniffer";
     type Config = DNSNetConfig;
     type Net = Self;
 
-    fn new(config: Self::Config) -> Result<Self> {
+    fn build(config: Self::Config) -> Result<Self> {
         Ok(DNSSnifferNet::new((*config.net).clone()))
     }
 }

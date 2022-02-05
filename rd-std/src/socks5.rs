@@ -2,7 +2,7 @@ pub use self::{client::Socks5Client, server::Socks5Server};
 
 use rd_interface::{
     prelude::*,
-    registry::{NetFactory, NetRef, ServerFactory},
+    registry::{NetBuilder, NetRef, ServerBuilder},
     Address, Net, Registry, Result,
 };
 
@@ -27,22 +27,22 @@ pub struct Socks5ServerConfig {
     bind: Address,
 }
 
-impl NetFactory for Socks5Client {
+impl NetBuilder for Socks5Client {
     const NAME: &'static str = "socks5";
     type Config = Socks5NetConfig;
     type Net = Self;
 
-    fn new(config: Self::Config) -> Result<Self> {
+    fn build(config: Self::Config) -> Result<Self> {
         Ok(Socks5Client::new((*config.net).clone(), config.server))
     }
 }
 
-impl ServerFactory for server::Socks5 {
+impl ServerBuilder for server::Socks5 {
     const NAME: &'static str = "socks5";
     type Config = Socks5ServerConfig;
     type Server = Self;
 
-    fn new(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
+    fn build(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
         Ok(server::Socks5::new(listen, net, bind))
     }
 }

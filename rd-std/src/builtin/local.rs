@@ -9,7 +9,7 @@ use std::{
 use futures::{ready, Future, FutureExt, Sink, SinkExt};
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, impl_async_read_write, impl_stream, prelude::*, registry::NetFactory, Address,
+    async_trait, impl_async_read_write, impl_stream, prelude::*, registry::NetBuilder, Address,
     Bytes, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
@@ -386,12 +386,12 @@ impl INet for LocalNet {
     }
 }
 
-impl NetFactory for LocalNet {
+impl NetBuilder for LocalNet {
     const NAME: &'static str = "local";
     type Config = LocalNetConfig;
     type Net = Self;
 
-    fn new(config: Self::Config) -> Result<Self> {
+    fn build(config: Self::Config) -> Result<Self> {
         Ok(LocalNet::new(config))
     }
 }

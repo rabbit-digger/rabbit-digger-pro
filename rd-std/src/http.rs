@@ -2,7 +2,7 @@ pub use self::{client::HttpClient, server::HttpServer};
 
 use rd_interface::{
     prelude::*,
-    registry::{NetFactory, NetRef, ServerFactory},
+    registry::{NetBuilder, NetRef, ServerBuilder},
     Address, Net, Registry, Result,
 };
 
@@ -26,22 +26,22 @@ pub struct HttpServerConfig {
     bind: Address,
 }
 
-impl NetFactory for HttpClient {
+impl NetBuilder for HttpClient {
     const NAME: &'static str = "http";
     type Config = HttpNetConfig;
     type Net = Self;
 
-    fn new(config: Self::Config) -> Result<Self> {
+    fn build(config: Self::Config) -> Result<Self> {
         Ok(HttpClient::new((*config.net).clone(), config.server))
     }
 }
 
-impl ServerFactory for server::Http {
+impl ServerBuilder for server::Http {
     const NAME: &'static str = "http";
     type Config = HttpServerConfig;
     type Server = Self;
 
-    fn new(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
+    fn build(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
         Ok(server::Http::new(listen, net, bind))
     }
 }

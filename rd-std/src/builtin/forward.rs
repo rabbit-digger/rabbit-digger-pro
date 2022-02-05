@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use crate::util::connect_tcp;
 use rd_interface::{
-    async_trait, prelude::*, registry::ServerFactory, Address, Arc, Context, IServer, Net, Result,
+    async_trait, prelude::*, registry::ServerBuilder, Address, Arc, Context, IServer, Net, Result,
     TcpListener, TcpStream,
 };
 
@@ -66,12 +66,12 @@ impl ForwardServer {
     }
 }
 
-impl ServerFactory for ForwardServer {
+impl ServerBuilder for ForwardServer {
     const NAME: &'static str = "forward";
     type Config = ForwardServerConfig;
     type Server = Self;
 
-    fn new(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
+    fn build(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
         Ok(ForwardServer::new(listen, net, cfg))
     }
 }

@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use rd_interface::{
-    async_trait, config::NetRef, prelude::*, registry::NetFactory, Address, Context, INet, Net,
+    async_trait, config::NetRef, prelude::*, registry::NetBuilder, Address, Context, INet, Net,
     Result, TcpListener, TcpStream, UdpSocket,
 };
 
@@ -41,12 +41,12 @@ pub struct CombineNetConfig {
     lookup_host: NetRef,
 }
 
-impl NetFactory for CombineNet {
+impl NetBuilder for CombineNet {
     const NAME: &'static str = "combine";
     type Config = CombineNetConfig;
     type Net = Self;
 
-    fn new(
+    fn build(
         CombineNetConfig {
             tcp_connect,
             tcp_bind,
