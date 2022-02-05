@@ -1,6 +1,6 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use crate::config::{DeviceConfig, RawNetConfig, TunTap};
+use crate::config::{DeviceConfig, RawNetConfig, TunTap, TunTapSetup};
 use boxed::BoxedAsyncDevice;
 pub use interface_info::get_interface_info;
 use pcap::{Capture, Device};
@@ -14,10 +14,15 @@ mod boxed;
 mod interface_info;
 #[cfg(unix)]
 mod unix;
+#[cfg(unix)]
+use crate::device::unix::get_tun;
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use crate::device::windows::get_tun;
 
 pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncDevice)> {
-    #[cfg(unix)]
-    use crate::device::unix::{get_tun, TunTapSetup};
     let (ethernet_address, device) = match &config.device {
         DeviceConfig::String(dev) => {
             let ethernet_address = crate::device::get_interface_info(&dev)
@@ -44,11 +49,7 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
             let device = Box::new(get_tun(setup)?);
             let ethernet_addr = match cfg.tuntap {
                 TunTap::Tun => EthernetAddress::BROADCAST,
-                TunTap::Tap => {
-                    crate::device::get_interface_info(&device.name())
-                        .context("Failed to get interface info")?
-                        .ethernet_address
-                }
+                TunTap::Tap => unreachable!(),
             };
 
             (ethernet_addr, BoxedAsyncDevice(device))
@@ -80,11 +81,7 @@ fn pcap_device_by_name(name: &str) -> Result<Device> {
 
 #[cfg(unix)]
 pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
-    use std::io;
-    use tokio_smoltcp::{
-        device::{AsyncCapture, DeviceCapabilities},
-        smoltcp::phy::Checksum,
-    };
+    use tokio_smoltcp::device::AsyncCapture;
 
     let cap = Capture::from_device(device.clone())
         .context("Failed to capture device")?
@@ -127,9 +124,14 @@ pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
 }
 
 #[cfg(windows)]
-pub fn get_by_device(device: Device) -> Result<impl Interface> {
+pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
+    use std::io;
+
     use tokio::sync::mpsc::{Receiver, Sender};
-    use tokio_smoltcp::util::ChannelCapture;
+    use tokio_smoltcp::{
+        device::{ChannelCapture, DeviceCapabilities},
+        smoltcp::phy::Checksum,
+    };
 
     let mut cap = Capture::from_device(device.clone())
         .context("Failed to capture device")?
@@ -146,7 +148,7 @@ pub fn get_by_device(device: Device) -> Result<impl Interface> {
         .open()
         .context("Failed to open device")?;
 
-    let recv = move |tx: Sender<Vec<u8>>| loop {
+    let recv = move |tx: Sender<io::Result<Vec<u8>>>| loop {
         let p = match cap.next().map(|p| p.to_vec()) {
             Ok(p) => p,
             Err(pcap::Error::TimeoutExpired) => continue,
@@ -155,13 +157,22 @@ pub fn get_by_device(device: Device) -> Result<impl Interface> {
                 break;
             }
         };
-        tx.blocking_send(p).unwrap();
+
+        tx.blocking_send(Ok(p)).unwrap();
     };
     let send = move |mut rx: Receiver<Vec<u8>>| {
         while let Some(pkt) = rx.blocking_recv() {
             send.sendpacket(pkt).unwrap();
         }
     };
-    let capture = ChannelCapture::new(recv, send);
+    let mut caps = DeviceCapabilities::default();
+    caps.max_transmission_unit = 1500;
+    caps.checksum.ipv4 = Checksum::Tx;
+    caps.checksum.tcp = Checksum::Tx;
+    caps.checksum.udp = Checksum::Tx;
+    caps.checksum.icmpv4 = Checksum::Tx;
+    caps.checksum.icmpv6 = Checksum::Tx;
+
+    let capture = ChannelCapture::new(recv, send, caps);
     Ok(capture)
 }

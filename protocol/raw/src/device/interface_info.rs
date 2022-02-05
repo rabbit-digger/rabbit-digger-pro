@@ -51,9 +51,10 @@ mod unix {
 
 #[cfg(windows)]
 mod windows {
-    use super::{Error, InterfaceInfo};
+    use super::InterfaceInfo;
     use smoltcp::wire::EthernetAddress;
-    use std::{mem, ptr};
+    use std::{io, mem, ptr};
+    use tokio_smoltcp::smoltcp;
 
     const NO_ERROR: u32 = 0;
     const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
@@ -77,7 +78,7 @@ mod windows {
         return None;
     }
 
-    pub fn get_interface_info(name: &str) -> Result<InterfaceInfo, Error> {
+    pub fn get_interface_info(name: &str) -> io::Result<InterfaceInfo> {
         if let Some(intf_guid) = get_guid(name) {
             let mut size = 0u32;
             let table: *mut MibIftable;
@@ -96,7 +97,7 @@ mod windows {
                 {
                     table = mem::transmute(libc::malloc(size as libc::size_t));
                 } else {
-                    return Err(Error::NotFound);
+                    return Err(io::ErrorKind::NotFound.into());
                 }
 
                 if GetIfTable(table, &mut size as *mut libc::c_ulong, false) == NO_ERROR {
@@ -130,7 +131,7 @@ mod windows {
                 libc::free(mem::transmute(table));
             }
         }
-        Err(Error::NotFound)
+        Err(io::ErrorKind::NotFound.into())
     }
 
     pub const MAX_INTERFACE_NAME_LEN: usize = 256;

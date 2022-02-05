@@ -1,8 +1,10 @@
+use std::net::Ipv4Addr;
+
 use rd_interface::{
     config::{Config, NetRef},
     prelude::*,
 };
-use tokio_smoltcp::smoltcp::phy::Medium;
+use tokio_smoltcp::smoltcp::{phy::Medium, wire::IpCidr};
 
 #[rd_config]
 #[serde(rename_all = "lowercase")]
@@ -46,6 +48,7 @@ impl Default for Layer {
     }
 }
 
+#[cfg(unix)]
 impl From<Layer> for tun_crate::Layer {
     fn from(l: Layer) -> Self {
         match l {
@@ -97,4 +100,12 @@ pub struct RawNetConfig {
 
     #[serde(default)]
     pub forward: bool,
+}
+
+pub struct TunTapSetup {
+    pub name: Option<String>,
+    pub addr: Ipv4Addr,
+    pub destination_addr: IpCidr,
+    pub mtu: usize,
+    pub layer: Layer,
 }
