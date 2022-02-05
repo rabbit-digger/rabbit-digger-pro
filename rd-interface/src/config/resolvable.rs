@@ -39,6 +39,12 @@ where
             value: None,
         }
     }
+    pub fn new_with_value(represent: S::Represent, value: S::Value) -> Self {
+        Self {
+            represent,
+            value: Some(value),
+        }
+    }
     pub fn represent(&self) -> &S::Represent {
         &self.represent
     }

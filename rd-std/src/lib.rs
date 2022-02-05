@@ -6,7 +6,6 @@ pub mod mixed;
 pub mod rule;
 pub mod sniffer;
 pub mod socks5;
-#[cfg(test)]
 pub mod tests;
 pub mod transparent;
 pub mod util;
