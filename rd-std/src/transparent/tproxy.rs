@@ -16,7 +16,7 @@ use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
     constant::UDP_BUFFER_SIZE,
-    registry::ServerFactory,
+    registry::ServerBuilder,
     schemars::{self, JsonSchema},
     Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net, Result,
 };
@@ -89,12 +89,12 @@ impl TProxyServer {
     }
 }
 
-impl ServerFactory for TProxyServer {
+impl ServerBuilder for TProxyServer {
     const NAME: &'static str = "tproxy";
     type Config = TProxyServerConfig;
     type Server = Self;
 
-    fn new(_: Net, net: Net, config: Self::Config) -> Result<Self> {
+    fn build(_: Net, net: Net, config: Self::Config) -> Result<Self> {
         Ok(TProxyServer::new(config, net))
     }
 }

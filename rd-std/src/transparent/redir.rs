@@ -4,7 +4,7 @@ use super::origin_addr::OriginAddrExt;
 use crate::{builtin::local::CompatTcp, util::connect_tcp};
 use rd_interface::{
     async_trait,
-    registry::ServerFactory,
+    registry::ServerBuilder,
     schemars::{self, JsonSchema},
     Address, Context, IServer, IntoAddress, IntoDyn, Net, Result,
 };
@@ -59,12 +59,12 @@ impl RedirServer {
     }
 }
 
-impl ServerFactory for RedirServer {
+impl ServerBuilder for RedirServer {
     const NAME: &'static str = "redir";
     type Config = RedirServerConfig;
     type Server = Self;
 
-    fn new(_: Net, net: Net, config: Self::Config) -> Result<Self> {
+    fn build(_: Net, net: Net, config: Self::Config) -> Result<Self> {
         Ok(RedirServer::new(config, net))
     }
 }
