@@ -19,7 +19,7 @@ use tokio_smoltcp::{
 };
 
 #[derive(Debug)]
-enum State {
+enum Action {
     Pass,
     Rewrite,
     Drop,
@@ -75,36 +75,35 @@ impl<I> GatewayDevice<I> {
             }
             Layer::L3 => cb(&mut packet[..]),
         };
+
         packet
     }
-    fn accept_packet(&self, packet: &Packet) -> State {
+    fn accept_packet(&self, packet: &Packet) -> Action {
         let ip_cidr = self.ip_cidr;
         let process_ip = |payload_mut: &[u8]| {
             Ipv4Packet::new_checked(payload_mut)
                 .map(|f| {
-                    let src = f.src_addr();
-                    let dst = f.dst_addr();
+                    let src = f.src_addr().into();
+                    let dst = f.dst_addr().into();
                     if get_src_addr(&f) == Some(self.override_v4) {
-                        return State::Rewrite;
+                        return Action::Rewrite;
                     }
-                    if ip_cidr.address() == src.into() || ip_cidr.address() == dst.into() {
-                        State::Pass
-                    } else if ip_cidr.contains_addr(&src.into())
-                        || ip_cidr.contains_addr(&dst.into())
-                    {
-                        State::Rewrite
+                    if ip_cidr.address() == src || ip_cidr.address() == dst {
+                        Action::Pass
+                    } else if ip_cidr.contains_addr(&src) || ip_cidr.contains_addr(&dst) {
+                        Action::Rewrite
                     } else {
-                        State::Drop
+                        Action::Drop
                     }
                 })
-                .unwrap_or(State::Drop)
+                .unwrap_or(Action::Drop)
         };
 
         match self.layer {
             Layer::L2 => {
                 let frame = match EthernetFrame::new_checked(&packet) {
                     Ok(p) => p,
-                    Err(_) => return State::Drop,
+                    Err(_) => return Action::Drop,
                 };
 
                 let src = frame.src_addr();
@@ -112,12 +111,12 @@ impl<I> GatewayDevice<I> {
                 let l2_accept =
                     dst.is_broadcast() || src == self.ethernet_addr || dst == self.ethernet_addr;
                 if !l2_accept {
-                    return State::Drop;
+                    return Action::Drop;
                 }
 
                 match frame.ethertype() {
                     EthernetProtocol::Ipv4 => process_ip(frame.payload()),
-                    _ => return State::Pass,
+                    _ => return Action::Pass,
                 }
             }
             Layer::L3 => process_ip(&packet[..]),
@@ -125,24 +124,24 @@ impl<I> GatewayDevice<I> {
     }
     fn map_in(&self, packet: Packet) -> Option<Packet> {
         match self.accept_packet(&packet) {
-            State::Pass => Some(packet),
-            State::Rewrite => Some(self.payload(packet, |mut ipv4| {
+            Action::Pass => Some(packet),
+            Action::Rewrite => Some(self.payload(packet, |mut ipv4| {
                 if let Ok(Some((src_addr, ori_addr))) = set_dst_addr(&mut ipv4, self.override_v4) {
                     self.map.insert(src_addr, ori_addr);
                 }
             })),
-            State::Drop => None,
+            Action::Drop => None,
         }
     }
     fn map_out(&self, packet: Packet) -> Option<Packet> {
         match self.accept_packet(&packet) {
-            State::Pass => Some(packet),
-            State::Rewrite => Some(self.payload(packet, |mut ipv4| {
+            Action::Pass => Some(packet),
+            Action::Rewrite => Some(self.payload(packet, |mut ipv4| {
                 if let Some(src) = get_dst_addr(&mut ipv4).map(|d| self.map.get(&d)).flatten() {
                     set_src_addr(&mut ipv4, src).ok();
                 }
             })),
-            State::Drop => None,
+            Action::Drop => None,
         }
     }
 }
