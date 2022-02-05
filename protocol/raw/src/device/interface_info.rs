@@ -1,15 +1,6 @@
 #![allow(dead_code)]
 
-use smoltcp::wire::EthernetAddress;
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("Mac address not found")]
-    NotFound,
-    #[error("Failed to call system")]
-    FailedToCallSystem,
-}
+use tokio_smoltcp::smoltcp::wire::EthernetAddress;
 
 pub struct InterfaceInfo {
     pub ethernet_address: EthernetAddress,
@@ -34,18 +25,13 @@ pub use windows::get_interface_info;
 
 #[cfg(unix)]
 mod unix {
-    use super::{Error, InterfaceInfo};
-    use smoltcp::wire::EthernetAddress;
+    use super::InterfaceInfo;
+    use std::io::{self, Error, ErrorKind};
+    use tokio_smoltcp::smoltcp::wire::EthernetAddress;
 
-    impl From<nix::Error> for Error {
-        fn from(_: nix::Error) -> Error {
-            Error::FailedToCallSystem
-        }
-    }
-
-    pub fn get_interface_info(name: &str) -> Result<InterfaceInfo, Error> {
+    pub fn get_interface_info(name: &str) -> io::Result<InterfaceInfo> {
         use nix::{ifaddrs::getifaddrs, sys::socket::SockAddr};
-        let addrs = getifaddrs()?;
+        let addrs = getifaddrs().map_err(|e| Error::new(ErrorKind::Other, e))?;
         for ifaddr in addrs {
             if ifaddr.interface_name != name {
                 continue;
@@ -58,7 +44,8 @@ mod unix {
                 });
             }
         }
-        Err(Error::NotFound)
+
+        Err(ErrorKind::NotFound.into())
     }
 }
 

@@ -6,9 +6,9 @@ use rd_interface::{
     ITcpListener, ITcpStream, IUdpSocket, IntoDyn, Result,
 };
 use tokio::sync::Mutex;
-use tokio_smoltcp::{TcpListener, TcpSocket, UdpSocket};
+use tokio_smoltcp::{TcpListener, TcpStream, UdpSocket};
 
-pub struct TcpStreamWrap(pub(crate) TcpSocket);
+pub struct TcpStreamWrap(pub(crate) TcpStream);
 impl_async_read_write!(TcpStreamWrap, 0);
 
 #[async_trait]
