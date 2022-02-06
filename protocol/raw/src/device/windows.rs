@@ -1,8 +1,12 @@
-use std::{io, sync::Arc};
+use std::{
+    io::{self, Write},
+    process::{Command, Stdio},
+    sync::Arc,
+};
 
 use crate::config::{Layer, TunTapSetup};
 use once_cell::sync::OnceCell;
-use rd_interface::{Error, Result};
+use rd_interface::{error::map_other, Error, Result};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_smoltcp::{
     device::{ChannelCapture, DeviceCapabilities},
@@ -34,6 +38,23 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<ChannelCapture> {
             .map_err(|_| rd_interface::Error::other("Failed to create wintun session"))?,
     );
     let s2 = s1.clone();
+
+    let wintun_adapter_index = adapter
+        .get_adapter_index()
+        .map_err(|_| rd_interface::Error::other("Failed to get adapter index"))?;
+
+    let mut cmds = Vec::<String>::new();
+    cmds.push(format!("set interface {} metric=1", wintun_adapter_index));
+    cmds.push(format!(
+        "set address {} static {}/{} gateway={} store=active",
+        wintun_adapter_index,
+        cfg.addr,
+        cfg.destination_addr.prefix_len(),
+        cfg.destination_addr.address(),
+    ));
+    for cmd in cmds.iter() {
+        run_netsh(cmd)?;
+    }
 
     let recv = move |tx: Sender<io::Result<Vec<u8>>>| loop {
         let p = match s1.receive_blocking().map(|p| p.bytes().to_vec()) {
@@ -71,4 +92,26 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<ChannelCapture> {
     let dev = ChannelCapture::new(recv, send, caps);
 
     Ok(dev)
+}
+
+fn run_netsh(cmd_str: &str) -> Result<()> {
+    let mut cmd = Command::new("netsh");
+    cmd.arg("interface").arg("ip").args(cmd_str.split(" "));
+    let output = cmd.stdout(Stdio::inherit()).output().map_err(map_other)?;
+    let status = output.status;
+    let stdout = output.stdout;
+    let stderr = output.stderr;
+
+    if !status.success() || (!stdout.is_empty() && stdout != b"Ok.") {
+        tracing::error!(
+            "Running process: {:?} failed! Status: {:?}",
+            cmd_str,
+            status,
+        );
+        io::stderr().write_all(&stdout)?;
+        io::stderr().write_all(&stderr)?;
+        return Err(Error::Other("Failed to run netsh".into()));
+    }
+
+    Ok(())
 }
