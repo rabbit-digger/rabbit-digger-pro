@@ -71,18 +71,6 @@ impl AsyncWrite for TrojanTcp {
     ) -> task::Poll<io::Result<()>> {
         Pin::new(&mut self.stream).poll_shutdown(cx)
     }
-
-    fn poll_write_vectored(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-        bufs: &[io::IoSlice<'_>],
-    ) -> task::Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.stream).poll_write_vectored(cx, bufs)
-    }
-
-    fn is_write_vectored(&self) -> bool {
-        self.stream.is_write_vectored()
-    }
 }
 
 #[async_trait]
