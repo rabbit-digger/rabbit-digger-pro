@@ -326,7 +326,13 @@ impl AsyncWrite for WrapTcpStream {
         cx: &mut task::Context<'_>,
         bufs: &[io::IoSlice<'_>],
     ) -> Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+        match Pin::new(&mut self.inner).poll_write_vectored(cx, bufs) {
+            Poll::Ready(Ok(s)) => {
+                self.conn.send(EventType::Outbound(s as u64));
+                Ok(s).into()
+            }
+            r => r,
+        }
     }
 
     fn is_write_vectored(&self) -> bool {
