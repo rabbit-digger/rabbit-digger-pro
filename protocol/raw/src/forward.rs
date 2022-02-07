@@ -7,7 +7,7 @@ use rd_interface::{Arc, Context, IntoAddress, Net, Result};
 use rd_std::util::{connect_tcp, forward_udp};
 use tokio::{select, spawn};
 use tokio_smoltcp::{
-    smoltcp::wire::{IpProtocol, IpVersion},
+    smoltcp::wire::{IpCidr, IpProtocol, IpVersion},
     Net as SmoltcpNet, RawSocket, TcpListener,
 };
 
@@ -18,9 +18,15 @@ mod source;
 struct Forward {
     net: Net,
     map: MapTable,
+    ip_cidr: IpCidr,
 }
 
-pub async fn forward_net(net: Net, smoltcp_net: Arc<SmoltcpNet>, map: MapTable) -> io::Result<()> {
+pub async fn forward_net(
+    net: Net,
+    smoltcp_net: Arc<SmoltcpNet>,
+    map: MapTable,
+    ip_cidr: IpCidr,
+) -> io::Result<()> {
     let tcp_listener = smoltcp_net
         .tcp_bind(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 1).into())
         .await?;
@@ -28,7 +34,7 @@ pub async fn forward_net(net: Net, smoltcp_net: Arc<SmoltcpNet>, map: MapTable) 
         .raw_socket(IpVersion::Ipv4, IpProtocol::Udp)
         .await?;
 
-    let forward = Forward { net, map };
+    let forward = Forward { net, map, ip_cidr };
 
     let tcp_task = forward.serve_tcp(tcp_listener);
     let udp_task = forward.serve_udp(raw_socket);
@@ -63,7 +69,7 @@ impl Forward {
         }
     }
     async fn serve_udp(&self, raw: RawSocket) -> Result<()> {
-        let source = source::Source::new(raw);
+        let source = source::Source::new(raw, self.ip_cidr);
 
         forward_udp::forward_udp(source, self.net.clone()).await?;
 

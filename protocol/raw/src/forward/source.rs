@@ -12,7 +12,7 @@ use tokio_smoltcp::{
     smoltcp::{
         self,
         phy::ChecksumCapabilities,
-        wire::{IpProtocol, Ipv4Address, Ipv4Packet, Ipv4Repr, UdpPacket, UdpRepr},
+        wire::{IpCidr, IpProtocol, Ipv4Address, Ipv4Packet, Ipv4Repr, UdpPacket, UdpRepr},
     },
     RawSocket,
 };
@@ -21,14 +21,16 @@ pub struct Source {
     raw: RawSocket,
     recv_buf: Box<[u8]>,
     send_buf: Option<Vec<u8>>,
+    ip_cidr: IpCidr,
 }
 
 impl Source {
-    pub fn new(raw: RawSocket) -> Source {
+    pub fn new(raw: RawSocket, ip_cidr: IpCidr) -> Source {
         Source {
             raw,
             recv_buf: Box::new([0u8; 65536]),
             send_buf: None,
+            ip_cidr,
         }
     }
 }
@@ -40,13 +42,32 @@ impl Stream for Source {
         mut self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
     ) -> task::Poll<Option<Self::Item>> {
-        let Source { raw, recv_buf, .. } = &mut *self;
+        let Source {
+            raw,
+            recv_buf,
+            ip_cidr,
+            ..
+        } = &mut *self;
 
         let (from, to, data) = loop {
             let size = ready!(raw.poll_recv(cx, recv_buf))?;
 
             match parse_udp(&recv_buf[..size]) {
-                Ok(v) => break v,
+                Ok(v) => {
+                    let broadcast = match ip_cidr {
+                        IpCidr::Ipv4(v4) => {
+                            v4.broadcast().map(Into::into).map(std::net::IpAddr::V4)
+                        }
+                        _ => None,
+                    };
+
+                    let to = v.1;
+                    if broadcast == Some(to.ip()) || to.ip().is_multicast() {
+                        continue;
+                    }
+
+                    break v;
+                }
                 _ => {}
             };
         };

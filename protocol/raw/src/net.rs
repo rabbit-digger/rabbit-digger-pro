@@ -68,7 +68,12 @@ impl RawNet {
             let map = device.get_map();
             let smoltcp_net = Arc::new(SmoltcpNet::new(device, net_config));
 
-            forward_handle = Some(tokio::spawn(forward_net(net, smoltcp_net.clone(), map)));
+            forward_handle = Some(tokio::spawn(forward_net(
+                net,
+                smoltcp_net.clone(),
+                map,
+                ip_cidr,
+            )));
             smoltcp_net
         } else {
             Arc::new(SmoltcpNet::new(device, net_config))

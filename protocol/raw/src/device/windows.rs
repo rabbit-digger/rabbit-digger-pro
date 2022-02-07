@@ -43,18 +43,14 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<ChannelCapture> {
         .get_adapter_index()
         .map_err(|_| rd_interface::Error::other("Failed to get adapter index"))?;
 
-    let mut cmds = Vec::<String>::new();
-    cmds.push(format!("set interface {} metric=1", wintun_adapter_index));
-    cmds.push(format!(
+    run_netsh(format!("set interface {} metric=250", wintun_adapter_index))?;
+    run_netsh(format!(
         "set address {} static {}/{} gateway={} store=active",
         wintun_adapter_index,
         cfg.addr,
         cfg.destination_addr.prefix_len(),
         cfg.destination_addr.address(),
-    ));
-    for cmd in cmds.iter() {
-        run_netsh(cmd)?;
-    }
+    ))?;
 
     let recv = move |tx: Sender<io::Result<Vec<u8>>>| loop {
         let p = match s1.receive_blocking().map(|p| p.bytes().to_vec()) {
@@ -94,7 +90,7 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<ChannelCapture> {
     Ok(dev)
 }
 
-fn run_netsh(cmd_str: &str) -> Result<()> {
+fn run_netsh(cmd_str: String) -> Result<()> {
     let mut cmd = Command::new("netsh");
     cmd.arg("interface").arg("ip").args(cmd_str.split(" "));
     let output = cmd.stdout(Stdio::inherit()).output().map_err(map_other)?;
