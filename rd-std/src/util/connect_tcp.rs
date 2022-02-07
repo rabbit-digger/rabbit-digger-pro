@@ -104,9 +104,9 @@ enum TransferState {
     Done(u64),
 }
 
-struct CopyBidirectional<'a, A: ?Sized, B: ?Sized> {
-    a: &'a mut A,
-    b: &'a mut B,
+struct CopyBidirectional<A, B> {
+    a: A,
+    b: B,
     a_to_b: TransferState,
     b_to_a: TransferState,
 }
@@ -140,10 +140,10 @@ where
     }
 }
 
-impl<'a, A, B> Future for CopyBidirectional<'a, A, B>
+impl<A, B> Future for CopyBidirectional<A, B>
 where
-    A: AsyncRead + AsyncWrite + Unpin + ?Sized,
-    B: AsyncRead + AsyncWrite + Unpin + ?Sized,
+    A: AsyncRead + AsyncWrite + Unpin,
+    B: AsyncRead + AsyncWrite + Unpin,
 {
     type Output = io::Result<()>;
 
@@ -170,18 +170,20 @@ where
 #[instrument(err, skip(a, b), fields(ctx = ?_ctx))]
 pub async fn connect_tcp<A, B>(
     _ctx: &mut rd_interface::Context,
-    mut a: A,
-    mut b: B,
+    a: A,
+    b: B,
 ) -> Result<(), std::io::Error>
 where
-    A: AsyncRead + AsyncWrite + Unpin,
-    B: AsyncRead + AsyncWrite + Unpin,
+    A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    B: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    CopyBidirectional {
-        a: &mut a,
-        b: &mut b,
+    tokio::spawn(CopyBidirectional {
+        a,
+        b,
         a_to_b: TransferState::Running(CopyBuffer::new(8192)),
         b_to_a: TransferState::Running(CopyBuffer::new(8192)),
-    }
-    .await
+    })
+    .await??;
+
+    Ok(())
 }

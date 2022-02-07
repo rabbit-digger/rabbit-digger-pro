@@ -13,11 +13,17 @@ pub async fn connect_udp(
     let (tx1, rx1) = udp_channel.split();
     let (tx2, rx2) = udp.split();
 
-    let send = rx1.forward(tx2.buffer(128));
-    let recv = rx2.forward(tx1.buffer(128));
+    let mut send = tokio::spawn(rx1.forward(tx2.buffer(128)));
+    let mut recv = tokio::spawn(rx2.forward(tx1.buffer(128)));
 
-    select! {
-        r = send => r,
-        r = recv => r,
-    }
+    let result = select! {
+        r = &mut send => r,
+        r = &mut recv => r,
+    };
+    result??;
+
+    send.abort();
+    recv.abort();
+
+    Ok(())
 }
