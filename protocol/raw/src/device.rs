@@ -26,21 +26,25 @@ mod windows;
 use crate::device::windows::get_tun;
 
 pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncDevice)> {
+    let destination_addr = IpCidr::from_str(&config.ip_addr)
+        .map_err(|_| Error::Other("Failed to parse server_addr".into()))?;
+
     let (ethernet_address, device) = match &config.device {
         DeviceConfig::String(dev) => {
             let ethernet_address = crate::device::get_interface_info(&dev)
                 .context("Failed to get interface info")?
                 .ethernet_address;
 
-            let device = Box::new(get_by_device(pcap_device_by_name(&dev)?)?);
+            let device = Box::new(get_by_device(
+                pcap_device_by_name(&dev)?,
+                get_filter(&destination_addr),
+            )?);
 
             (ethernet_address, BoxedAsyncDevice(device))
         }
         DeviceConfig::Other(cfg) => {
             let host_addr = Ipv4Addr::from_str(&cfg.host_addr)
                 .map_err(|_| Error::Other("Failed to parse host_addr".into()))?;
-            let destination_addr = IpCidr::from_str(&config.ip_addr)
-                .map_err(|_| Error::Other("Failed to parse server_addr".into()))?;
 
             let setup = TunTapSetup {
                 name: cfg.name.clone(),
@@ -69,6 +73,13 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
     Ok((ethernet_address, device))
 }
 
+fn get_filter(ip_cidr: &IpCidr) -> Option<String> {
+    match ip_cidr {
+        IpCidr::Ipv4(v4) => Some(format!("net {}", v4.network())),
+        _ => None,
+    }
+}
+
 fn pcap_device_by_name(name: &str) -> Result<Device> {
     let mut devices = Device::list().context("Failed to list device")?;
 
@@ -90,16 +101,20 @@ fn pcap_device_by_name(name: &str) -> Result<Device> {
 }
 
 #[cfg(unix)]
-pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
+fn get_by_device(device: Device, filter: Option<String>) -> Result<impl AsyncDevice> {
     use tokio_smoltcp::device::AsyncCapture;
 
-    let cap = Capture::from_device(device.clone())
+    let mut cap = Capture::from_device(device.clone())
         .context("Failed to capture device")?
         .promisc(true)
         .immediate_mode(true)
         .timeout(5)
         .open()
         .context("Failed to open device")?;
+
+    if let Some(filter) = filter {
+        cap.filter(&filter, true).context("Failed to add filter")?;
+    }
 
     fn map_err(e: pcap::Error) -> io::Error {
         match e {
@@ -134,7 +149,7 @@ pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
 }
 
 #[cfg(windows)]
-pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
+fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
     use tokio::sync::mpsc::{Receiver, Sender};
     use tokio_smoltcp::device::ChannelCapture;
 
@@ -152,6 +167,13 @@ pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
         .timeout(5)
         .open()
         .context("Failed to open device")?;
+
+    if let Some(filter) = filter {
+        cap.filter(&filter, true).context("Failed to add filter")?;
+    }
+    // don't accept any packets from the send device
+    send.filter("less 0", true)
+        .context("Failed to add filter")?;
 
     let recv = move |tx: Sender<io::Result<Vec<u8>>>| loop {
         let p = match cap.next().map(|p| p.to_vec()) {
@@ -180,4 +202,17 @@ pub fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
 
     let capture = ChannelCapture::new(recv, send, caps);
     Ok(capture)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio_smoltcp::smoltcp::wire::Ipv4Address;
+
+    #[test]
+    fn test_get_filter() {
+        let filter = get_filter(&IpCidr::new(Ipv4Address::new(192, 168, 1, 1).into(), 24));
+
+        assert_eq!(filter, Some("net 192.168.1.0/24".to_string()));
+    }
 }
