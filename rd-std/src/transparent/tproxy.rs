@@ -58,7 +58,7 @@ impl TProxyServer {
     async fn serve_udp(&self, listener: TransparentUdp) -> Result<()> {
         let source = UdpSource::new(listener, self.cfg.mark);
 
-        forward_udp(source, self.net.clone()).await?;
+        forward_udp(source, self.net.clone(), None).await?;
 
         Ok(())
     }
