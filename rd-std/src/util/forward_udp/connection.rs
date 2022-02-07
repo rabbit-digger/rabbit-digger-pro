@@ -19,8 +19,9 @@ impl UdpConnection {
         net: Net,
         bind_from: SocketAddr,
         send_back: Sender<UdpPacket>,
+        channel_size: usize,
     ) -> UdpConnection {
-        let (send_udp, rx) = channel(1024);
+        let (send_udp, rx) = channel(channel_size);
         let back_channel = BackChannel::new(bind_from, send_back, rx).into_dyn();
         let fut = async move {
             let bind_addr: Address = bind_from.into();

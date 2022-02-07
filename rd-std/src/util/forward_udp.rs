@@ -44,14 +44,15 @@ struct ForwardUdp<S> {
     recv_back: Receiver<UdpPacket>,
     buf: Option<UdpPacket>,
     is_flushing: bool,
+    channel_size: usize,
 }
 
 impl<S> ForwardUdp<S>
 where
     S: RawUdpSource,
 {
-    fn new(s: S, net: Net) -> Self {
-        let (tx, rx) = channel(1024);
+    fn new(s: S, net: Net, channel_size: usize) -> Self {
+        let (tx, rx) = channel(channel_size);
         ForwardUdp {
             s,
             net,
@@ -60,6 +61,7 @@ where
             recv_back: rx,
             buf: None,
             is_flushing: false,
+            channel_size,
         }
     }
 }
@@ -71,9 +73,10 @@ where
     fn get(&mut self, bind_from: SocketAddr) -> &mut UdpConnection {
         let net = &self.net;
         let send_back = self.send_back.clone();
+        let channel_size = self.channel_size;
         self.conn.entry(bind_from).or_insert_with(|| {
             let net = net.clone();
-            UdpConnection::new(net, bind_from, send_back)
+            UdpConnection::new(net, bind_from, send_back, channel_size)
         })
     }
     fn poll_recv_packet(&mut self, cx: &mut task::Context<'_>) -> task::Poll<io::Result<()>> {
@@ -132,9 +135,9 @@ where
     }
 }
 
-pub async fn forward_udp<S>(s: S, net: Net) -> io::Result<()>
+pub async fn forward_udp<S>(s: S, net: Net, channel_size: Option<usize>) -> io::Result<()>
 where
     S: RawUdpSource,
 {
-    ForwardUdp::new(s, net).await
+    ForwardUdp::new(s, net, channel_size.unwrap_or(1024)).await
 }
