@@ -5,15 +5,12 @@ use std::{
     task::{Context, Poll},
 };
 
-use crate::config::Layer;
+use crate::config::TunTapSetup;
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use rd_interface::{error::map_other, Result};
 use tokio_smoltcp::{
     device::{AsyncDevice, DeviceCapabilities, Packet},
-    smoltcp::{
-        phy::Checksum,
-        wire::{IpAddress, IpCidr},
-    },
+    smoltcp::{phy::Checksum, wire::IpAddress},
 };
 use tokio_util::codec::Framed;
 use tun_crate::{create_as_async, Configuration, Device, TunPacket, TunPacketCodec};
@@ -22,14 +19,6 @@ pub struct TunAsyncDevice {
     device_name: String,
     dev: Framed<workaround::PatchAsyncDevice, TunPacketCodec>,
     caps: DeviceCapabilities,
-}
-
-pub struct TunTapSetup {
-    pub name: Option<String>,
-    pub addr: Ipv4Addr,
-    pub destination_addr: IpCidr,
-    pub mtu: usize,
-    pub layer: Layer,
 }
 
 pub fn get_tun(cfg: TunTapSetup) -> Result<TunAsyncDevice> {

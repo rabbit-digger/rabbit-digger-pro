@@ -173,18 +173,6 @@ impl AsyncWrite for Connect {
     ) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
     }
-
-    fn poll_write_vectored(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bufs: &[io::IoSlice<'_>],
-    ) -> Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
-    }
-
-    fn is_write_vectored(&self) -> bool {
-        self.inner.is_write_vectored()
-    }
 }
 
 #[async_trait]
