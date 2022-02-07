@@ -66,6 +66,7 @@ impl SSServer {
                 udp_listener,
             ),
             self.net.clone(),
+            None,
         )
         .await?;
 

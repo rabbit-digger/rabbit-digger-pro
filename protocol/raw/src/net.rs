@@ -16,7 +16,6 @@ use rd_interface::{
 };
 use tokio::{sync::Mutex, task::JoinHandle};
 use tokio_smoltcp::{
-    device::AsyncDevice,
     smoltcp::wire::{IpAddress, IpCidr},
     BufferSize, Net as SmoltcpNet, NetConfig,
 };
@@ -63,8 +62,7 @@ impl RawNet {
         let mut forward_handle = None;
 
         let smoltcp_net = if config.forward {
-            let layer = device.capabilities().medium.into();
-            let device = GatewayDevice::new(device, ethernet_addr, 100, ip_cidr, ip_addr, layer);
+            let device = GatewayDevice::new(device, ethernet_addr, 100, ip_cidr, ip_addr);
             let map = device.get_map();
             let smoltcp_net = Arc::new(SmoltcpNet::new(device, net_config));
 

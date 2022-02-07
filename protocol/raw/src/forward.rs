@@ -71,7 +71,7 @@ impl Forward {
     async fn serve_udp(&self, raw: RawSocket) -> Result<()> {
         let source = source::Source::new(raw, self.ip_cidr);
 
-        forward_udp::forward_udp(source, self.net.clone()).await?;
+        forward_udp::forward_udp(source, self.net.clone(), None).await?;
 
         Ok(())
     }

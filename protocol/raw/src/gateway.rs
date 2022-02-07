@@ -36,15 +36,18 @@ pub struct GatewayDevice<I> {
     layer: Layer,
 }
 
-impl<I> GatewayDevice<I> {
+impl<I> GatewayDevice<I>
+where
+    I: AsyncDevice,
+{
     pub fn new(
         inner: I,
         ethernet_addr: EthernetAddress,
         lru_size: usize,
         ip_cidr: IpCidr,
         override_v4: SocketAddrV4,
-        layer: Layer,
     ) -> GatewayDevice<I> {
+        let layer = inner.capabilities().medium.into();
         GatewayDevice {
             inner,
             ethernet_addr,
