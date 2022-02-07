@@ -1,6 +1,6 @@
 use std::{
     io,
-    net::{SocketAddr, SocketAddrV4},
+    net::{IpAddr, SocketAddr, SocketAddrV4},
     pin::Pin,
     task,
 };
@@ -55,14 +55,15 @@ impl Stream for Source {
             match parse_udp(&recv_buf[..size]) {
                 Ok(v) => {
                     let broadcast = match ip_cidr {
-                        IpCidr::Ipv4(v4) => {
-                            v4.broadcast().map(Into::into).map(std::net::IpAddr::V4)
-                        }
+                        IpCidr::Ipv4(v4) => v4.broadcast().map(Into::into).map(IpAddr::V4),
                         _ => None,
                     };
 
                     let to = v.1;
-                    if broadcast == Some(to.ip()) || to.ip().is_multicast() {
+                    if broadcast == Some(to.ip())
+                        || to.ip().is_multicast()
+                        || to.ip() == IpAddr::from(ip_cidr.address())
+                    {
                         continue;
                     }
 
