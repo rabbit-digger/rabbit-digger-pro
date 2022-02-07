@@ -13,6 +13,7 @@ net:
   resolve_raw:
     type: resolve
     net: raw
+    resolve_net: local
     ipv6: false
 server:
   mixed:

@@ -1,6 +1,6 @@
-# raw server can be a gateway of a Switch
+# raw net can be a gateway of a Switch
 
-server:
+net:
   gateway:
     type: raw
     device: eth0
@@ -10,3 +10,11 @@ server:
     ethernet_addr: 70:85:C2:71:43:1D
     # you can change net to any protocol that support UDP.
     net: local
+    # any device in `ip_addr` subnet can use net above as a real net.
+    forward: true
+server:
+  # a echo server to keep rabbit-digger-pro running
+  echo:
+    type: echo
+    bind: 0.0.0.0:12345
+    net: gateway
