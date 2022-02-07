@@ -23,7 +23,6 @@
 //! ```
 use std::io::{self, Cursor, ErrorKind};
 
-use byte_string::ByteStr;
 use bytes::{BufMut, BytesMut};
 use shadowsocks::crypto::v1::{random_iv_or_salt, Cipher, CipherCategory, CipherKind};
 use socks5_protocol::{sync::FromIO, Address};
@@ -74,8 +73,6 @@ fn encrypt_payload_stream(
 
     if iv_len > 0 {
         random_iv_or_salt(iv);
-
-        tracing::trace!("UDP packet generated stream iv {:?}", ByteStr::new(iv));
     }
 
     let mut cipher = Cipher::new(method, key, &iv);
@@ -107,8 +104,6 @@ fn encrypt_payload_aead(
 
     if salt_len > 0 {
         random_iv_or_salt(salt);
-
-        tracing::trace!("UDP packet generated aead salt {:?}", ByteStr::new(salt));
     }
 
     let mut cipher = Cipher::new(method, key, salt);
@@ -169,7 +164,6 @@ fn decrypt_payload_stream(
 
     let (iv, data) = payload.split_at_mut(iv_len);
 
-    tracing::trace!("UDP packet got stream IV {:?}", ByteStr::new(iv));
     let mut cipher = Cipher::new(method, key, iv);
 
     assert!(cipher.decrypt_packet(data));
@@ -196,8 +190,6 @@ fn decrypt_payload_aead(
     }
 
     let (salt, data) = payload.split_at_mut(salt_len);
-
-    tracing::trace!("UDP packet got AEAD salt {:?}", ByteStr::new(salt));
 
     let mut cipher = Cipher::new(method, &key, &salt);
     let tag_len = cipher.tag_len();
