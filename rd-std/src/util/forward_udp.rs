@@ -1,6 +1,5 @@
 use std::{
     io,
-    mem::replace,
     net::SocketAddr,
     pin::Pin,
     task::{self, Poll},
@@ -36,14 +35,20 @@ pub trait RawUdpSource:
 {
 }
 
+enum SendState {
+    WaitReady,
+    Recv,
+    Flush,
+}
+
 struct ForwardUdp<S> {
     s: S,
     net: Net,
     conn: LruCache<SocketAddr, UdpConnection>,
     send_back: Sender<UdpPacket>,
     recv_back: Receiver<UdpPacket>,
-    buf: Option<UdpPacket>,
-    is_flushing: bool,
+    state: SendState,
+    need_flush: bool,
     channel_size: usize,
 }
 
@@ -59,8 +64,8 @@ where
             conn: LruCache::with_expiry_duration_and_capacity(Duration::from_secs(30), 256),
             send_back: tx,
             recv_back: rx,
-            buf: None,
-            is_flushing: false,
+            state: SendState::WaitReady,
+            need_flush: false,
             channel_size,
         }
     }
@@ -79,11 +84,11 @@ where
             UdpConnection::new(net, bind_from, send_back, channel_size)
         })
     }
-    fn poll_recv_packet(&mut self, cx: &mut task::Context<'_>) -> task::Poll<io::Result<()>> {
+    fn poll_recv_packet(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         loop {
             let item = match ready!(self.s.poll_next_unpin(cx)) {
                 Some(result) => result?,
-                None => return task::Poll::Ready(Ok(())),
+                None => return Poll::Ready(Ok(())),
             };
 
             let UdpPacket { data, from, to } = item;
@@ -93,25 +98,37 @@ where
             }
         }
     }
-    fn poll_send_back(&mut self, cx: &mut task::Context<'_>) -> task::Poll<io::Result<()>> {
+    fn poll_send_back(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         loop {
-            if self.is_flushing {
-                ready!(self.s.poll_flush_unpin(cx)?);
-                self.is_flushing = false;
-            }
-            match &self.buf {
-                Some(_) => {
+            match self.state {
+                SendState::WaitReady => {
                     ready!(self.s.poll_ready_unpin(cx))?;
-                    let packet = replace(&mut self.buf, None).unwrap();
-                    self.s.start_send_unpin(packet)?;
-                    self.is_flushing = true;
+
+                    self.state = SendState::Recv;
                 }
-                None => {
-                    let packet = match ready!(self.recv_back.poll_recv(cx)) {
-                        Some(result) => result,
-                        None => return Poll::Ready(Ok(())),
+                SendState::Recv => {
+                    let packet = match self.recv_back.poll_recv(cx) {
+                        Poll::Ready(Some(result)) => result,
+                        Poll::Ready(None) => return Poll::Ready(Ok(())),
+                        Poll::Pending => {
+                            if self.need_flush {
+                                self.state = SendState::Flush;
+                                continue;
+                            } else {
+                                return Poll::Pending;
+                            }
+                        }
                     };
-                    self.buf = Some(packet);
+                    self.s.start_send_unpin(packet)?;
+                    self.need_flush = true;
+
+                    self.state = SendState::WaitReady;
+                }
+                SendState::Flush => {
+                    ready!(self.s.poll_flush_unpin(cx)?);
+                    self.need_flush = false;
+
+                    self.state = SendState::WaitReady;
                 }
             }
         }
@@ -124,7 +141,7 @@ where
 {
     type Output = io::Result<()>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         let a_to_b = self.poll_recv_packet(cx)?;
         let b_to_a = self.poll_send_back(cx)?;
 
@@ -139,5 +156,5 @@ pub async fn forward_udp<S>(s: S, net: Net, channel_size: Option<usize>) -> io::
 where
     S: RawUdpSource,
 {
-    ForwardUdp::new(s, net, channel_size.unwrap_or(1024)).await
+    ForwardUdp::new(s, net, channel_size.unwrap_or(128)).await
 }
