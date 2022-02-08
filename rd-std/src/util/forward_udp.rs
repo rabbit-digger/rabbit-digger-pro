@@ -9,7 +9,7 @@ use std::{
 use self::connection::UdpConnection;
 use futures::{ready, Future, Sink, SinkExt, Stream, StreamExt};
 use lru_time_cache::LruCache;
-use rd_interface::{Bytes, Net};
+use rd_interface::{Address, Bytes, Net};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 mod connection;
@@ -81,7 +81,9 @@ where
         let channel_size = self.channel_size;
         self.conn.entry(bind_from).or_insert_with(|| {
             let net = net.clone();
-            UdpConnection::new(net, bind_from, send_back, channel_size)
+            let bind_addr = Address::any_addr_port(&bind_from);
+
+            UdpConnection::new(net, bind_from, bind_addr, send_back, channel_size)
         })
     }
     fn poll_recv_packet(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {

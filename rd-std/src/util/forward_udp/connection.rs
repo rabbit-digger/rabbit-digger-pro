@@ -18,17 +18,15 @@ impl UdpConnection {
     pub(super) fn new(
         net: Net,
         bind_from: SocketAddr,
+        bind_addr: Address,
         send_back: Sender<UdpPacket>,
         channel_size: usize,
     ) -> UdpConnection {
         let (send_udp, rx) = channel(channel_size);
         let back_channel = BackChannel::new(bind_from, send_back, rx).into_dyn();
         let fut = async move {
-            let bind_addr: Address = bind_from.into();
             let mut ctx = Context::from_socketaddr(bind_from);
-            let udp = net
-                .udp_bind(&mut ctx, &bind_addr.to_any_addr_port()?)
-                .await?;
+            let udp = net.udp_bind(&mut ctx, &bind_addr).await?;
 
             connect_udp(&mut ctx, back_channel, udp).await?;
 

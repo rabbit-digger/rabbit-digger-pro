@@ -126,11 +126,25 @@ impl INet for Socks5Client {
         ctx: &mut rd_interface::Context,
         addr: &rd_interface::Address,
     ) -> Result<UdpSocket> {
-        let mut socket = self.net.tcp_connect(ctx, &self.server).await?;
+        let server_addr = self
+            .net
+            .lookup_host(&self.server)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                "Failed to lookup domain",
+            ))?;
+
+        let mut socket = self.net.tcp_connect(ctx, &server_addr.into()).await?;
 
         let req = CommandRequest::udp_associate(ra2sa(addr.clone().into_address()?));
         let resp = self.send_command(&mut socket, req).await?;
-        let client = self.net.udp_bind(ctx, &addr).await?;
+        let client = self
+            .net
+            .udp_bind(ctx, &rd_interface::Address::any_addr_port(&server_addr))
+            .await?;
 
         let addr = resp.address.to_socket_addr().map_err(map_err)?;
 
