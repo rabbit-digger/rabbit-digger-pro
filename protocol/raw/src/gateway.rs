@@ -15,7 +15,10 @@ use smoltcp::wire::{
 };
 use tokio_smoltcp::{
     device::{AsyncDevice, DeviceCapabilities, Packet},
-    smoltcp::{self, wire::IpCidr},
+    smoltcp::{
+        self,
+        wire::{ArpOperation, ArpPacket, IpCidr},
+    },
 };
 
 #[derive(Debug)]
@@ -119,6 +122,13 @@ where
 
                 match frame.ethertype() {
                     EthernetProtocol::Ipv4 => process_ip(frame.payload()),
+                    EthernetProtocol::Arp => {
+                        if src == self.ethernet_addr && dst.is_broadcast() {
+                            Action::Rewrite
+                        } else {
+                            Action::Pass
+                        }
+                    }
                     _ => return Action::Pass,
                 }
             }
@@ -136,16 +146,43 @@ where
             Action::Drop => None,
         }
     }
-    fn map_out(&self, packet: Packet) -> Option<Packet> {
+    fn map_out(&self, mut packet: Packet) -> Option<Packet> {
         match self.accept_packet(&packet) {
             Action::Pass => Some(packet),
-            Action::Rewrite => Some(self.payload(packet, |mut ipv4| {
-                if let Some(src) = get_dst_addr(&mut ipv4).map(|d| self.map.get(&d)).flatten() {
-                    set_src_addr(&mut ipv4, src).ok();
-                }
-            })),
+            Action::Rewrite => {
+                let _ = self.correct_arp_request(&mut packet);
+
+                Some(self.payload(packet, |mut ipv4| {
+                    if let Some(src) = get_dst_addr(&mut ipv4).map(|d| self.map.get(&d)).flatten() {
+                        set_src_addr(&mut ipv4, src).ok();
+                    }
+                }))
+            }
             Action::Drop => None,
         }
+    }
+
+    fn correct_arp_request(&self, packet: &mut Vec<u8>) -> smoltcp::Result<()> {
+        match self.layer {
+            Layer::L2 => {
+                // SAFETY: we know that the packet is a valid EthernetFrame
+                let mut frame = EthernetFrame::new_unchecked(packet);
+                match frame.ethertype() {
+                    EthernetProtocol::Arp => {
+                        let mut arp_packet = ArpPacket::new_checked(frame.payload_mut())?;
+                        if arp_packet.operation() == ArpOperation::Request
+                            && arp_packet.source_hardware_addr() == self.ethernet_addr.as_bytes()
+                        {
+                            arp_packet
+                                .set_source_protocol_addr(&self.override_v4.ip().octets()[..]);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        };
+        Ok(())
     }
 }
 
