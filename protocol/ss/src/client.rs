@@ -1,3 +1,5 @@
+use std::io;
+
 use super::wrapper::{Cipher, WrapAddress, WrapSSTcp, WrapSSUdp};
 use rd_interface::{
     async_trait, prelude::*, registry::NetRef, Address, INet, IntoDyn, Net, Result, TcpStream,
@@ -55,6 +57,7 @@ impl INet for SSNet {
         addr: &Address,
     ) -> Result<TcpStream> {
         let stream = self.net.tcp_connect(ctx, &self.addr).await?;
+
         let client = ProxyClientStream::from_stream(
             self.context.clone(),
             stream,
@@ -64,13 +67,31 @@ impl INet for SSNet {
         Ok(WrapSSTcp(client).into_dyn())
     }
 
-    async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
+    async fn udp_bind(
+        &self,
+        ctx: &mut rd_interface::Context,
+        _addr: &Address,
+    ) -> Result<UdpSocket> {
         if !self.udp {
             return Err(NOT_ENABLED);
         }
 
-        let socket = self.net.udp_bind(ctx, &addr.to_any_addr_port()?).await?;
-        let udp = WrapSSUdp::new(socket, &self.cfg, self.addr.clone());
+        let server_addr = self
+            .net
+            .lookup_host(&self.addr)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                "Failed to lookup domain",
+            ))?;
+
+        let socket = self
+            .net
+            .udp_bind(ctx, &Address::from(server_addr).to_any_addr_port()?)
+            .await?;
+        let udp = WrapSSUdp::new(socket, &self.cfg, server_addr);
         Ok(udp.into_dyn())
     }
 }

@@ -163,11 +163,11 @@ pub struct WrapSSUdp {
     socket: UdpSocket,
     method: CipherKind,
     key: Box<[u8]>,
-    server_addr: RDAddress,
+    server_addr: SocketAddr,
 }
 
 impl WrapSSUdp {
-    pub fn new(socket: UdpSocket, svr_cfg: &ServerConfig, server_addr: RDAddress) -> Self {
+    pub fn new(socket: UdpSocket, svr_cfg: &ServerConfig, server_addr: SocketAddr) -> Self {
         let key = svr_cfg.key().to_vec().into_boxed_slice();
         let method = svr_cfg.method();
 
@@ -225,7 +225,7 @@ impl Sink<(Bytes, RDAddress)> for WrapSSUdp {
 
         let server_addr = self.server_addr.clone();
         self.socket
-            .start_send_unpin((send_buf.freeze(), server_addr))
+            .start_send_unpin((send_buf.freeze(), server_addr.into()))
     }
 
     fn poll_flush(
