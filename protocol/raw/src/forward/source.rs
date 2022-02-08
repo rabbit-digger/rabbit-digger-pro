@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     io,
     net::{IpAddr, SocketAddr, SocketAddrV4},
     pin::Pin,
@@ -17,10 +18,12 @@ use tokio_smoltcp::{
     RawSocket,
 };
 
+const SEND_QUEUE_SIZE: usize = 128;
+
 pub struct Source {
     raw: RawSocket,
     recv_buf: Box<[u8]>,
-    send_buf: Option<Vec<u8>>,
+    send_buf: VecDeque<Vec<u8>>,
     ip_cidr: IpCidr,
 }
 
@@ -29,7 +32,7 @@ impl Source {
         Source {
             raw,
             recv_buf: Box::new([0u8; 65536]),
-            send_buf: None,
+            send_buf: VecDeque::with_capacity(SEND_QUEUE_SIZE),
             ip_cidr,
         }
     }
@@ -86,11 +89,11 @@ impl Sink<forward_udp::UdpPacket> for Source {
         self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
     ) -> task::Poll<Result<(), Self::Error>> {
-        if self.send_buf.is_some() {
-            return self.poll_flush(cx);
+        if self.send_buf.len() < SEND_QUEUE_SIZE {
+            Ok(()).into()
+        } else {
+            self.poll_flush(cx)
         }
-
-        Ok(()).into()
     }
 
     fn start_send(
@@ -98,7 +101,7 @@ impl Sink<forward_udp::UdpPacket> for Source {
         forward_udp::UdpPacket { from, to, data }: forward_udp::UdpPacket,
     ) -> Result<(), Self::Error> {
         if let Some(ip_packet) = pack_udp(from, to, &data) {
-            self.send_buf = Some(ip_packet);
+            self.send_buf.push_back(ip_packet);
         } else {
             tracing::debug!("Unsupported src/dst");
         }
@@ -111,12 +114,9 @@ impl Sink<forward_udp::UdpPacket> for Source {
     ) -> task::Poll<Result<(), Self::Error>> {
         let Source { raw, send_buf, .. } = &mut *self;
 
-        match send_buf {
-            Some(buf) => {
-                ready!(raw.poll_send(cx, buf))?;
-                *send_buf = None;
-            }
-            None => {}
+        while let Some(buf) = send_buf.get(0) {
+            ready!(raw.poll_send(cx, buf))?;
+            send_buf.pop_front();
         }
 
         Ok(()).into()
