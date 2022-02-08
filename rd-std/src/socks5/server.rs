@@ -1,5 +1,6 @@
 use super::common::{pack_udp, parse_udp, sa2ra};
 use crate::util::{connect_tcp, connect_udp};
+use anyhow::Context as AnyhowContext;
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use rd_interface::{
     async_trait, Address as RdAddr, Address as RDAddr, Bytes, BytesMut, Context, IServer,
@@ -16,7 +17,7 @@ use std::{
     sync::Arc,
     task,
 };
-use tokio::io::{split, AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncWriteExt, BufWriter};
 
 struct Socks5ServerConfig {
     net: Net,
@@ -29,25 +30,45 @@ pub struct Socks5Server {
 }
 
 impl Socks5Server {
-    pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
-        let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
-        let Socks5ServerConfig { net, listen_net } = &*self.cfg;
-        let local_ip = socket.local_addr().await?.ip();
-        let (mut rx, tx) = split(socket);
-        let mut tx = BufWriter::with_capacity(512, tx);
-
-        let version = Version::read(&mut rx).await?;
-        let auth_req = AuthRequest::read(&mut rx).await?;
+    async fn handle_command_request(
+        &self,
+        mut socket: &mut BufWriter<TcpStream>,
+    ) -> anyhow::Result<CommandRequest> {
+        let version = Version::read(&mut socket).await?;
+        let auth_req = AuthRequest::read(&mut socket).await?;
 
         let method = auth_req.select_from(&[AuthMethod::Noauth]);
         let auth_resp = AuthResponse::new(method);
         // TODO: do auth here
 
-        version.write(&mut tx).await?;
-        auth_resp.write(&mut tx).await?;
-        tx.flush().await?;
+        version.write(&mut socket).await?;
+        auth_resp.write(&mut socket).await?;
+        socket.flush().await?;
 
-        let cmd_req = CommandRequest::read(&mut rx).await?;
+        let cmd_req = CommandRequest::read(&mut socket).await?;
+
+        Ok(cmd_req)
+    }
+    async fn response_command_error(
+        &self,
+        mut socket: &mut BufWriter<TcpStream>,
+        e: impl std::convert::TryInto<io::Error>,
+    ) -> anyhow::Result<()> {
+        CommandResponse::error(e).write(&mut socket).await?;
+        socket.flush().await?;
+        return Ok(());
+    }
+    pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
+        let mut socket = BufWriter::with_capacity(512, socket);
+
+        let default_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
+        let Socks5ServerConfig { net, listen_net } = &*self.cfg;
+        let local_ip = socket.get_ref().local_addr().await?.ip();
+
+        let cmd_req = self
+            .handle_command_request(&mut socket)
+            .await
+            .context("handle command request")?;
 
         match cmd_req.command {
             Command::Connect => {
@@ -55,41 +76,33 @@ impl Socks5Server {
                 let ctx = &mut Context::from_socketaddr(addr);
                 let out = match net.tcp_connect(ctx, &dst).await {
                     Ok(socket) => socket,
-                    Err(e) => {
-                        CommandResponse::error(e).write(&mut tx).await?;
-                        tx.flush().await?;
-                        return Ok(());
-                    }
+                    Err(e) => return self.response_command_error(&mut socket, e).await,
                 };
 
                 let addr = out.local_addr().await.unwrap_or(default_addr).into();
-                CommandResponse::success(addr).write(&mut tx).await?;
-                tx.flush().await?;
+                CommandResponse::success(addr).write(&mut socket).await?;
+                socket.flush().await.context("command response")?;
 
-                let socket = rx.unsplit(tx.into_inner());
+                let socket = socket.into_inner();
 
-                connect_tcp(ctx, out, socket).await?;
+                connect_tcp(ctx, out, socket).await.context("connect tcp")?;
             }
             Command::UdpAssociate => {
                 let dst = match cmd_req.address {
                     Address::SocketAddr(addr) => rd_interface::Address::any_addr_port(&addr),
                     _ => {
                         CommandResponse::reply_error(CommandReply::AddressTypeNotSupported)
-                            .write(&mut tx)
+                            .write(&mut socket)
                             .await?;
 
-                        tx.flush().await?;
+                        socket.flush().await?;
                         return Ok(());
                     }
                 };
                 let ctx = &mut Context::from_socketaddr(addr);
                 let out = match net.udp_bind(ctx, &dst).await {
                     Ok(socket) => socket,
-                    Err(e) => {
-                        CommandResponse::error(e).write(&mut tx).await?;
-                        tx.flush().await?;
-                        return Ok(());
-                    }
+                    Err(e) => return self.response_command_error(&mut socket, e).await,
                 };
                 let udp = listen_net
                     .udp_bind(
@@ -101,26 +114,24 @@ impl Socks5Server {
                 // success
                 let udp_port = match udp.local_addr().await {
                     Ok(a) => a.port(),
-                    Err(e) => {
-                        CommandResponse::error(e).write(&mut tx).await?;
-                        tx.flush().await?;
-                        return Ok(());
-                    }
+                    Err(e) => return self.response_command_error(&mut socket, e).await,
                 };
                 let addr: SocketAddr = (local_ip, udp_port).into();
                 let addr: Address = addr.into();
 
-                CommandResponse::success(addr).write(&mut tx).await?;
-                tx.flush().await?;
+                CommandResponse::success(addr).write(&mut socket).await?;
+                socket.flush().await.context("command response")?;
 
-                let socket = rx.unsplit(tx.into_inner());
+                let socket = socket.into_inner();
 
                 let udp_channel = Socks5UdpSocket {
                     udp,
                     _tcp: socket,
                     endpoint: None,
                 };
-                connect_udp(ctx, udp_channel.into_dyn(), out).await?;
+                connect_udp(ctx, udp_channel.into_dyn(), out)
+                    .await
+                    .context("connect udp")?;
             }
             _ => {
                 return Ok(());

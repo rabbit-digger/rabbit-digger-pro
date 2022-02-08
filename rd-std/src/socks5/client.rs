@@ -16,7 +16,7 @@ use std::{
     pin::Pin,
     task::{self, Poll},
 };
-use tokio::io::{split, AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncWriteExt, BufWriter};
 
 pub struct Socks5Client {
     server: Address,
@@ -147,25 +147,24 @@ impl Socks5Client {
         socket: &mut TcpStream,
         command_req: CommandRequest,
     ) -> Result<CommandResponse> {
-        let (mut rx, tx) = split(socket);
-        let mut tx = BufWriter::with_capacity(512, tx);
+        let mut socket = BufWriter::with_capacity(512, socket);
 
         let version = Version::V5;
         let auth_req = AuthRequest::new(vec![AuthMethod::Noauth]);
-        version.write(&mut tx).await.map_err(map_err)?;
-        auth_req.write(&mut tx).await.map_err(map_err)?;
-        tx.flush().await?;
+        version.write(&mut socket).await.map_err(map_err)?;
+        auth_req.write(&mut socket).await.map_err(map_err)?;
+        socket.flush().await?;
 
-        Version::read(&mut rx).await.map_err(map_err)?;
-        let resp = AuthResponse::read(&mut rx).await.map_err(map_err)?;
+        Version::read(&mut socket).await.map_err(map_err)?;
+        let resp = AuthResponse::read(&mut socket).await.map_err(map_err)?;
         if resp.method() != AuthMethod::Noauth {
             return Err(rd_interface::Error::Other("Auth failed".to_string().into()));
         }
 
-        command_req.write(&mut tx).await.map_err(map_err)?;
-        tx.flush().await?;
+        command_req.write(&mut socket).await.map_err(map_err)?;
+        socket.flush().await?;
 
-        let command_resp = CommandResponse::read(rx).await.map_err(map_err)?;
+        let command_resp = CommandResponse::read(socket).await.map_err(map_err)?;
 
         Ok(command_resp)
     }
