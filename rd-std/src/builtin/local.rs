@@ -6,15 +6,16 @@ use std::{
     time::Duration,
 };
 
-use futures::{ready, Future, FutureExt, Sink, SinkExt};
+use futures::{ready, Future, FutureExt, Sink, Stream};
+use lru_time_cache::LruCache;
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, impl_async_read_write, impl_stream, prelude::*, registry::NetBuilder, Address,
-    Bytes, INet, IntoDyn, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, prelude::*,
+    registry::NetBuilder, Address, Bytes, BytesMut, INet, IntoDyn, ReadBuf, Result, TcpListener,
+    TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
-use tokio_util::{codec::BytesCodec, udp::UdpFramed};
 use tracing::instrument;
 
 /// A local network.
@@ -40,6 +41,11 @@ pub struct LocalNetConfig {
 
     /// timeout of TCP connect, in seconds.
     pub connect_timeout: Option<u64>,
+
+    /// cache size of domain cache per UDP socket.
+    /// default is 16
+    /// if set to 0, disable domain cache
+    pub udp_domain_cache_size: Option<usize>,
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
@@ -47,18 +53,21 @@ enum UdpState {
     Idle,
     LookupHost {
         data: Bytes,
+        domain: String,
         fut: Mutex<BoxFuture<io::Result<Vec<SocketAddr>>>>,
     },
     Sending((Bytes, SocketAddr)),
-    Flusing,
 }
 
 pub struct LocalNet(LocalNetConfig);
 pub struct CompatTcp(pub(crate) net::TcpStream);
 pub struct Listener(net::TcpListener, LocalNetConfig);
 pub struct Udp {
-    inner: UdpFramed<BytesCodec, net::UdpSocket>,
+    inner: net::UdpSocket,
+    recv_buf: Box<[u8]>,
     state: UdpState,
+
+    domain_cache: LruCache<String, SocketAddr>,
 }
 
 impl LocalNet {
@@ -212,31 +221,29 @@ impl rd_interface::ITcpListener for Listener {
 }
 
 impl Udp {
-    fn new(socket: net::UdpSocket) -> Udp {
+    fn new(socket: net::UdpSocket, cache_size: usize) -> Udp {
         Udp {
-            inner: UdpFramed::new(socket, BytesCodec::new()),
+            inner: socket,
+            recv_buf: vec![0; UDP_BUFFER_SIZE].into_boxed_slice(),
             state: UdpState::Idle,
+            domain_cache: LruCache::with_capacity(cache_size),
         }
     }
     fn poll_send_to_ready(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
-        let Udp { inner, state } = self;
+        let Udp { inner, state, .. } = self;
 
         loop {
             match state {
                 UdpState::Idle => return Poll::Ready(Ok(())),
-                UdpState::LookupHost { data, fut } => {
+                UdpState::LookupHost { data, domain, fut } => {
                     let addr = *ready!(fut.lock().poll_unpin(cx))?
                         .first()
                         .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
+                    self.domain_cache.insert(domain.to_string(), addr);
                     *state = UdpState::Sending((data.clone(), addr))
                 }
                 UdpState::Sending((data, addr)) => {
-                    ready!(inner.poll_ready_unpin(cx))?;
-                    inner.start_send_unpin((data.clone(), *addr))?;
-                    *state = UdpState::Flusing;
-                }
-                UdpState::Flusing => {
-                    ready!(inner.poll_flush_unpin(cx))?;
+                    ready!(inner.poll_send_to(cx, &data, *addr)?);
                     *state = UdpState::Idle;
                 }
             }
@@ -244,7 +251,20 @@ impl Udp {
     }
 }
 
-impl_stream!(Udp, inner);
+impl Stream for Udp {
+    type Item = io::Result<(BytesMut, SocketAddr)>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
+        let Udp {
+            inner, recv_buf, ..
+        } = &mut *self;
+
+        let mut read_buf = ReadBuf::new(recv_buf);
+        let from_addr = ready!(inner.poll_recv_from(cx, &mut read_buf))?;
+
+        Poll::Ready(Some(Ok((BytesMut::from(read_buf.filled()), from_addr))))
+    }
+}
 
 impl Sink<(Bytes, Address)> for Udp {
     type Error = io::Error;
@@ -267,8 +287,12 @@ impl Sink<(Bytes, Address)> for Udp {
                         self.state = UdpState::Sending((data, s));
                     }
                     Address::Domain(domain, port) => {
-                        let fut = Mutex::new(lookup_host(domain, port).boxed());
-                        self.state = UdpState::LookupHost { data, fut };
+                        if let Some(s) = self.domain_cache.get(&domain) {
+                            self.state = UdpState::Sending((data, *s));
+                        } else {
+                            let fut = Mutex::new(lookup_host(domain.clone(), port).boxed());
+                            self.state = UdpState::LookupHost { data, domain, fut };
+                        }
                     }
                 }
                 Ok(())
@@ -288,17 +312,17 @@ impl Sink<(Bytes, Address)> for Udp {
     }
 
     fn poll_close(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_close_unpin(cx)
+        self.poll_flush(cx)
     }
 }
 
 #[async_trait]
 impl rd_interface::IUdpSocket for Udp {
     async fn local_addr(&self) -> Result<SocketAddr> {
-        self.inner.get_ref().local_addr().map_err(Into::into)
+        self.inner.local_addr().map_err(Into::into)
     }
 }
 
@@ -365,7 +389,9 @@ impl INet for LocalNet {
 
         for addr in addrs {
             match self.udp_bind_single(addr).await {
-                Ok(udp) => return Ok(Udp::new(udp).into_dyn()),
+                Ok(udp) => {
+                    return Ok(Udp::new(udp, self.0.udp_domain_cache_size.unwrap_or(16)).into_dyn())
+                }
                 Err(e) => last_err = Some(e),
             }
         }
