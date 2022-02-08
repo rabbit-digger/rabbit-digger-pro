@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use anyhow::Context as AnyhowContext;
 use rd_interface::{
     async_trait, prelude::*, registry::ServerBuilder, Address, Context, IServer, IntoDyn, Net,
     Registry, Result, TcpStream,
@@ -23,12 +24,24 @@ impl HttpSocks5Server {
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let buf = &mut [0u8; 1];
         let mut socket = PeekableTcpStream::new(socket);
-        socket.peek_exact(buf).await?;
+        if let Err(_) = socket.peek_exact(buf).await {
+            // The client has closed the connection before we could read the first byte.
+            // This is not an error, so we just return.
+            return Ok(());
+        }
         let socket = socket.into_dyn();
 
         match buf[0] {
-            b'\x05' => self.socks5_server.serve_connection(socket, addr).await,
-            _ => self.http_server.serve_connection(socket, addr).await,
+            b'\x05' => self
+                .socks5_server
+                .serve_connection(socket, addr)
+                .await
+                .context("socks5 server"),
+            _ => self
+                .http_server
+                .serve_connection(socket, addr)
+                .await
+                .context("http server"),
         }
     }
 }
