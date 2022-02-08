@@ -149,7 +149,7 @@ fn get_by_device(device: Device, filter: Option<String>) -> Result<impl AsyncDev
 }
 
 #[cfg(windows)]
-fn get_by_device(device: Device) -> Result<impl AsyncDevice> {
+fn get_by_device(device: Device, filter: Option<String>) -> Result<impl AsyncDevice> {
     use tokio::sync::mpsc::{Receiver, Sender};
     use tokio_smoltcp::device::ChannelCapture;
 
