@@ -9,6 +9,8 @@ use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tracing::instrument;
 
+use super::DropAbort;
+
 #[derive(Debug)]
 pub(super) struct CopyBuffer {
     read_done: bool,
@@ -177,12 +179,12 @@ where
     A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     B: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    tokio::spawn(CopyBidirectional {
+    DropAbort::new(tokio::spawn(CopyBidirectional {
         a,
         b,
         a_to_b: TransferState::Running(CopyBuffer::new(8192)),
         b_to_a: TransferState::Running(CopyBuffer::new(8192)),
-    })
+    }))
     .await??;
 
     Ok(())
