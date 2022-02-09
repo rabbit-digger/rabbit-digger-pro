@@ -8,11 +8,10 @@ use crate::{
     util::{
         connect_tcp,
         forward_udp::{forward_udp, RawUdpSource, UdpPacket},
-        is_reserved,
+        is_reserved, LruCache,
     },
 };
 use futures::{ready, Sink, Stream};
-use lru_time_cache::LruCache;
 use rd_interface::{
     async_trait,
     constant::UDP_BUFFER_SIZE,
@@ -165,7 +164,13 @@ impl Stream for UdpSource {
         self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
     ) -> task::Poll<Option<Self::Item>> {
-        let UdpSource { recv_buf, tudp, .. } = self.get_mut();
+        let UdpSource {
+            recv_buf,
+            tudp,
+            cache,
+            ..
+        } = self.get_mut();
+        cache.poll_clear_expired(cx);
         let (size, from, to) = ready!(tudp.poll_recv(cx, &mut recv_buf[..]))?;
 
         Some(Ok(UdpPacket::new(

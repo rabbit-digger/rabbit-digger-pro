@@ -1,6 +1,7 @@
 pub use connect_tcp::connect_tcp;
 pub use connect_udp::connect_udp;
 pub use forward_udp::forward_udp;
+pub use lru_cache::LruCache;
 pub use net::{CombineNet, NotImplementedNet};
 pub use peekable_tcpstream::PeekableTcpStream;
 pub use tcp_channel::TcpChannel;
@@ -11,6 +12,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 mod connect_tcp;
 mod connect_udp;
 pub mod forward_udp;
+mod lru_cache;
 mod net;
 mod peekable_tcpstream;
 mod tcp_channel;

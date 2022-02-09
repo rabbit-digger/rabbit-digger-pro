@@ -7,13 +7,15 @@ use std::{
 };
 
 use self::connection::UdpConnection;
+use crate::util::LruCache;
 use futures::{ready, Future, Sink, SinkExt, Stream, StreamExt};
-use lru_time_cache::LruCache;
 use rd_interface::{Address, Bytes, Net};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 mod connection;
 mod send_back;
+
+const TIME_TO_LIVE: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub struct UdpPacket {
@@ -58,10 +60,11 @@ where
 {
     fn new(s: S, net: Net, channel_size: usize) -> Self {
         let (tx, rx) = channel(channel_size);
+
         ForwardUdp {
             s,
             net,
-            conn: LruCache::with_expiry_duration_and_capacity(Duration::from_secs(30), 256),
+            conn: LruCache::with_expiry_duration_and_capacity(TIME_TO_LIVE, 256),
             send_back: tx,
             recv_back: rx,
             state: SendState::WaitReady,
@@ -146,6 +149,7 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         let a_to_b = self.poll_recv_packet(cx)?;
         let b_to_a = self.poll_send_back(cx)?;
+        self.conn.poll_clear_expired(cx);
 
         match (a_to_b, b_to_a) {
             (Poll::Pending, Poll::Pending) => Poll::Pending,
