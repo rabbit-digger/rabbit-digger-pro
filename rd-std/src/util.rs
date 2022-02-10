@@ -10,6 +10,7 @@ pub use udp_connector::UdpConnector;
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
+pub mod async_fn_io;
 mod connect_tcp;
 mod connect_udp;
 mod drop_abort;
