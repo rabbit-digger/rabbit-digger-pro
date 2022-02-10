@@ -15,6 +15,7 @@ use futures::{ready, Sink, Stream};
 use rd_interface::{
     async_trait,
     constant::UDP_BUFFER_SIZE,
+    error::ErrorContext,
     registry::ServerBuilder,
     schemars::{self, JsonSchema},
     Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net, Result,
@@ -57,7 +58,9 @@ impl TProxyServer {
     async fn serve_udp(&self, listener: TransparentUdp) -> Result<()> {
         let source = UdpSource::new(listener, self.cfg.mark);
 
-        forward_udp(source, self.net.clone(), None).await?;
+        forward_udp(source, self.net.clone(), None)
+            .await
+            .context("forward udp")?;
 
         Ok(())
     }
@@ -131,13 +134,27 @@ impl UdpSource {
         match send_state {
             SendState::Idle => {}
             SendState::Sending(UdpPacket { from, to, data }) => {
-                let udp = match cache.get(&to) {
+                let udp = match cache.get(&from) {
                     Some(udp) => udp,
                     None => {
-                        let udp = TransparentUdp::bind_any(*from, self.mark)?;
-                        cache.insert(*to, udp);
+                        let result = TransparentUdp::bind_any(*from, self.mark);
+                        let udp = match result {
+                            Ok(udp) => udp,
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to bind any addr: {}. Reason: {:?}",
+                                    from,
+                                    e
+                                );
+
+                                *send_state = SendState::Idle;
+
+                                return Ok(()).into();
+                            }
+                        };
+                        cache.insert(*from, udp);
                         cache
-                            .get(&to)
+                            .get(&from)
                             .expect("impossible: failed to get by from_addr")
                     }
                 };

@@ -106,11 +106,17 @@ where
     fn poll_send_back(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         loop {
             match self.state {
-                SendState::WaitReady => {
-                    ready!(self.s.poll_ready_unpin(cx))?;
-
-                    self.state = SendState::Recv;
-                }
+                SendState::WaitReady => match self.s.poll_ready_unpin(cx)? {
+                    Poll::Ready(()) => self.state = SendState::Recv,
+                    Poll::Pending => {
+                        if self.need_flush {
+                            self.state = SendState::Flush;
+                            continue;
+                        } else {
+                            return Poll::Pending;
+                        }
+                    }
+                },
                 SendState::Recv => {
                     let packet = match self.recv_back.poll_recv(cx) {
                         Poll::Ready(Some(result)) => result,

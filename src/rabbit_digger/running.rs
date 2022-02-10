@@ -7,7 +7,7 @@ use std::{
     task::{self, Poll},
 };
 
-use futures::{ready, FutureExt, SinkExt, Stream, StreamExt};
+use futures::{ready, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
@@ -18,7 +18,7 @@ use tokio::{
     sync::{oneshot, RwLock, Semaphore},
     task::JoinHandle,
 };
-use tracing::instrument;
+use tracing::{instrument, Instrument};
 
 use crate::Registry;
 
@@ -398,15 +398,20 @@ impl RunningServer {
 
         self.stop().await?;
 
+        let name = self.name.clone();
         let item = registry.get_server(&self.server_type)?;
         let server = item.build(self.listen.clone(), self.net.clone(), opt.clone())?;
         let semaphore = Arc::new(Semaphore::new(0));
         let s2 = semaphore.clone();
-        let handle = tokio::spawn(async move {
+        let task = async move {
             let r = server.start().await.map_err(Into::into);
             s2.close();
             r
-        });
+        };
+        let handle = tokio::spawn(
+            task.inspect_err(move |e| tracing::error!("Server {} error: {:?}", name, e))
+                .instrument(tracing::info_span!("server_start")),
+        );
 
         *self.state.write().await = State::Running {
             opt: opt.clone(),
