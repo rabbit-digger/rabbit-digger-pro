@@ -10,6 +10,7 @@ pub enum RpcValue {
     Null,
     Object(Object),
     Value(Value),
+    ObjectValue(Object, Value),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -21,12 +22,11 @@ pub enum Error {
 pub enum Command {
     // Get into the session.
     Handshake(Uuid),
-    // Return TcpStream object.
     TcpConnect(Value, Address),
-    // Return TcpListener object.
     TcpBind(Value, Address),
-    // Return UdpSocket object.
     UdpBind(Value, Address),
+    LookupHost(Address),
+    Accept(Object),
     Read(Object, u32),
     Write(Object),
     Flush(Object),
@@ -82,6 +82,20 @@ impl Response {
 
         match val {
             RpcValue::Object(o) => Ok(o),
+            _ => Err(rd_interface::Error::other("invalid response")),
+        }
+    }
+
+    pub fn to_object_value<T>(self) -> rd_interface::Result<(Object, T)>
+    where
+        T: DeserializeOwned,
+    {
+        let val = self
+            .result
+            .map_err(|e| rd_interface::Error::other(e.to_string()))?;
+
+        match val {
+            RpcValue::ObjectValue(o, v) => Ok((o, serde_json::from_value(v)?)),
             _ => Err(rd_interface::Error::other("invalid response")),
         }
     }
