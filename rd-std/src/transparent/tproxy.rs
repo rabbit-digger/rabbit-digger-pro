@@ -162,8 +162,8 @@ impl UdpSource {
                 ready!(udp.poll_send_to(cx, data, *to))?;
 
                 // Don't cache reserved address
-                if is_reserved(to.ip()) {
-                    cache.remove(&to);
+                if is_reserved(from.ip()) {
+                    cache.remove(&from);
                 }
             }
         }
