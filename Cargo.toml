@@ -55,9 +55,9 @@ obfs = { path = "./protocol/obfs", optional = true }
 
 console-subscriber = { git = "https://github.com/tokio-rs/console", rev = "7534b3463c6f74e26d4a6d88e24222808f4cf60c", optional = true }
 
-tracing-opentelemetry = { version = "0.15.0", optional = true }
-opentelemetry = { version = "0.16.0", features = ["rt-tokio"], optional = true }
-opentelemetry-jaeger = { version = "0.15.0", features = [
+tracing-opentelemetry = { version = "0.17.0", optional = true }
+opentelemetry = { version = "0.17.0", features = ["rt-tokio"], optional = true }
+opentelemetry-jaeger = { version = "0.16.0", features = [
     "rt-tokio",
     "reqwest_collector_client",
 ], optional = true }
