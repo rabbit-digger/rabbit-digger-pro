@@ -20,6 +20,8 @@ pub fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> R
     registry.init_with_registry("trojan", trojan::init)?;
     #[cfg(feature = "remote")]
     registry.init_with_registry("remote", remote::init)?;
+    #[cfg(feature = "rpc")]
+    registry.init_with_registry("rpc", rpc::init)?;
     #[cfg(feature = "raw")]
     registry.init_with_registry("raw", raw::init)?;
     #[cfg(feature = "obfs")]
