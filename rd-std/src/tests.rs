@@ -1,7 +1,7 @@
 pub use self::net::TestNet;
 use crate::builtin;
 use futures::{SinkExt, StreamExt};
-use rd_interface::{Address, Bytes, Context, IntoAddress, Net, Registry};
+use rd_interface::{Bytes, Context, IntoAddress, Net, Registry};
 use std::time::Duration;
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -43,14 +43,13 @@ pub async fn assert_echo_udp(net: &Net, addr: impl IntoAddress) {
         .send((Bytes::from_static(b"hello"), target_addr.clone()))
         .await
         .unwrap();
-    let (buf, addr) = timeout(DEFAULT_TIMEOUT, socket.next())
+    let (buf, _) = timeout(DEFAULT_TIMEOUT, socket.next())
         .await
         .unwrap()
         .unwrap()
         .unwrap();
 
     assert_eq!(&buf[..], b"hello");
-    assert_eq!(Address::SocketAddr(addr), target_addr);
 }
 
 pub async fn spawn_echo_server(net: &Net, addr: impl IntoAddress) {
