@@ -41,14 +41,12 @@ pub enum Command {
 pub struct Request {
     pub cmd: Command,
     pub seq_id: u32,
-    pub data_size: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Response {
     pub seq_id: u32,
     pub result: Result<RpcValue, Value>,
-    pub data_size: u32,
 }
 
 impl Response {

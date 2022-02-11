@@ -7,7 +7,7 @@ use std::{
 
 use crate::types::{Command, Object};
 
-use crate::connection::Connection;
+use crate::session::ClientSession;
 use futures::{ready, Future, FutureExt, Sink, Stream};
 use parking_lot::Mutex;
 use rd_interface::{
@@ -17,12 +17,12 @@ use rd_interface::{
 use rd_std::util::async_fn_io::{AsyncFnIO, AsyncFnRead, AsyncFnWrite};
 
 pub struct TcpListenerWrapper {
-    conn: Connection,
+    conn: ClientSession,
     obj: Object,
 }
 
 impl TcpListenerWrapper {
-    pub fn new(conn: Connection, obj: Object) -> Self {
+    pub fn new(conn: ClientSession, obj: Object) -> Self {
         Self { conn, obj }
     }
 }
@@ -54,7 +54,7 @@ impl ITcpListener for TcpListenerWrapper {
 
 type BoxFuture<T> = Mutex<Pin<Box<dyn Future<Output = T> + Send + 'static>>>;
 pub struct UdpWrapper {
-    conn: Connection,
+    conn: ClientSession,
     obj: Object,
 
     next_fut: Option<BoxFuture<io::Result<(BytesMut, SocketAddr)>>>,
@@ -62,7 +62,7 @@ pub struct UdpWrapper {
 }
 
 impl UdpWrapper {
-    pub fn new(conn: Connection, obj: Object) -> Self {
+    pub fn new(conn: ClientSession, obj: Object) -> Self {
         UdpWrapper {
             conn,
             obj,
@@ -191,12 +191,12 @@ impl IUdpSocket for UdpWrapper {
 
 #[derive(Clone)]
 pub struct TcpAsyncFn {
-    conn: Connection,
+    conn: ClientSession,
     obj: Object,
 }
 
 impl TcpWrapper {
-    pub fn new(conn: Connection, obj: Object) -> TcpWrapper {
+    pub fn new(conn: ClientSession, obj: Object) -> TcpWrapper {
         TcpWrapper(AsyncFnIO::new(TcpAsyncFn { conn, obj }))
     }
 }

@@ -1,8 +1,8 @@
+use crate::session::ClientSession;
 use crate::types::Command;
 
 use self::socket::TcpListenerWrapper;
 
-use super::connection::Connection;
 use rd_interface::{async_trait, Address, Context, INet, IntoDyn, Net, Result, TcpStream};
 
 use socket::{TcpWrapper, UdpWrapper};
@@ -14,7 +14,7 @@ pub struct RpcNet {
     net: Net,
     endpoint: Address,
 
-    conn: OnceCell<Result<Connection>>,
+    sess: OnceCell<Result<ClientSession>>,
 }
 
 impl RpcNet {
@@ -22,12 +22,12 @@ impl RpcNet {
         RpcNet {
             net,
             endpoint,
-            conn: OnceCell::new(),
+            sess: OnceCell::new(),
         }
     }
-    async fn get_conn(&self) -> Result<&Connection> {
-        self.conn
-            .get_or_init(|| Connection::new(&self.net, &self.endpoint))
+    async fn get_conn(&self) -> Result<&ClientSession> {
+        self.sess
+            .get_or_init(|| ClientSession::new(&self.net, &self.endpoint))
             .await
             .as_ref()
             .map_err(|e| rd_interface::Error::other(e.to_string()))

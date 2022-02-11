@@ -11,6 +11,7 @@ use server::RpcServer;
 mod connection;
 mod net;
 mod server;
+mod session;
 mod types;
 
 #[rd_config]
