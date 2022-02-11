@@ -34,7 +34,11 @@ impl IServer for RpcServer {
         loop {
             let (conn, _) = listener.accept().await?;
             let this = self.clone();
-            tokio::spawn(async move { this.handle_conn(conn).await });
+            tokio::spawn(async move {
+                if let Err(e) = this.handle_conn(conn).await {
+                    tracing::error!("handle_conn {:?}", e);
+                }
+            });
         }
     }
 }
