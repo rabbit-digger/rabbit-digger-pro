@@ -12,6 +12,8 @@ mod connection;
 mod net;
 mod server;
 mod session;
+#[cfg(test)]
+mod tests;
 mod types;
 
 #[rd_config]
