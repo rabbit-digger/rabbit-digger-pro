@@ -1,13 +1,15 @@
-use rd_interface::{Address, Arc, Context, Net, Result};
+use rd_interface::{Address, Arc, Context, Net, Result, TcpListener, TcpStream, UdpSocket};
 use state::ClientSessionState;
 use tokio::sync::oneshot;
 
 mod state;
 
 use crate::{
-    connection::ClientConnection,
-    types::{Command, Request, Response},
+    connection::{ClientConnection, ServerConnection},
+    types::{Command, Object, Request, Response, RpcValue},
 };
+
+use self::state::{ServerSessionState, Shared};
 
 #[derive(Clone)]
 pub struct ClientSession {
@@ -63,5 +65,97 @@ impl ResponseGetter {
         self.rx
             .await
             .map_err(|_| rd_interface::Error::other("channel closed"))
+    }
+}
+
+pub enum Obj {
+    TcpStream(TcpStream),
+    TcpListener(TcpListener),
+    UdpSocket(UdpSocket),
+}
+
+impl Obj {
+    pub fn tcp_listener(obj: Obj) -> Result<TcpListener> {
+        match obj {
+            Obj::TcpListener(tcp) => Ok(tcp),
+            _ => Err(rd_interface::Error::other("not a tcp listener")),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ServerSession {
+    conn: Arc<ServerConnection>,
+    state: Arc<ServerSessionState<Obj>>,
+}
+
+impl ServerSession {
+    pub fn new(tcp: TcpStream) -> Self {
+        Self {
+            conn: Arc::new(ServerConnection::new(tcp)),
+            state: Arc::new(ServerSessionState::new()),
+        }
+    }
+    pub async fn recv(&self) -> Result<RequestGetter> {
+        let (req, data) = self.conn.next().await?;
+
+        Ok(RequestGetter {
+            req,
+            data,
+            conn: self.conn.clone(),
+            state: self.state.clone(),
+            sent: false,
+        })
+    }
+}
+
+#[must_use]
+pub struct RequestGetter {
+    req: Request,
+    data: Vec<u8>,
+    conn: Arc<ServerConnection>,
+    state: Arc<ServerSessionState<Obj>>,
+    sent: bool,
+}
+
+impl RequestGetter {
+    pub fn cmd(&self) -> &Command {
+        &self.req.cmd
+    }
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+    pub fn insert_object(&self, obj: Obj) -> Object {
+        self.state.insert_object(obj)
+    }
+    pub fn get_object(&self, obj: Object) -> Result<Shared<Obj>> {
+        self.state.get_object(obj)
+    }
+    pub async fn response(
+        mut self,
+        result: Result<RpcValue, String>,
+        data: Option<&[u8]>,
+    ) -> Result<()> {
+        self.conn
+            .send(
+                Response {
+                    seq_id: self.req.seq_id,
+                    result,
+                },
+                data,
+            )
+            .await?;
+
+        self.sent = true;
+
+        Ok(())
+    }
+}
+
+impl Drop for RequestGetter {
+    fn drop(&mut self) {
+        if !self.sent {
+            tracing::error!("RequestGetter dropped without sending response");
+        }
     }
 }

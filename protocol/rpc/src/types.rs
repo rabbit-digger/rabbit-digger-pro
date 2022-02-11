@@ -2,8 +2,14 @@ use rd_interface::{Address, Value};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Hash, PartialEq, Eq)]
 pub struct Object(u32);
+
+impl Object {
+    pub fn from_u32(id: u32) -> Self {
+        Self(id)
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum RpcValue {
@@ -46,7 +52,7 @@ pub struct Request {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Response {
     pub seq_id: u32,
-    pub result: Result<RpcValue, Value>,
+    pub result: Result<RpcValue, String>,
 }
 
 impl Response {

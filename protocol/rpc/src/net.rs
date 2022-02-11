@@ -25,7 +25,7 @@ impl RpcNet {
             sess: OnceCell::new(),
         }
     }
-    async fn get_conn(&self) -> Result<&ClientSession> {
+    async fn get_sess(&self) -> Result<&ClientSession> {
         self.sess
             .get_or_init(|| ClientSession::new(&self.net, &self.endpoint))
             .await
@@ -37,7 +37,7 @@ impl RpcNet {
 #[async_trait]
 impl INet for RpcNet {
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        let conn = self.get_conn().await?.clone();
+        let conn = self.get_sess().await?.clone();
         let (resp, _) = conn
             .send(Command::TcpConnect(ctx.to_value(), addr.clone()), None)
             .await?
@@ -54,7 +54,7 @@ impl INet for RpcNet {
         ctx: &mut Context,
         addr: &Address,
     ) -> Result<rd_interface::TcpListener> {
-        let conn = self.get_conn().await?.clone();
+        let conn = self.get_sess().await?.clone();
         let (resp, _) = conn
             .send(Command::TcpBind(ctx.to_value(), addr.clone()), None)
             .await?
@@ -67,7 +67,7 @@ impl INet for RpcNet {
     }
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<rd_interface::UdpSocket> {
-        let conn = self.get_conn().await?.clone();
+        let conn = self.get_sess().await?.clone();
         let (resp, _) = conn
             .send(Command::UdpBind(ctx.to_value(), addr.clone()), None)
             .await?
@@ -80,7 +80,7 @@ impl INet for RpcNet {
     }
 
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<std::net::SocketAddr>> {
-        let conn = self.get_conn().await?.clone();
+        let conn = self.get_sess().await?.clone();
         let getter = conn.send(Command::LookupHost(addr.clone()), None).await?;
 
         let (resp, _) = getter.wait().await?;

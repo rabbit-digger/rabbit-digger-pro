@@ -1,31 +1,25 @@
-use std::collections::HashMap;
+use std::{pin::Pin, task::Poll};
 
-use parking_lot::Mutex;
-use rd_interface::{async_trait, Address, Arc, Context, IServer, Net, Result, TcpStream};
-use uuid::Uuid;
+use futures::{future::poll_fn, ready};
+use rd_interface::{
+    async_trait, Address, AsyncRead, AsyncWrite, Context, IServer, Net, ReadBuf, Result, TcpStream,
+};
+use serde_json::to_value;
 
 use crate::{
-    connection::ServerConnection,
-    types::{Command, Request},
+    session::{Obj, RequestGetter, ServerSession},
+    types::{Command, RpcValue},
 };
 
-const MAX_SESSION_SIZE: usize = 8;
-
+#[derive(Clone)]
 pub struct RpcServer {
     listen: Net,
     net: Net,
     bind: Address,
-
-    sessions: Arc<Mutex<HashMap<Uuid, ServerConnection>>>,
 }
 impl RpcServer {
     pub fn new(listen: Net, net: Net, bind: Address) -> RpcServer {
-        RpcServer {
-            listen,
-            net,
-            bind,
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-        }
+        RpcServer { listen, net, bind }
     }
 }
 
@@ -39,25 +33,181 @@ impl IServer for RpcServer {
 
         loop {
             let (conn, _) = listener.accept().await?;
-            tokio::spawn(handle_conn(conn, self.sessions.clone()));
+            let this = self.clone();
+            tokio::spawn(async move { this.handle_conn(conn).await });
         }
     }
 }
 
-async fn handle_conn(
-    tcp: TcpStream,
-    sessions: Arc<Mutex<HashMap<Uuid, ServerConnection>>>,
-) -> Result<()> {
-    let conn = ServerConnection::new(tcp);
-    let (req, _) = conn.next().await?;
+impl RpcServer {
+    async fn handle_req(&self, req: &RequestGetter) -> Result<(RpcValue, Option<Vec<u8>>)> {
+        match req.cmd() {
+            Command::TcpConnect(ctx, addr) => {
+                let tcp = self
+                    .net
+                    .tcp_connect(&mut Context::from_value(ctx.clone())?, &addr)
+                    .await?;
 
-    // TODO: handle session_id
-    let session_id = match req.cmd {
-        Command::Handshake(session_id) => session_id,
-        _ => return Err(rd_interface::Error::other("Invalid handshake")),
-    };
+                Ok((
+                    RpcValue::Object(req.insert_object(Obj::TcpStream(tcp))),
+                    None,
+                ))
+            }
+            Command::TcpBind(ctx, addr) => {
+                let listener = self
+                    .net
+                    .tcp_bind(&mut Context::from_value(ctx.clone())?, &addr)
+                    .await?;
 
-    sessions.lock().insert(session_id, conn);
+                Ok((
+                    RpcValue::Object(req.insert_object(Obj::TcpListener(listener))),
+                    None,
+                ))
+            }
+            Command::UdpBind(ctx, addr) => {
+                let udp = self
+                    .net
+                    .udp_bind(&mut Context::from_value(ctx.clone())?, &addr)
+                    .await?;
 
-    todo!()
+                Ok((
+                    RpcValue::Object(req.insert_object(Obj::UdpSocket(udp))),
+                    None,
+                ))
+            }
+            Command::LookupHost(addr) => {
+                let addrs = self.net.lookup_host(&addr).await?;
+
+                Ok((RpcValue::Value(to_value(addrs)?), None))
+            }
+            Command::Read(obj, buf_size) => {
+                let obj = req.get_object(*obj)?;
+                let mut buf = vec![0u8; *buf_size as usize];
+
+                poll_fn(move |cx| {
+                    let mut tcp = ready!(obj.poll_lock(cx));
+                    Poll::Ready(match &mut *tcp {
+                        Obj::TcpStream(tcp) => {
+                            let mut read_buf = ReadBuf::new(&mut buf);
+                            ready!(Pin::new(tcp).poll_read(cx, &mut read_buf))?;
+                            let filled = read_buf.filled().len();
+
+                            Ok((RpcValue::Null, Some(buf[..filled].to_vec())))
+                        }
+                        _ => Err(rd_interface::Error::other("invalid object")),
+                    })
+                })
+                .await
+            }
+            Command::Write(obj) => {
+                let obj = req.get_object(*obj)?;
+
+                poll_fn(|cx| {
+                    let mut tcp = ready!(obj.poll_lock(cx));
+                    Poll::Ready(match &mut *tcp {
+                        Obj::TcpStream(tcp) => {
+                            let write = ready!(Pin::new(tcp).poll_write(cx, &req.data()))?;
+
+                            Ok((RpcValue::Value(to_value(write)?), None))
+                        }
+                        _ => Err(rd_interface::Error::other("invalid object")),
+                    })
+                })
+                .await
+            }
+            Command::Flush(obj) => {
+                let obj = req.get_object(*obj)?;
+
+                poll_fn(|cx| {
+                    let mut tcp = ready!(obj.poll_lock(cx));
+                    Poll::Ready(match &mut *tcp {
+                        Obj::TcpStream(tcp) => {
+                            ready!(Pin::new(tcp).poll_flush(cx))?;
+
+                            Ok((RpcValue::Null, None))
+                        }
+                        _ => Err(rd_interface::Error::other("invalid object")),
+                    })
+                })
+                .await
+            }
+            Command::Shutdown(obj) => {
+                let obj = req.get_object(*obj)?;
+
+                poll_fn(|cx| {
+                    let mut tcp = ready!(obj.poll_lock(cx));
+                    Poll::Ready(match &mut *tcp {
+                        Obj::TcpStream(tcp) => {
+                            ready!(Pin::new(tcp).poll_shutdown(cx))?;
+
+                            Ok((RpcValue::Null, None))
+                        }
+                        _ => Err(rd_interface::Error::other("invalid object")),
+                    })
+                })
+                .await
+            }
+            Command::Accept(obj) => {
+                let obj = req.get_object(*obj)?;
+                let obj = obj.lock().await;
+                let (tcp, addr) = match &*obj {
+                    Obj::TcpListener(listener) => listener.accept().await,
+                    _ => return Err(rd_interface::Error::other("invalid object")),
+                }?;
+
+                Ok((
+                    RpcValue::ObjectValue(req.insert_object(Obj::TcpStream(tcp)), to_value(addr)?),
+                    None,
+                ))
+            }
+            Command::LocalAddr(obj) => {
+                let obj = req.get_object(*obj)?;
+                let obj = obj.lock().await;
+                let addr = match &*obj {
+                    Obj::TcpStream(tcp) => tcp.local_addr().await,
+                    Obj::TcpListener(listener) => listener.local_addr().await,
+                    Obj::UdpSocket(udp) => udp.local_addr().await,
+                }?;
+
+                Ok((RpcValue::Value(to_value(addr)?), None))
+            }
+            Command::PeerAddr(obj) => {
+                let obj = req.get_object(*obj)?;
+                let obj = obj.lock().await;
+                let addr = match &*obj {
+                    Obj::TcpStream(tcp) => tcp.peer_addr().await,
+                    _ => return Err(rd_interface::Error::other("invalid object")),
+                }?;
+
+                Ok((RpcValue::Value(to_value(addr)?), None))
+            }
+            _ => Err(rd_interface::Error::other("Invalid command")),
+        }
+    }
+    async fn handle_conn(&self, tcp: TcpStream) -> Result<()> {
+        let sess = ServerSession::new(tcp);
+        let handshake_req = sess.recv().await?;
+        // TODO: handle session_id
+        let _session_id = match handshake_req.cmd() {
+            Command::Handshake(session_id) => session_id,
+            _ => return Err(rd_interface::Error::other("Invalid handshake")),
+        };
+        handshake_req.response(Ok(RpcValue::Null), None).await?;
+
+        loop {
+            let req = sess.recv().await?;
+            let this = self.clone();
+            tokio::spawn(async move {
+                let (result, data) = match this.handle_req(&req).await {
+                    Ok((result, data)) => (Ok(result), data),
+                    Err(e) => (Err(e.to_string()), None),
+                };
+
+                match data {
+                    Some(data) => req.response(result, Some(&data[..])).await,
+                    None => req.response(result, None).await,
+                }
+            });
+        }
+    }
 }
