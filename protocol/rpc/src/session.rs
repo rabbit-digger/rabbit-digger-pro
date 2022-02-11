@@ -75,10 +75,22 @@ pub enum Obj {
 }
 
 impl Obj {
-    pub fn tcp_listener(obj: Obj) -> Result<TcpListener> {
-        match obj {
+    pub fn tcp_listener(&self) -> Result<&TcpListener> {
+        match self {
             Obj::TcpListener(tcp) => Ok(tcp),
             _ => Err(rd_interface::Error::other("not a tcp listener")),
+        }
+    }
+    pub fn tcp_stream_mut(&mut self) -> Result<&mut TcpStream> {
+        match self {
+            Obj::TcpStream(tcp) => Ok(tcp),
+            _ => Err(rd_interface::Error::other("not a tcp stream")),
+        }
+    }
+    pub fn udp_socket_mut(&mut self) -> Result<&mut UdpSocket> {
+        match self {
+            Obj::UdpSocket(udp) => Ok(udp),
+            _ => Err(rd_interface::Error::other("not a udp socket")),
         }
     }
 }

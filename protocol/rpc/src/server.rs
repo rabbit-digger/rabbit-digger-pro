@@ -1,8 +1,9 @@
 use std::{pin::Pin, task::Poll};
 
-use futures::{future::poll_fn, ready};
+use futures::{future::poll_fn, ready, SinkExt};
 use rd_interface::{
-    async_trait, Address, AsyncRead, AsyncWrite, Context, IServer, Net, ReadBuf, Result, TcpStream,
+    async_trait, Address, AsyncRead, AsyncWrite, Bytes, Context, IServer, Net, ReadBuf, Result,
+    Stream, TcpStream,
 };
 use serde_json::to_value;
 
@@ -84,22 +85,58 @@ impl RpcServer {
 
                 Ok((RpcValue::Value(to_value(addrs)?), None))
             }
+            Command::RecvFrom(obj) => {
+                let obj = req.get_object(*obj)?;
+
+                poll_fn(move |cx| {
+                    let mut udp = ready!(obj.poll_lock(cx));
+                    let udp = Pin::new(udp.udp_socket_mut()?);
+                    let (buf, from) = match ready!(udp.poll_next(cx)) {
+                        Some(item) => item?,
+                        None => return Poll::Ready(Err(rd_interface::Error::other("no data"))),
+                    };
+
+                    Poll::Ready(Ok((RpcValue::Value(to_value(from)?), Some(buf.to_vec()))))
+                })
+                .await
+            }
+            Command::SendTo(obj, addr) => {
+                let obj = req.get_object(*obj)?;
+                let mut is_ready = false;
+                let mut flushing = false;
+                let data = Bytes::copy_from_slice(req.data());
+
+                poll_fn(move |cx| {
+                    let mut udp = ready!(obj.poll_lock(cx));
+                    let udp = udp.udp_socket_mut()?;
+
+                    loop {
+                        if !is_ready {
+                            ready!(udp.poll_ready_unpin(cx))?;
+                            is_ready = true;
+                        }
+                        if flushing {
+                            ready!(udp.poll_flush_unpin(cx))?;
+                            return Poll::Ready(Ok((RpcValue::Null, None)));
+                        }
+                        udp.start_send_unpin((data.clone(), addr.clone()))?;
+                        flushing = true;
+                    }
+                })
+                .await
+            }
             Command::Read(obj, buf_size) => {
                 let obj = req.get_object(*obj)?;
                 let mut buf = vec![0u8; *buf_size as usize];
 
                 poll_fn(move |cx| {
                     let mut tcp = ready!(obj.poll_lock(cx));
-                    Poll::Ready(match &mut *tcp {
-                        Obj::TcpStream(tcp) => {
-                            let mut read_buf = ReadBuf::new(&mut buf);
-                            ready!(Pin::new(tcp).poll_read(cx, &mut read_buf))?;
-                            let filled = read_buf.filled().len();
+                    let tcp = Pin::new(tcp.tcp_stream_mut()?);
+                    let mut read_buf = ReadBuf::new(&mut buf);
+                    ready!(tcp.poll_read(cx, &mut read_buf))?;
+                    let filled = read_buf.filled().len();
 
-                            Ok((RpcValue::Null, Some(buf[..filled].to_vec())))
-                        }
-                        _ => Err(rd_interface::Error::other("invalid object")),
-                    })
+                    Poll::Ready(Ok((RpcValue::Null, Some(buf[..filled].to_vec()))))
                 })
                 .await
             }
@@ -108,14 +145,10 @@ impl RpcServer {
 
                 poll_fn(|cx| {
                     let mut tcp = ready!(obj.poll_lock(cx));
-                    Poll::Ready(match &mut *tcp {
-                        Obj::TcpStream(tcp) => {
-                            let write = ready!(Pin::new(tcp).poll_write(cx, &req.data()))?;
+                    let tcp = Pin::new(tcp.tcp_stream_mut()?);
+                    let write = ready!(tcp.poll_write(cx, &req.data()))?;
 
-                            Ok((RpcValue::Value(to_value(write)?), None))
-                        }
-                        _ => Err(rd_interface::Error::other("invalid object")),
-                    })
+                    Poll::Ready(Ok((RpcValue::Value(to_value(write)?), None)))
                 })
                 .await
             }
@@ -124,14 +157,10 @@ impl RpcServer {
 
                 poll_fn(|cx| {
                     let mut tcp = ready!(obj.poll_lock(cx));
-                    Poll::Ready(match &mut *tcp {
-                        Obj::TcpStream(tcp) => {
-                            ready!(Pin::new(tcp).poll_flush(cx))?;
+                    let tcp = Pin::new(tcp.tcp_stream_mut()?);
+                    ready!(tcp.poll_flush(cx))?;
 
-                            Ok((RpcValue::Null, None))
-                        }
-                        _ => Err(rd_interface::Error::other("invalid object")),
-                    })
+                    Poll::Ready(Ok((RpcValue::Null, None)))
                 })
                 .await
             }
@@ -140,24 +169,17 @@ impl RpcServer {
 
                 poll_fn(|cx| {
                     let mut tcp = ready!(obj.poll_lock(cx));
-                    Poll::Ready(match &mut *tcp {
-                        Obj::TcpStream(tcp) => {
-                            ready!(Pin::new(tcp).poll_shutdown(cx))?;
+                    let tcp = Pin::new(tcp.tcp_stream_mut()?);
+                    ready!(tcp.poll_shutdown(cx))?;
 
-                            Ok((RpcValue::Null, None))
-                        }
-                        _ => Err(rd_interface::Error::other("invalid object")),
-                    })
+                    Poll::Ready(Ok((RpcValue::Null, None)))
                 })
                 .await
             }
             Command::Accept(obj) => {
                 let obj = req.get_object(*obj)?;
                 let obj = obj.lock().await;
-                let (tcp, addr) = match &*obj {
-                    Obj::TcpListener(listener) => listener.accept().await,
-                    _ => return Err(rd_interface::Error::other("invalid object")),
-                }?;
+                let (tcp, addr) = obj.tcp_listener()?.accept().await?;
 
                 Ok((
                     RpcValue::ObjectValue(req.insert_object(Obj::TcpStream(tcp)), to_value(addr)?),

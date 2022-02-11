@@ -37,7 +37,7 @@ pub enum Command {
     Write(Object),
     Flush(Object),
     Shutdown(Object),
-    RecvFrom(Object, u32),
+    RecvFrom(Object),
     SendTo(Object, Address),
     LocalAddr(Object),
     PeerAddr(Object),

@@ -97,7 +97,7 @@ impl Stream for UdpWrapper {
                     let conn = conn.clone();
                     let fut = async move {
                         let (resp, data) = conn
-                            .send(Command::RecvFrom(obj, 4096), None)
+                            .send(Command::RecvFrom(obj), None)
                             .await?
                             .wait()
                             .await?;
