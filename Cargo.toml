@@ -49,7 +49,6 @@ bytes = { version = "1.0", optional = true }
 
 ss = { path = "./protocol/ss", optional = true }
 trojan = { path = "./protocol/trojan", optional = true }
-remote = { path = "./protocol/remote", optional = true }
 rpc = { path = "./protocol/rpc", optional = true }
 raw = { path = "./protocol/raw", optional = true }
 obfs = { path = "./protocol/obfs", optional = true }
@@ -70,7 +69,7 @@ mimalloc = { version = "0.1", optional = true }
 rusty-hook = "0.11.0"
 
 [features]
-default = ["ss", "trojan", "remote", "rpc", "obfs", "api_server"]
+default = ["ss", "trojan", "rpc", "obfs", "api_server"]
 api_server = ["warp", "json-patch", "url", "hyper", "percent-encoding", "bytes"]
 console = ["console-subscriber"]
 telemetry = ["tracing-opentelemetry", "opentelemetry", "opentelemetry-jaeger"]
@@ -80,7 +79,6 @@ jemalloc = ["jemallocator"]
 members = [
     "protocol/ss",
     "protocol/trojan",
-    "protocol/remote",
     "protocol/rpc",
     "protocol/raw",
     "protocol/obfs",
