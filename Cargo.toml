@@ -53,7 +53,7 @@ rpc = { path = "./protocol/rpc", optional = true }
 raw = { path = "./protocol/raw", optional = true }
 obfs = { path = "./protocol/obfs", optional = true }
 
-console-subscriber = { git = "https://github.com/tokio-rs/console", rev = "7534b3463c6f74e26d4a6d88e24222808f4cf60c", optional = true }
+console-subscriber = { version = "0.1.2", optional = true }
 
 tracing-opentelemetry = { version = "0.17.0", optional = true }
 opentelemetry = { version = "0.17.0", features = ["rt-tokio"], optional = true }
@@ -71,7 +71,7 @@ rusty-hook = "0.11.0"
 [features]
 default = ["ss", "trojan", "rpc", "obfs", "api_server"]
 api_server = ["warp", "json-patch", "url", "hyper", "percent-encoding", "bytes"]
-console = ["console-subscriber"]
+console = ["console-subscriber", "tokio/tracing"]
 telemetry = ["tracing-opentelemetry", "opentelemetry", "opentelemetry-jaeger"]
 jemalloc = ["jemallocator"]
 

@@ -27,6 +27,12 @@ impl TcpListenerWrapper {
     }
 }
 
+impl Drop for TcpListenerWrapper {
+    fn drop(&mut self) {
+        self.conn.close_object(self.obj)
+    }
+}
+
 #[async_trait]
 impl ITcpListener for TcpListenerWrapper {
     async fn accept(&self) -> Result<(rd_interface::TcpStream, SocketAddr)> {
@@ -70,6 +76,12 @@ impl UdpWrapper {
             next_fut: None,
             send_fut: None,
         }
+    }
+}
+
+impl Drop for UdpWrapper {
+    fn drop(&mut self) {
+        self.conn.close_object(self.obj)
     }
 }
 
@@ -198,6 +210,12 @@ pub struct TcpAsyncFn {
 impl TcpWrapper {
     pub fn new(conn: ClientSession, obj: Object) -> TcpWrapper {
         TcpWrapper(AsyncFnIO::new(TcpAsyncFn { conn, obj }))
+    }
+}
+
+impl Drop for TcpAsyncFn {
+    fn drop(&mut self) {
+        self.conn.close_object(self.obj)
     }
 }
 

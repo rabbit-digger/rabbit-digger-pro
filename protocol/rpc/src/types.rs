@@ -41,6 +41,7 @@ pub enum Command {
     SendTo(Object, Address),
     LocalAddr(Object),
     PeerAddr(Object),
+    Close(Object),
 }
 
 #[derive(Debug, Deserialize, Serialize)]

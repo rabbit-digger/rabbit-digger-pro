@@ -80,6 +80,11 @@ impl RpcServer {
                     None,
                 ))
             }
+            Command::Close(obj) => {
+                req.remove_object(*obj);
+
+                Ok((RpcValue::Null, None))
+            }
             Command::LookupHost(addr) => {
                 let addrs = self.net.lookup_host(&addr).await?;
 

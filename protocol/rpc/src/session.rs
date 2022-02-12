@@ -1,3 +1,4 @@
+use futures::TryFutureExt;
 use rd_interface::{Address, Arc, Context, Net, Result, TcpListener, TcpStream, UdpSocket};
 use state::ClientSessionState;
 use tokio::sync::oneshot;
@@ -53,6 +54,17 @@ impl ClientSession {
         let conn = self.clone();
         tokio::spawn(async move { conn.wait_response().await });
         Ok(ResponseGetter { rx })
+    }
+
+    pub fn close_object(&self, obj: Object) {
+        let this = self.clone();
+        let fut = async move {
+            this.send(Command::Close(obj), None).await?.wait().await?;
+
+            Result::<(), rd_interface::Error>::Ok(())
+        }
+        .inspect_err(|e| tracing::error!("Failed to close object: {:?}", e));
+        tokio::spawn(fut);
     }
 }
 
@@ -139,6 +151,9 @@ impl RequestGetter {
     }
     pub fn insert_object(&self, obj: Obj) -> Object {
         self.state.insert_object(obj)
+    }
+    pub fn remove_object(&self, obj: Object) {
+        self.state.remove_object(obj)
     }
     pub fn get_object(&self, obj: Object) -> Result<Shared<Obj>> {
         self.state.get_object(obj)

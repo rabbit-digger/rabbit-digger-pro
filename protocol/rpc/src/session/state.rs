@@ -90,6 +90,9 @@ impl<Obj> ServerSessionState<Obj> {
         self.objects.lock().insert(key, Shared::new(obj));
         key
     }
+    pub fn remove_object(&self, obj: Object) {
+        self.objects.lock().remove(&obj);
+    }
     pub fn get_object(&self, obj: Object) -> Result<Shared<Obj>> {
         let obj = self
             .objects
