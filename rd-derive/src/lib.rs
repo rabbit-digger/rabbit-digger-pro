@@ -1,4 +1,4 @@
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Literal, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident};
 
@@ -11,9 +11,12 @@ fn call_all(input: &DeriveInput, method_path: TokenStream, args: TokenStream) ->
             let fields = &s.fields;
 
             for field in fields {
-                let field_name = &field.ident;
+                let field_name = &field.ident.clone().unwrap();
+                let name = Literal::string(&field_name.to_string());
                 body.extend(quote! {
+                    ctx.push(#name);
                     #method_path(&mut self.#field_name, #args)?;
+                    ctx.pop();
                 });
             }
         }
@@ -26,18 +29,28 @@ fn call_all(input: &DeriveInput, method_path: TokenStream, args: TokenStream) ->
                 match &variant.fields {
                     Fields::Named(fields) => {
                         for field in &fields.named {
-                            let field_name = &field.ident;
+                            let field_name = &field.ident.clone().unwrap();
+                            let name = Literal::string(&field_name.to_string());
                             head.extend(quote! { #field_name, });
-                            inner.extend(quote! { #method_path(#field_name, #args)?; });
+                            inner.extend(quote! {
+                                ctx.push(#name);
+                                #method_path(#field_name, #args)?;
+                                ctx.pop();
+                            });
                         }
                         head = quote! { { #head } };
                     }
                     Fields::Unnamed(fields) => {
-                        for (i, _) in fields.unnamed.iter().enumerate() {
+                        for (i, _f) in fields.unnamed.iter().enumerate() {
                             let field_name =
                                 Ident::new(&format!("i{}", i), Span::call_site()).to_token_stream();
+                            let name = Literal::string(&field_name.to_string());
                             head.extend(quote! { #field_name, });
-                            inner.extend(quote! { #method_path(#field_name, #args)?; });
+                            inner.extend(quote! {
+                                ctx.push(#name);
+                                #method_path(#field_name, #args)?;
+                                ctx.pop();
+                            });
                         }
                         head = quote! { (#head) };
                     }
@@ -73,12 +86,12 @@ pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let visitor_body = call_all(
         &input,
         quote! { rd_interface::config::Config::visit },
-        quote! { visitor },
+        quote! { ctx, visitor },
     );
 
     let expanded = quote! {
         impl #impl_generics rd_interface::config::Config for #ident #ty_generics #where_clause {
-            fn visit(&mut self, visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
+            fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
                 #visitor_body
                 Ok(())
             }

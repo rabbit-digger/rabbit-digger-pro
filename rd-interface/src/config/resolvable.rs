@@ -48,6 +48,9 @@ where
     pub fn represent(&self) -> &S::Represent {
         &self.represent
     }
+    pub fn represent_mut(&mut self) -> &mut S::Represent {
+        &mut self.represent
+    }
     pub fn value(&self) -> Option<&S::Value> {
         self.value.as_ref()
     }

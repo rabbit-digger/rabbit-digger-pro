@@ -7,6 +7,8 @@ use rd_interface::{
 };
 use std::{collections::BTreeMap, fmt};
 
+use crate::builtin::load_builtin;
+
 pub struct NetItem {
     id: String,
     pub plugin_name: String,
@@ -43,7 +45,11 @@ pub struct Registry {
 
 impl Default for Registry {
     fn default() -> Self {
-        Self::new()
+        let mut registry = Self::new();
+
+        load_builtin(&mut registry).expect("Failed to load builtin");
+
+        registry
     }
 }
 
@@ -83,6 +89,16 @@ impl Registry {
             net: BTreeMap::new(),
             server: BTreeMap::new(),
         }
+    }
+    pub fn new_with_builtin() -> Result<Self> {
+        let mut registry = Self::new();
+
+        load_builtin(&mut registry)?;
+
+        Ok(registry)
+    }
+    pub fn load_builtin(&mut self) -> Result<()> {
+        load_builtin(self)
     }
     pub fn init_with_registry(
         &mut self,

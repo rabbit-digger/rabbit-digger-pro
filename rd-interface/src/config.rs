@@ -1,7 +1,7 @@
 use crate::{self as rd_interface, Address, Net};
 use resolvable::{Resolvable, ResolvableSchema};
 use schemars::{
-    schema::{InstanceType, Metadata, SchemaObject},
+    schema::{InstanceType, Metadata, SchemaObject, SubschemaValidation},
     JsonSchema,
 };
 use serde::{Deserialize, Serialize};
@@ -15,17 +15,33 @@ mod resolvable;
 #[derive(Clone)]
 pub struct NetSchema;
 impl JsonSchema for NetSchema {
+    fn is_referenceable() -> bool {
+        false
+    }
     fn schema_name() -> String {
         "NetRef".into()
     }
 
     fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        gen.subschema_for::<String>()
+        SchemaObject {
+            subschemas: Some(
+                SubschemaValidation {
+                    any_of: Some(vec![
+                        gen.subschema_for::<String>(),
+                        schemars::schema::Schema::new_ref("#/definitions/Net".into()),
+                    ]),
+                    ..Default::default()
+                }
+                .into(),
+            ),
+            ..Default::default()
+        }
+        .into()
     }
 }
 
 impl ResolvableSchema for NetSchema {
-    type Represent = String;
+    type Represent = Value;
     type Value = Net;
 }
 
@@ -38,20 +54,80 @@ impl Default for NetRef {
 }
 
 pub trait Visitor {
-    fn visit_net_ref(&mut self, _net_ref: &mut NetRef) -> Result<()> {
+    fn visit_net_ref(&mut self, _ctx: &mut VisitorContext, _net_ref: &mut NetRef) -> Result<()> {
         Ok(())
     }
 }
 
+pub struct VisitorContext {
+    path: Vec<String>,
+}
+
+impl VisitorContext {
+    fn new() -> VisitorContext {
+        VisitorContext { path: Vec::new() }
+    }
+    pub fn push(&mut self, field: impl Into<String>) -> &mut Self {
+        self.path.push(field.into());
+        self
+    }
+    pub fn pop(&mut self) {
+        self.path.pop();
+    }
+}
+
 pub trait Config {
-    fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()>;
+    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut impl Visitor) -> Result<()>;
+
+    // Collect nested nets
+    fn collect_net_ref<F>(&mut self, add_net: F) -> Result<()>
+    where
+        F: FnMut(&Vec<String>, &Value) -> Result<()>,
+    {
+        struct ResolveNetRefVisitor<F>(F)
+        where
+            F: FnMut(&Vec<String>, &Value) -> Result<()>;
+
+        impl<F> Visitor for ResolveNetRefVisitor<F>
+        where
+            F: FnMut(&Vec<String>, &Value) -> Result<()>,
+        {
+            fn visit_net_ref(
+                &mut self,
+                ctx: &mut VisitorContext,
+                net_ref: &mut NetRef,
+            ) -> Result<()> {
+                match net_ref.represent() {
+                    Value::String(_) => {}
+                    opt => {
+                        self.0(&ctx.path, &opt)?;
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        self.visit(
+            &mut VisitorContext::new(),
+            &mut ResolveNetRefVisitor(add_net),
+        )?;
+
+        Ok(())
+    }
 
     fn resolve_net(&mut self, getter: NetGetter) -> Result<()> {
         struct ResolveNetVisitor<'a>(NetGetter<'a>);
 
         impl<'a> Visitor for ResolveNetVisitor<'a> {
-            fn visit_net_ref(&mut self, net_ref: &mut NetRef) -> Result<()> {
-                let net = self.0(net_ref.represent())
+            fn visit_net_ref(
+                &mut self,
+                _ctx: &mut VisitorContext,
+                net_ref: &mut NetRef,
+            ) -> Result<()> {
+                let name = net_ref.represent().as_str();
+                let net = name
+                    .map(|name| self.0(name))
+                    .flatten()
                     .ok_or_else(|| crate::Error::NotFound(net_ref.represent().to_string()))?
                     .clone();
                 net_ref.set_value(net);
@@ -59,7 +135,7 @@ pub trait Config {
             }
         }
 
-        self.visit(&mut ResolveNetVisitor(getter))?;
+        self.visit(&mut VisitorContext::new(), &mut ResolveNetVisitor(getter))?;
 
         Ok(())
     }
@@ -68,22 +144,31 @@ pub trait Config {
         struct GetDependencyVisitor<'a>(&'a mut HashSet<String>);
 
         impl<'a> Visitor for GetDependencyVisitor<'a> {
-            fn visit_net_ref(&mut self, net_ref: &mut NetRef) -> Result<()> {
-                self.0.insert(net_ref.represent().to_string());
+            fn visit_net_ref(
+                &mut self,
+                _ctx: &mut VisitorContext,
+                net_ref: &mut NetRef,
+            ) -> Result<()> {
+                if let Some(name) = net_ref.represent().as_str() {
+                    self.0.insert(name.to_string());
+                }
                 Ok(())
             }
         }
 
         let mut nets = HashSet::new();
-        self.visit(&mut GetDependencyVisitor(&mut nets))?;
+        self.visit(
+            &mut VisitorContext::new(),
+            &mut GetDependencyVisitor(&mut nets),
+        )?;
 
         Ok(nets.into_iter().collect())
     }
 }
 
 impl Config for NetRef {
-    fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()> {
-        visitor.visit_net_ref(self)
+    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut impl Visitor) -> Result<()> {
+        visitor.visit_net_ref(ctx, self)
     }
 }
 
@@ -91,7 +176,7 @@ impl Config for NetRef {
 macro_rules! impl_empty_config {
     ($($x:ident),+ $(,)?) => ($(
         impl rd_interface::config::Config for $x {
-            fn visit(&mut self, _visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
+            fn visit(&mut self, _ctx: &mut rd_interface::config::VisitorContext, _visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
                 Ok(())
             }
         }
@@ -108,9 +193,9 @@ mod impl_std {
     macro_rules! impl_container_config {
         ($($x:ident),+ $(,)?) => ($(
             impl<T: Config> Config for $x<T> {
-                fn visit(&mut self, visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
+                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
                     for i in self.iter_mut() {
-                        i.visit(visitor)?;
+                        i.visit(ctx, visitor)?;
                     }
                     Ok(())
                 }
@@ -120,9 +205,9 @@ mod impl_std {
     macro_rules! impl_key_container_config {
         ($($x:ident),+ $(,)?) => ($(
             impl<K, T: Config> Config for $x<K, T> {
-                fn visit(&mut self, visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
+                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut impl rd_interface::config::Visitor) -> rd_interface::Result<()> {
                     for (_, i) in self.iter_mut() {
-                        i.visit(visitor)?;
+                        i.visit(ctx, visitor)?;
                     }
                     Ok(())
                 }
@@ -139,6 +224,7 @@ mod impl_std {
     impl<T1, T2> rd_interface::config::Config for (T1, T2) {
         fn visit(
             &mut self,
+            _ctx: &mut rd_interface::config::VisitorContext,
             _visitor: &mut impl rd_interface::config::Visitor,
         ) -> rd_interface::Result<()> {
             Ok(())

@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, fmt, time::Duration};
 
 use crate::{
-    builtin::load_builtin,
     config,
     rabbit_digger::running::{RunningNet, RunningServer, RunningServerNet},
     registry::Registry,
@@ -41,16 +40,10 @@ mod running;
 pub type PluginLoader =
     Arc<dyn Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static>;
 
-#[derive(Clone)]
-pub struct RabbitDiggerBuilder {
-    plugin_loader: PluginLoader,
-}
-
 #[allow(dead_code)]
 struct Running {
     config: RwLock<config::Config>,
     registry_schema: RegistrySchema,
-    registry: Registry,
     nets: BTreeMap<String, Arc<RunningNet>>,
     servers: BTreeMap<String, ServerInfo>,
 }
@@ -78,7 +71,7 @@ struct Inner {
 pub struct RabbitDigger {
     manager: ConnectionManager,
     inner: Arc<Inner>,
-    plugin_loader: PluginLoader,
+    registry: Arc<Registry>,
 }
 
 impl fmt::Debug for RabbitDigger {
@@ -108,7 +101,7 @@ impl RabbitDigger {
         }
         tracing::warn!("recv_event task exited");
     }
-    async fn new(plugin_loader: &PluginLoader) -> Result<RabbitDigger> {
+    pub async fn new(registry: Registry) -> Result<RabbitDigger> {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
         let manager = ConnectionManager::new();
 
@@ -124,7 +117,7 @@ impl RabbitDigger {
 
         Ok(RabbitDigger {
             inner: Arc::new(inner),
-            plugin_loader: plugin_loader.clone(),
+            registry: Arc::new(registry),
             manager,
         })
     }
@@ -226,11 +219,7 @@ impl RabbitDigger {
         self.stop().await?;
 
         let state = &mut *inner.state.write().await;
-        let mut registry = Registry::new();
-
-        load_builtin(&mut registry).context("Failed to load builtin")?;
-        (self.plugin_loader)(&config, &mut registry).context("Failed to load plugin")?;
-        tracing::debug!("Registry:\n{}", registry);
+        tracing::debug!("Registry:\n{}", self.registry);
 
         let root = config
             .server
@@ -238,7 +227,7 @@ impl RabbitDigger {
             .flat_map(|i| [i.listen.clone(), i.net.clone()])
             .collect();
         let nets =
-            build_nets(&registry, config.net.clone(), root).context("Failed to build net")?;
+            build_nets(&self.registry, config.net.clone(), root).context("Failed to build net")?;
         let servers = build_server(&nets, &config.server, &inner.conn_cfg)
             .await
             .context("Failed to build server")?;
@@ -250,13 +239,12 @@ impl RabbitDigger {
 
         tracing::info!("Server:\n{}", ServerList(&servers));
         for (_, server) in &servers {
-            server.server.start(&registry, &server.config).await?;
+            server.server.start(&self.registry, &server.config).await?;
         }
 
         *state = State::Running(Running {
             config: RwLock::new(config),
-            registry_schema: get_registry_schema(&registry),
-            registry,
+            registry_schema: get_registry_schema(&self.registry),
             nets,
             servers,
         });
@@ -334,12 +322,7 @@ impl RabbitDigger {
     {
         let state = self.inner.state.read().await;
         match &*state {
-            State::Running(Running {
-                config,
-                nets,
-                registry,
-                ..
-            }) => {
+            State::Running(Running { config, nets, .. }) => {
                 let mut config = config.write().await;
                 if let (Some(cfg), Some(running_net)) =
                     (config.net.get_mut(net_name), nets.get(net_name))
@@ -347,7 +330,7 @@ impl RabbitDigger {
                     let mut new_cfg = cfg.clone();
                     update(&mut new_cfg);
 
-                    let net = build_net(net_name, &new_cfg, &registry, &|key| {
+                    let net = build_net(net_name, &new_cfg, &self.registry, &|key| {
                         nets.get(key).map(|i| i.net())
                     })?;
                     running_net.update_net(net).await;
@@ -376,31 +359,6 @@ impl RabbitDigger {
     // Stop the connection by uuid
     pub async fn stop_connection(&self, uuid: Uuid) -> Result<bool> {
         Ok(self.manager.stop_connection(uuid))
-    }
-}
-
-impl Default for RabbitDiggerBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RabbitDiggerBuilder {
-    pub fn new() -> RabbitDiggerBuilder {
-        RabbitDiggerBuilder {
-            plugin_loader: Arc::new(|_, _| Ok(())),
-        }
-    }
-    pub fn plugin_loader<PL>(mut self, plugin_loader: PL) -> Self
-    where
-        PL: Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static,
-    {
-        self.plugin_loader = Arc::new(plugin_loader);
-        self
-    }
-    pub async fn build(&self) -> Result<RabbitDigger> {
-        let rd = RabbitDigger::new(&self.plugin_loader).await?;
-        Ok(rd)
     }
 }
 

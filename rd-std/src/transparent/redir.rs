@@ -2,16 +2,15 @@ use std::net::SocketAddr;
 
 use super::origin_addr::OriginAddrExt;
 use crate::{builtin::local::CompatTcp, util::connect_tcp};
+use rd_derive::rd_config;
 use rd_interface::{
-    async_trait,
-    registry::ServerBuilder,
-    schemars::{self, JsonSchema},
-    Address, Context, IServer, IntoAddress, IntoDyn, Net, Result,
+    async_trait, registry::ServerBuilder, schemars, Address, Context, IServer, IntoAddress,
+    IntoDyn, Net, Result,
 };
-use serde::Deserialize;
 use tokio::net::{TcpListener, TcpStream};
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct RedirServerConfig {
     bind: Address,
 }

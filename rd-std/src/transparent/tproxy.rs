@@ -12,21 +12,18 @@ use crate::{
     },
 };
 use futures::{ready, Sink, Stream};
+use rd_derive::rd_config;
 use rd_interface::{
-    async_trait,
-    constant::UDP_BUFFER_SIZE,
-    error::ErrorContext,
-    registry::ServerBuilder,
-    schemars::{self, JsonSchema},
+    async_trait, constant::UDP_BUFFER_SIZE, error::ErrorContext, registry::ServerBuilder, schemars,
     Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net, Result,
 };
-use serde::Deserialize;
 use tokio::{
     net::{TcpListener, TcpStream},
     select,
 };
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[rd_config]
+#[derive(Debug)]
 pub struct TProxyServerConfig {
     bind: Address,
     mark: Option<u32>,

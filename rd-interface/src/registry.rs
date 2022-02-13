@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
+};
 
 pub use crate::config::NetRef;
 use crate::{config::Config, INet, IServer, IntoDyn, Net, Result, Server};
@@ -54,6 +57,8 @@ pub trait NetBuilder {
 }
 
 pub struct NetResolver {
+    collect_net_ref:
+        fn(prefix: &str, cfg: Value, to_add: &mut HashMap<Vec<String>, Value>) -> Result<()>,
     build: fn(getter: NetGetter, cfg: Value) -> Result<Net>,
     get_dependency: fn(cfg: Value) -> Result<Vec<String>>,
     schema: RootSchema,
@@ -63,6 +68,19 @@ impl NetResolver {
     fn new<N: NetBuilder>() -> Self {
         let schema = schema_for!(N::Config);
         Self {
+            collect_net_ref: |prefix, cfg, to_add| {
+                serde_json::from_value(cfg)
+                    .map_err(Into::<crate::Error>::into)
+                    .and_then(|mut cfg: N::Config| {
+                        cfg.collect_net_ref(|path, opt| {
+                            let mut key = vec![prefix.to_string()];
+                            key.extend(path.clone());
+                            to_add.insert(key, opt.clone());
+                            Ok(())
+                        })?;
+                        Ok(())
+                    })
+            },
             build: |nets, cfg| {
                 serde_json::from_value(cfg)
                     .map_err(Into::<crate::Error>::into)
@@ -81,6 +99,12 @@ impl NetResolver {
             schema,
         }
     }
+    pub fn collect_net_ref(&self, prefix: &str, cfg: Value) -> Result<HashMap<Vec<String>, Value>> {
+        let mut to_add = HashMap::new();
+        (self.collect_net_ref)(prefix, cfg, &mut to_add)?;
+
+        Ok(to_add)
+    }
     pub fn build(&self, getter: NetGetter, cfg: Value) -> Result<Net> {
         (self.build)(getter, cfg)
     }
@@ -94,13 +118,15 @@ impl NetResolver {
 
 pub trait ServerBuilder {
     const NAME: &'static str;
-    type Config: DeserializeOwned + JsonSchema;
+    type Config: DeserializeOwned + JsonSchema + Config;
     type Server: IServer + Sized + 'static;
 
     fn build(listen: Net, net: Net, config: Self::Config) -> Result<Self::Server>;
 }
 
 pub struct ServerResolver {
+    collect_net_ref:
+        fn(prefix: &str, cfg: Value, to_add: &mut HashMap<Vec<String>, Value>) -> Result<()>,
     build: fn(listen_net: Net, net: Net, cfg: Value) -> Result<Server>,
     schema: RootSchema,
 }
@@ -108,7 +134,8 @@ pub struct ServerResolver {
 impl ServerResolver {
     fn new<N: ServerBuilder>() -> Self {
         let mut schema = schema_for!(N::Config);
-        let net_schema = schema_for!(NetRef);
+        let mut net_schema = schema_for!(NetRef);
+        net_schema.schema.metadata().title = None;
         schema
             .schema
             .object()
@@ -120,6 +147,19 @@ impl ServerResolver {
             .properties
             .insert("listen".into(), net_schema.schema.into());
         Self {
+            collect_net_ref: |prefix, cfg, to_add| {
+                serde_json::from_value(cfg)
+                    .map_err(Into::<crate::Error>::into)
+                    .and_then(|mut cfg: N::Config| {
+                        cfg.collect_net_ref(|path, opt| {
+                            let mut key = vec![prefix.to_string()];
+                            key.extend(path.clone());
+                            to_add.insert(key, opt.clone());
+                            Ok(())
+                        })?;
+                        Ok(())
+                    })
+            },
             build: |listen_net, net: Net, cfg| {
                 serde_json::from_value(cfg)
                     .map_err(Into::<crate::Error>::into)
@@ -128,6 +168,12 @@ impl ServerResolver {
             },
             schema,
         }
+    }
+    pub fn collect_net_ref(&self, prefix: &str, cfg: Value) -> Result<HashMap<Vec<String>, Value>> {
+        let mut to_add = HashMap::new();
+        (self.collect_net_ref)(prefix, cfg, &mut to_add)?;
+
+        Ok(to_add)
     }
     pub fn build(&self, listen_net: Net, net: Net, cfg: Value) -> Result<Server> {
         (self.build)(listen_net, net, cfg)
