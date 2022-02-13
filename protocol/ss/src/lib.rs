@@ -1,7 +1,7 @@
 use client::{SSNet, SSNetConfig};
 use rd_interface::{
     registry::{NetBuilder, ServerBuilder},
-    Net, Registry, Result,
+    Registry, Result,
 };
 use server::{SSServer, SSServerConfig};
 
@@ -27,8 +27,8 @@ impl ServerBuilder for SSServer {
     type Config = SSServerConfig;
     type Server = Self;
 
-    fn build(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
-        Ok(SSServer::new(listen, net, cfg))
+    fn build(cfg: Self::Config) -> Result<Self> {
+        Ok(SSServer::new(cfg))
     }
 }
 

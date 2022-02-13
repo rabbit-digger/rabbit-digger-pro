@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::{
     collections::HashMap,
     future::pending,
+    iter::once,
     mem::replace,
     path::PathBuf,
     time::{Duration, SystemTime},
@@ -156,26 +157,32 @@ pub struct ConfigExt {
     import: Vec<Import>,
 }
 
+fn with_prefix(prefix: &str, v: Vec<String>) -> Vec<String> {
+    once(prefix.to_string()).chain(v).collect()
+}
+
 impl ConfigExt {
     // Flatten nested net
     pub fn flatten_net(&mut self, delimiter: &str, registry: &Registry) -> Result<()> {
         loop {
             let mut to_add = HashMap::new();
             for (name, net) in self.config.net.iter_mut() {
-                to_add.extend(
-                    registry
-                        .get_net(&net.net_type)?
-                        .resolver
-                        .collect_net_ref(name, net.opt.clone())?,
-                );
+                let path = registry
+                    .get_net(&net.net_type)?
+                    .resolver
+                    .collect_net_ref(name, net.opt.clone())?
+                    .into_iter()
+                    .map(|(k, v)| (with_prefix("net", k), v));
+                to_add.extend(path);
             }
             for (name, server) in self.config.server.iter_mut() {
-                to_add.extend(
-                    registry
-                        .get_server(&server.server_type)?
-                        .resolver
-                        .collect_net_ref(name, server.opt.clone())?,
-                );
+                let path = registry
+                    .get_server(&server.server_type)?
+                    .resolver
+                    .collect_net_ref(name, server.opt.clone())?
+                    .into_iter()
+                    .map(|(k, v)| (with_prefix("server", k), v));
+                to_add.extend(path);
             }
             if to_add.len() == 0 {
                 break;
@@ -186,7 +193,7 @@ impl ConfigExt {
 
             for (path, opt) in to_add.into_iter() {
                 let key = path.join(delimiter);
-                let pointer = format!("/net/{}", path.join("/"));
+                let pointer = format!("/{}", path.join("/"));
 
                 match cfg.pointer_mut(&pointer) {
                     Some(val) => {
