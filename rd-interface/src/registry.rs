@@ -134,19 +134,7 @@ pub struct ServerResolver {
 
 impl ServerResolver {
     fn new<N: ServerBuilder>() -> Self {
-        let mut schema = schema_for!(N::Config);
-        let mut net_schema = schema_for!(NetRef);
-        net_schema.schema.metadata().title = None;
-        schema
-            .schema
-            .object()
-            .properties
-            .insert("net".into(), net_schema.schema.clone().into());
-        schema
-            .schema
-            .object()
-            .properties
-            .insert("listen".into(), net_schema.schema.into());
+        let schema = schema_for!(N::Config);
         Self {
             collect_net_ref: |prefix, cfg, to_add| {
                 serde_json::from_value(cfg)
