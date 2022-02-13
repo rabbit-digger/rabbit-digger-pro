@@ -6,31 +6,32 @@ use rabbit_digger::rd_interface::schemars::{
     },
     visit::{visit_root_schema, visit_schema_object, Visitor},
 };
-use rabbit_digger::Registry;
 use serde_json::Value;
 use std::iter::FromIterator;
 use std::{collections::BTreeMap, path::Path};
 use tokio::fs::{create_dir_all, write};
 
-use crate::plugin_loader;
+use crate::get_registry;
 
-fn anyof_schema(anyof: Vec<Schema>) -> Schema {
+fn record(value_schema: Schema) -> Schema {
     let mut schema = SchemaObject::default();
-    schema.object().additional_properties = Some(Box::new(
-        SchemaObject {
-            instance_type: Some(InstanceType::Object.into()),
-            subschemas: Some(
-                SubschemaValidation {
-                    any_of: Some(anyof),
-                    ..Default::default()
-                }
-                .into(),
-            ),
-            ..Default::default()
-        }
-        .into(),
-    ));
+    schema.object().additional_properties = Some(Box::new(value_schema));
     schema.into()
+}
+
+fn any_of_schema(any_of: Vec<Schema>) -> Schema {
+    SchemaObject {
+        instance_type: Some(InstanceType::Object.into()),
+        subschemas: Some(
+            SubschemaValidation {
+                any_of: Some(any_of),
+                ..Default::default()
+            }
+            .into(),
+        ),
+        ..Default::default()
+    }
+    .into()
 }
 
 fn append_type(schema: &RootSchema, type_name: &str) -> RootSchema {
@@ -52,6 +53,9 @@ fn append_type(schema: &RootSchema, type_name: &str) -> RootSchema {
 struct PrefixVisitor(String);
 impl PrefixVisitor {
     fn prefix(&self, key: &str) -> String {
+        if ["Net"].contains(&key) {
+            return key.to_string();
+        }
         format!("{}{}", self.0, key)
     }
 }
@@ -89,10 +93,7 @@ pub async fn write_schema(path: impl AsRef<Path>) -> Result<()> {
 }
 
 pub async fn generate_schema() -> Result<RootSchema> {
-    let mut registry = Registry::new();
-
-    rabbit_digger::builtin::load_builtin(&mut registry)?;
-    plugin_loader(&Default::default(), &mut registry)?;
+    let registry = get_registry()?;
 
     let mut nets: Vec<Schema> = Vec::new();
     let mut servers: Vec<Schema> = Vec::new();
@@ -121,9 +122,10 @@ pub async fn generate_schema() -> Result<RootSchema> {
         ..Default::default()
     }
     .into();
-    let net_schema = anyof_schema(nets);
-    let server_schema = anyof_schema(servers);
+    let net_schema = any_of_schema(nets);
+    let server_schema = record(any_of_schema(servers));
 
+    root.definitions.insert("Net".to_string(), net_schema);
     root.schema = SchemaObject {
         instance_type: Some(InstanceType::Object.into()),
         metadata: Some(
@@ -137,7 +139,10 @@ pub async fn generate_schema() -> Result<RootSchema> {
             ObjectValidation {
                 properties: BTreeMap::from_iter([
                     ("id".to_string(), string_schema),
-                    ("net".to_string(), net_schema),
+                    (
+                        "net".to_string(),
+                        record(Schema::new_ref("#/definitions/Net".into())),
+                    ),
                     ("server".to_string(), server_schema),
                 ]),
                 ..Default::default()

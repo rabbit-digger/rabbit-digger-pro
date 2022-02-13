@@ -3,15 +3,45 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use cfg_if::cfg_if;
 use futures::{pin_mut, stream::TryStreamExt};
-use rabbit_digger::{RabbitDigger, RabbitDiggerBuilder};
+use rabbit_digger::RabbitDigger;
 #[cfg(feature = "api_server")]
 use rabbit_digger_pro::api_server;
 use rabbit_digger_pro::{
     config::{ConfigManager, ImportSource},
-    plugin_loader, schema,
+    get_registry, schema,
 };
 use structopt::StructOpt;
 use tracing_subscriber::filter::dynamic_filter_fn;
+
+struct App {
+    rd: RabbitDigger,
+    cfg_mgr: ConfigManager,
+}
+
+impl App {
+    async fn new() -> Result<Self> {
+        let rd = RabbitDigger::new(get_registry()?).await?;
+
+        let cfg_mgr = ConfigManager::new(get_registry()?).await?;
+
+        Ok(Self { rd, cfg_mgr })
+    }
+    async fn run_api_server(&self, api_server: &ApiServer) -> Result<()> {
+        if let Some(_bind) = &api_server.bind {
+            #[cfg(feature = "api_server")]
+            api_server::Server {
+                rabbit_digger: self.rd.clone(),
+                config_manager: self.cfg_mgr.clone(),
+                access_token: api_server._access_token.to_owned(),
+                web_ui: api_server._web_ui.to_owned(),
+            }
+            .run(_bind)
+            .await
+            .context("Failed to run api server.")?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(StructOpt)]
 struct ApiServer {
@@ -71,48 +101,16 @@ async fn write_config(path: impl AsRef<Path>, cfg: &rabbit_digger::Config) -> Re
     Ok(())
 }
 
-async fn run_api_server(
-    _rd: RabbitDigger,
-    _cfg_mgr: ConfigManager,
-    api_server: &ApiServer,
-) -> Result<()> {
-    if let Some(_bind) = &api_server.bind {
-        #[cfg(feature = "api_server")]
-        api_server::Server {
-            rabbit_digger: _rd,
-            config_manager: _cfg_mgr,
-            access_token: api_server._access_token.to_owned(),
-            web_ui: api_server._web_ui.to_owned(),
-        }
-        .run(_bind)
-        .await
-        .context("Failed to run api server.")?;
-    }
-    Ok(())
-}
-
-async fn get_rd() -> Result<RabbitDigger> {
-    let rd = RabbitDiggerBuilder::new()
-        .plugin_loader(plugin_loader)
-        .build()
-        .await?;
-    Ok(rd)
-}
-
-async fn get_cfg() -> Result<ConfigManager> {
-    Ok(ConfigManager::new().await?)
-}
-
 async fn real_main(args: Args) -> Result<()> {
-    let cfg_mgr = get_cfg().await?;
-    let rd = get_rd().await?;
+    let app = App::new().await?;
 
-    run_api_server(rd.clone(), cfg_mgr.clone(), &args.api_server).await?;
+    app.run_api_server(&args.api_server).await?;
 
     let config_path = args.config.clone();
     let write_config_path = args.write_config;
 
-    let config_stream = cfg_mgr
+    let config_stream = app
+        .cfg_mgr
         .config_stream(ImportSource::Path(config_path))
         .await?
         .and_then(|c: rabbit_digger::Config| async {
@@ -123,7 +121,8 @@ async fn real_main(args: Args) -> Result<()> {
         });
 
     pin_mut!(config_stream);
-    rd.start_stream(config_stream)
+    app.rd
+        .start_stream(config_stream)
         .await
         .context("Failed to run RabbitDigger")?;
 
@@ -199,10 +198,9 @@ async fn main(args: Args) -> Result<()> {
             return Ok(());
         }
         Some(Command::Server { api_server }) => {
-            let rd = get_rd().await?;
-            let cfg_mgr = get_cfg().await?;
+            let app = App::new().await?;
 
-            run_api_server(rd, cfg_mgr, &api_server).await?;
+            app.run_api_server(&api_server).await?;
 
             tokio::signal::ctrl_c().await?;
 

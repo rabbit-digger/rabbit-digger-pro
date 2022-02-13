@@ -1,7 +1,7 @@
 use crate::wrapper::Cipher;
 
 use super::*;
-use rd_interface::{config::NetRef, IServer, IntoAddress, IntoDyn};
+use rd_interface::{config::NetRef, IServer, IntoAddress, IntoDyn, Value};
 use rd_std::tests::{
     assert_echo, assert_echo_udp, get_registry, spawn_echo_server, spawn_echo_server_udp, TestNet,
 };
@@ -37,7 +37,7 @@ async fn test_ss_server_client() {
         password: "password".into(),
         udp: true,
         cipher: Cipher::AES_128_GCM,
-        net: NetRef::new_with_value("local".to_string(), local.clone()),
+        net: NetRef::new_with_value(Value::String("local".to_string()), local.clone()),
     };
     let client = client::SSNet::new(client_cfg).into_dyn();
 
