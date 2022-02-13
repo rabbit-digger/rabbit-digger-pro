@@ -9,8 +9,8 @@ use std::{
 use crate::util::{connect_tcp, connect_udp};
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use rd_interface::{
-    async_trait, prelude::*, registry::ServerBuilder, Address, Arc, Bytes, BytesMut, Context,
-    IServer, IUdpChannel, IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, config::NetRef, prelude::*, registry::ServerBuilder, Address, Bytes, BytesMut,
+    Context, IServer, IUdpChannel, IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
 use tokio::select;
 
@@ -22,20 +22,28 @@ pub struct ForwardServerConfig {
     target: Address,
     #[serde(default)]
     udp: bool,
+    #[serde(default)]
+    net: NetRef,
+    #[serde(default)]
+    listen: NetRef,
 }
 
 pub struct ForwardServer {
     listen_net: Net,
     net: Net,
-    cfg: Arc<ForwardServerConfig>,
+    bind: Address,
+    target: Address,
+    udp: bool,
 }
 
 impl ForwardServer {
-    fn new(listen_net: Net, net: Net, cfg: ForwardServerConfig) -> ForwardServer {
+    fn new(cfg: ForwardServerConfig) -> ForwardServer {
         ForwardServer {
-            listen_net,
-            net,
-            cfg: Arc::new(cfg),
+            listen_net: (*cfg.listen).clone(),
+            net: (*cfg.net).clone(),
+            bind: cfg.bind,
+            target: cfg.target,
+            udp: cfg.udp,
         }
     }
 }
@@ -44,7 +52,7 @@ impl IServer for ForwardServer {
     async fn start(&self) -> Result<()> {
         let listener = self
             .listen_net
-            .tcp_bind(&mut Context::new(), &self.cfg.bind)
+            .tcp_bind(&mut Context::new(), &self.bind)
             .await?;
 
         let tcp_task = self.serve_listener(listener);
@@ -61,46 +69,46 @@ impl IServer for ForwardServer {
 
 impl ForwardServer {
     async fn serve_connection(
-        cfg: Arc<ForwardServerConfig>,
+        target: Address,
         socket: TcpStream,
         net: Net,
         addr: SocketAddr,
     ) -> Result<()> {
         let ctx = &mut Context::from_socketaddr(addr);
-        let target = net.tcp_connect(ctx, &cfg.target).await?;
+        let target = net.tcp_connect(ctx, &target).await?;
         connect_tcp(ctx, socket, target).await?;
         Ok(())
     }
     pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
         loop {
             let (socket, addr) = listener.accept().await?;
-            let cfg = self.cfg.clone();
             let net = self.net.clone();
+            let target = self.target.clone();
             let _ = tokio::spawn(async move {
-                if let Err(e) = Self::serve_connection(cfg, socket, net, addr).await {
+                if let Err(e) = Self::serve_connection(target, socket, net, addr).await {
                     tracing::error!("Error when serve_connection: {:?}", e);
                 }
             });
         }
     }
     async fn serve_udp(&self) -> Result<()> {
-        if !self.cfg.udp {
+        if !self.udp {
             pending::<()>().await;
         }
 
         let udp_listener = ListenUdpChannel {
             udp: self
                 .listen_net
-                .udp_bind(&mut Context::new(), &self.cfg.bind)
+                .udp_bind(&mut Context::new(), &self.bind)
                 .await?,
             client: None,
-            cfg: self.cfg.clone(),
+            target: self.target.clone(),
         }
         .into_dyn();
 
         let udp = self
             .net
-            .udp_bind(&mut Context::new(), &self.cfg.target.to_any_addr_port()?)
+            .udp_bind(&mut Context::new(), &self.target.to_any_addr_port()?)
             .await?;
 
         connect_udp(&mut Context::new(), udp_listener, udp).await?;
@@ -114,15 +122,15 @@ impl ServerBuilder for ForwardServer {
     type Config = ForwardServerConfig;
     type Server = Self;
 
-    fn build(listen: Net, net: Net, cfg: Self::Config) -> Result<Self> {
-        Ok(ForwardServer::new(listen, net, cfg))
+    fn build(cfg: Self::Config) -> Result<Self> {
+        Ok(ForwardServer::new(cfg))
     }
 }
 
 struct ListenUdpChannel {
     udp: UdpSocket,
     client: Option<SocketAddr>,
-    cfg: Arc<ForwardServerConfig>,
+    target: Address,
 }
 
 impl Stream for ListenUdpChannel {
@@ -133,7 +141,7 @@ impl Stream for ListenUdpChannel {
         Poll::Ready(item.map(|r| {
             r.map(|(bytes, addr)| {
                 self.client = Some(addr);
-                return (bytes.freeze(), self.cfg.target.clone());
+                return (bytes.freeze(), self.target.clone());
             })
         }))
     }
@@ -192,12 +200,14 @@ mod tests {
     #[tokio::test]
     async fn test_forward_server() {
         let net = TestNet::new().into_dyn();
-        let cfg = ForwardServerConfig {
+
+        let server = ForwardServer {
+            listen_net: net.clone(),
+            net,
             bind: "127.0.0.1:1234".into_address().unwrap(),
             target: "127.0.0.1:4321".into_address().unwrap(),
             udp: true,
         };
-        let server = ForwardServer::new(net.clone(), net.clone(), cfg);
         tokio::spawn(async move { server.start().await.unwrap() });
         spawn_echo_server(&net, "127.0.0.1:4321").await;
         spawn_echo_server_udp(&net, "127.0.0.1:4321").await;

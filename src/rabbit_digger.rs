@@ -128,7 +128,7 @@ impl RabbitDigger {
         match &*state {
             State::Running(Running { servers, .. }) => {
                 for i in servers.values() {
-                    i.server.stop().await?;
+                    i.running_server.stop().await?;
                 }
             }
             _ => {}
@@ -149,8 +149,8 @@ impl RabbitDigger {
                 let mut race = FuturesUnordered::new();
                 for (name, i) in servers {
                     race.push(async move {
-                        i.server.join().await;
-                        if let Some(result) = i.server.take_result().await {
+                        i.running_server.join().await;
+                        if let Some(result) = i.running_server.take_result().await {
                             (name, result)
                         } else {
                             tracing::warn!("Failed to take result. This shouldn't happend");
@@ -224,11 +224,19 @@ impl RabbitDigger {
         let root = config
             .server
             .values()
-            .flat_map(|i| [i.listen.clone(), i.net.clone()])
+            .flat_map(|i| {
+                Result::<_, anyhow::Error>::Ok(
+                    self.registry
+                        .get_server(&i.server_type)?
+                        .resolver
+                        .get_dependency(i.opt.clone())?,
+                )
+            })
+            .flatten()
             .collect();
         let nets =
             build_nets(&self.registry, config.net.clone(), root).context("Failed to build net")?;
-        let servers = build_server(&nets, &config.server, &inner.conn_cfg)
+        let servers = build_server(&config.server)
             .await
             .context("Failed to build server")?;
         tracing::debug!(
@@ -238,8 +246,28 @@ impl RabbitDigger {
         );
 
         tracing::info!("Server:\n{}", ServerList(&servers));
-        for (_, server) in &servers {
-            server.server.start(&self.registry, &server.config).await?;
+        for (
+            _,
+            ServerInfo {
+                name,
+                running_server,
+                config,
+            },
+        ) in &servers
+        {
+            let item = self.registry.get_server(&running_server.server_type())?;
+            let server = item.build(
+                &|key| {
+                    nets.get(key).map(|i| {
+                        let net = i.net();
+
+                        RunningServerNet::new(name.clone(), net.clone(), inner.conn_cfg.clone())
+                            .into_dyn()
+                    })
+                },
+                config.clone(),
+            )?;
+            running_server.start(server, &config).await?;
         }
 
         *state = State::Running(Running {
@@ -365,9 +393,7 @@ impl RabbitDigger {
 #[derive(Clone)]
 pub struct ServerInfo {
     name: String,
-    listen: String,
-    net: String,
-    server: RunningServer,
+    running_server: RunningServer,
     config: Value,
 }
 
@@ -375,11 +401,7 @@ struct ServerList<'a>(&'a BTreeMap<String, ServerInfo>);
 
 impl fmt::Display for ServerInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}: {} -> {} {}",
-            self.name, self.listen, self.net, self.config
-        )
+        write!(f, "{}: {}", self.name, self.config)
     }
 }
 
@@ -447,11 +469,7 @@ fn build_nets(
     Ok(running_map)
 }
 
-async fn build_server(
-    net: &BTreeMap<String, Arc<RunningNet>>,
-    config: &config::ConfigServer,
-    conn_cfg: &ConnectionConfig,
-) -> Result<BTreeMap<String, ServerInfo>> {
+async fn build_server(config: &config::ConfigServer) -> Result<BTreeMap<String, ServerInfo>> {
     let mut servers = BTreeMap::new();
     let config = config.clone();
 
@@ -459,36 +477,13 @@ async fn build_server(
         let name = &name;
 
         let load_server = async {
-            let listen = net
-                .get(&i.listen)
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Listen Net {} is not loaded. Required by {:?}",
-                        &i.net,
-                        &name
-                    )
-                })?
-                .net();
-            let net = RunningServerNet::new(
-                name.clone(),
-                net.get(&i.net)
-                    .ok_or_else(|| {
-                        anyhow!("Net {} is not loaded. Required by {:?}", &i.net, &name)
-                    })?
-                    .net(),
-                conn_cfg.clone(),
-            )
-            .into_dyn();
-
-            let server = RunningServer::new(name.to_string(), i.server_type, net, listen);
+            let server = RunningServer::new(name.to_string(), i.server_type);
             servers.insert(
                 name.to_string(),
                 ServerInfo {
                     name: name.to_string(),
-                    server,
+                    running_server: server,
                     config: i.opt,
-                    listen: i.listen,
-                    net: i.net,
                 },
             );
             Ok(()) as Result<()>

@@ -53,10 +53,6 @@ pub struct Server {
     pub _reserved: Reserved,
     #[serde(rename = "type")]
     pub server_type: String,
-    #[serde(default = "default::local_string")]
-    pub listen: String,
-    #[serde(default = "default::local_string")]
-    pub net: String,
     #[serde(flatten)]
     pub opt: Value,
 }
@@ -109,16 +105,9 @@ impl Net {
 }
 
 impl Server {
-    pub fn new(
-        server_type: impl Into<String>,
-        listen: impl Into<String>,
-        net: impl Into<String>,
-        opt: Value,
-    ) -> Server {
+    pub fn new(server_type: impl Into<String>, opt: Value) -> Server {
         Server {
             server_type: server_type.into(),
-            listen: listen.into(),
-            net: net.into(),
             opt,
             _reserved: Default::default(),
             metadata: Default::default(),
@@ -126,16 +115,9 @@ impl Server {
     }
     pub fn new_opt(
         server_type: impl Into<String>,
-        listen: impl Into<String>,
-        net: impl Into<String>,
         opt: impl serde::Serialize,
     ) -> rd_interface::Result<Server> {
-        Ok(Server::new(
-            server_type,
-            listen,
-            net,
-            serde_json::to_value(opt)?,
-        ))
+        Ok(Server::new(server_type, serde_json::to_value(opt)?))
     }
     pub fn metadata<'a>(&'a self) -> Cow<'a, ServerMetadata> {
         match self.metadata.as_ref() {

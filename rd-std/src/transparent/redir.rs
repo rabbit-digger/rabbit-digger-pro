@@ -4,8 +4,8 @@ use super::origin_addr::OriginAddrExt;
 use crate::{builtin::local::CompatTcp, util::connect_tcp};
 use rd_derive::rd_config;
 use rd_interface::{
-    async_trait, registry::ServerBuilder, schemars, Address, Context, IServer, IntoAddress,
-    IntoDyn, Net, Result,
+    async_trait, config::NetRef, registry::ServerBuilder, schemars, Address, Context, IServer,
+    IntoAddress, IntoDyn, Net, Result,
 };
 use tokio::net::{TcpListener, TcpStream};
 
@@ -13,24 +13,26 @@ use tokio::net::{TcpListener, TcpStream};
 #[derive(Debug)]
 pub struct RedirServerConfig {
     bind: Address,
+    #[serde(default)]
+    net: NetRef,
 }
 
 pub struct RedirServer {
-    cfg: RedirServerConfig,
+    bind: Address,
     net: Net,
 }
 
 #[async_trait]
 impl IServer for RedirServer {
     async fn start(&self) -> Result<()> {
-        let listener = TcpListener::bind(&self.cfg.bind.to_string()).await?;
+        let listener = TcpListener::bind(&self.bind.to_string()).await?;
         self.serve_listener(listener).await
     }
 }
 
 impl RedirServer {
-    pub fn new(cfg: RedirServerConfig, net: Net) -> Self {
-        RedirServer { cfg, net }
+    pub fn new(bind: Address, net: Net) -> Self {
+        RedirServer { bind, net }
     }
 
     pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
@@ -63,7 +65,7 @@ impl ServerBuilder for RedirServer {
     type Config = RedirServerConfig;
     type Server = Self;
 
-    fn build(_: Net, net: Net, config: Self::Config) -> Result<Self> {
-        Ok(RedirServer::new(config, net))
+    fn build(Self::Config { bind, net }: Self::Config) -> Result<Self> {
+        Ok(RedirServer::new(bind, (*net).clone()))
     }
 }

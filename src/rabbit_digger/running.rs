@@ -12,15 +12,13 @@ use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
     Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Bytes, BytesMut, Context, INet, IUdpSocket,
-    IntoDyn, Net, ReadBuf, Result, Sink, TcpListener, TcpStream, UdpSocket, Value,
+    IntoDyn, Net, ReadBuf, Result, Server, Sink, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
     sync::{oneshot, RwLock, Semaphore},
     task::JoinHandle,
 };
 use tracing::{instrument, Instrument};
-
-use crate::Registry;
 
 use super::{
     connection::{Connection, ConnectionConfig},
@@ -368,22 +366,21 @@ pub struct RunningServer {
     #[allow(dead_code)]
     name: String,
     server_type: String,
-    net: Net,
-    listen: Net,
     state: Arc<RwLock<State>>,
 }
 
 impl RunningServer {
-    pub fn new(name: String, server_type: String, net: Net, listen: Net) -> Self {
+    pub fn new(name: String, server_type: String) -> Self {
         RunningServer {
             name,
             server_type,
-            net,
-            listen,
             state: Arc::new(RwLock::new(State::WaitConfig)),
         }
     }
-    pub async fn start(&self, registry: &Registry, opt: &Value) -> anyhow::Result<()> {
+    pub fn server_type(&self) -> &str {
+        &self.server_type
+    }
+    pub async fn start(&self, server: Server, opt: &Value) -> anyhow::Result<()> {
         match &*self.state.read().await {
             // skip if config is not changed
             State::Running {
@@ -399,8 +396,6 @@ impl RunningServer {
         self.stop().await?;
 
         let name = self.name.clone();
-        let item = registry.get_server(&self.server_type)?;
-        let server = item.build(self.listen.clone(), self.net.clone(), opt.clone())?;
         let semaphore = Arc::new(Semaphore::new(0));
         let s2 = semaphore.clone();
         let task = async move {

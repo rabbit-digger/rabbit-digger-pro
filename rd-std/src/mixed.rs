@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 
 use anyhow::Context as AnyhowContext;
 use rd_interface::{
-    async_trait, prelude::*, registry::ServerBuilder, Address, Context, IServer, IntoDyn, Net,
-    Registry, Result, TcpStream,
+    async_trait, config::NetRef, prelude::*, registry::ServerBuilder, Address, Context, IServer,
+    IntoDyn, Net, Registry, Result, TcpStream,
 };
 
 use crate::{http::HttpServer, socks5::Socks5Server, util::PeekableTcpStream};
@@ -88,6 +88,10 @@ impl HttpSocks5 {
 #[derive(Debug)]
 pub struct MixedServerConfig {
     bind: Address,
+    #[serde(default)]
+    listen: NetRef,
+    #[serde(default)]
+    net: NetRef,
 }
 
 impl ServerBuilder for HttpSocks5 {
@@ -95,8 +99,8 @@ impl ServerBuilder for HttpSocks5 {
     type Config = MixedServerConfig;
     type Server = Self;
 
-    fn build(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
-        Ok(HttpSocks5::new(listen, net, bind))
+    fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
+        Ok(HttpSocks5::new((*listen).clone(), (*net).clone(), bind))
     }
 }
 

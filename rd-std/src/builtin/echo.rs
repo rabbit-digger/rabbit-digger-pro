@@ -1,6 +1,6 @@
 use rd_interface::{
-    async_trait, prelude::*, registry::ServerBuilder, Address, Context, IServer, Net, Result,
-    TcpListener, TcpStream,
+    async_trait, config::NetRef, prelude::*, registry::ServerBuilder, Address, Context, IServer,
+    Net, Result, TcpListener, TcpStream,
 };
 use tokio::io;
 
@@ -9,23 +9,26 @@ use tokio::io;
 #[derive(Debug)]
 pub struct EchoServerConfig {
     bind: Address,
+    #[serde(default)]
+    listen: NetRef,
 }
 
 pub struct EchoServer {
-    listen_net: Net,
+    listen: Net,
     bind: Address,
 }
 
 impl EchoServer {
-    fn new(listen_net: Net, EchoServerConfig { bind }: EchoServerConfig) -> EchoServer {
-        EchoServer { listen_net, bind }
+    fn new(EchoServerConfig { bind, listen }: EchoServerConfig) -> EchoServer {
+        let listen = (*listen).clone();
+        EchoServer { listen, bind }
     }
 }
 #[async_trait]
 impl IServer for EchoServer {
     async fn start(&self) -> Result<()> {
         let listener = self
-            .listen_net
+            .listen
             .tcp_bind(&mut Context::new(), &self.bind)
             .await?;
         self.serve_listener(listener).await
@@ -55,8 +58,8 @@ impl ServerBuilder for EchoServer {
     type Config = EchoServerConfig;
     type Server = Self;
 
-    fn build(listen: Net, _net: Net, cfg: Self::Config) -> Result<Self> {
-        Ok(EchoServer::new(listen, cfg))
+    fn build(cfg: Self::Config) -> Result<Self> {
+        Ok(EchoServer::new(cfg))
     }
 }
 
@@ -73,10 +76,11 @@ mod tests {
     #[tokio::test]
     async fn test_echo_server() {
         let net = TestNet::new().into_dyn();
-        let cfg = EchoServerConfig {
+
+        let server = EchoServer {
+            listen: net.clone(),
             bind: "127.0.0.1:1234".into_address().unwrap(),
         };
-        let server = EchoServer::new(net.clone(), cfg);
         tokio::spawn(async move { server.start().await.unwrap() });
 
         sleep(Duration::from_millis(1)).await;

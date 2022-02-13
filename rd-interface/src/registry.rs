@@ -81,11 +81,11 @@ impl NetResolver {
                         Ok(())
                     })
             },
-            build: |nets, cfg| {
+            build: |getter, cfg| {
                 serde_json::from_value(cfg)
                     .map_err(Into::<crate::Error>::into)
                     .and_then(|mut cfg: N::Config| {
-                        cfg.resolve_net(nets)?;
+                        cfg.resolve_net(getter)?;
                         Ok(cfg)
                     })
                     .and_then(N::build)
@@ -121,13 +121,14 @@ pub trait ServerBuilder {
     type Config: DeserializeOwned + JsonSchema + Config;
     type Server: IServer + Sized + 'static;
 
-    fn build(listen: Net, net: Net, config: Self::Config) -> Result<Self::Server>;
+    fn build(config: Self::Config) -> Result<Self::Server>;
 }
 
 pub struct ServerResolver {
     collect_net_ref:
         fn(prefix: &str, cfg: Value, to_add: &mut HashMap<Vec<String>, Value>) -> Result<()>,
-    build: fn(listen_net: Net, net: Net, cfg: Value) -> Result<Server>,
+    build: fn(getter: NetGetter, cfg: Value) -> Result<Server>,
+    get_dependency: fn(cfg: Value) -> Result<Vec<String>>,
     schema: RootSchema,
 }
 
@@ -160,11 +161,20 @@ impl ServerResolver {
                         Ok(())
                     })
             },
-            build: |listen_net, net: Net, cfg| {
+            build: |getter, cfg| {
                 serde_json::from_value(cfg)
                     .map_err(Into::<crate::Error>::into)
-                    .and_then(|cfg| N::build(listen_net, net, cfg))
+                    .and_then(|mut cfg: N::Config| {
+                        cfg.resolve_net(getter)?;
+                        Ok(cfg)
+                    })
+                    .and_then(N::build)
                     .map(|n| n.into_dyn())
+            },
+            get_dependency: |cfg| {
+                serde_json::from_value(cfg)
+                    .map_err(Into::<crate::Error>::into)
+                    .and_then(|mut cfg: N::Config| cfg.get_dependency())
             },
             schema,
         }
@@ -175,8 +185,11 @@ impl ServerResolver {
 
         Ok(to_add)
     }
-    pub fn build(&self, listen_net: Net, net: Net, cfg: Value) -> Result<Server> {
-        (self.build)(listen_net, net, cfg)
+    pub fn build(&self, getter: NetGetter, cfg: Value) -> Result<Server> {
+        (self.build)(getter, cfg)
+    }
+    pub fn get_dependency(&self, cfg: Value) -> Result<Vec<String>> {
+        (self.get_dependency)(cfg)
     }
     pub fn schema(&self) -> &RootSchema {
         &self.schema

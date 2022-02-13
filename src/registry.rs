@@ -30,9 +30,9 @@ impl NetItem {
 }
 
 impl ServerItem {
-    pub fn build(&self, listen: Net, net: Net, config: Value) -> Result<Server> {
+    pub fn build(&self, getter: NetGetter, config: Value) -> Result<Server> {
         self.resolver
-            .build(listen, net, config)
+            .build(getter, config)
             .with_context(|| format!("Failed to build server: {}", self.id))
     }
 }

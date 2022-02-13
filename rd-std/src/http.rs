@@ -3,7 +3,7 @@ pub use self::{client::HttpClient, server::HttpServer};
 use rd_interface::{
     prelude::*,
     registry::{NetBuilder, NetRef, ServerBuilder},
-    Address, Net, Registry, Result,
+    Address, Registry, Result,
 };
 
 mod client;
@@ -24,6 +24,10 @@ pub struct HttpNetConfig {
 #[derive(Debug)]
 pub struct HttpServerConfig {
     bind: Address,
+    #[serde(default)]
+    net: NetRef,
+    #[serde(default)]
+    listen: NetRef,
 }
 
 impl NetBuilder for HttpClient {
@@ -41,8 +45,8 @@ impl ServerBuilder for server::Http {
     type Config = HttpServerConfig;
     type Server = Self;
 
-    fn build(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
-        Ok(server::Http::new(listen, net, bind))
+    fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
+        Ok(server::Http::new((*listen).clone(), (*net).clone(), bind))
     }
 }
 

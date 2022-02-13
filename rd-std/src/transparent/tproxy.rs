@@ -14,8 +14,9 @@ use crate::{
 use futures::{ready, Sink, Stream};
 use rd_derive::rd_config;
 use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, error::ErrorContext, registry::ServerBuilder, schemars,
-    Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net, Result,
+    async_trait, config::NetRef, constant::UDP_BUFFER_SIZE, error::ErrorContext,
+    registry::ServerBuilder, schemars, Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net,
+    Result,
 };
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -27,18 +28,21 @@ use tokio::{
 pub struct TProxyServerConfig {
     bind: Address,
     mark: Option<u32>,
+    #[serde(default)]
+    net: NetRef,
 }
 
 pub struct TProxyServer {
-    cfg: TProxyServerConfig,
+    bind: Address,
+    mark: Option<u32>,
     net: Net,
 }
 
 #[async_trait]
 impl IServer for TProxyServer {
     async fn start(&self) -> Result<()> {
-        let tcp_listener = create_tcp_listener(self.cfg.bind.to_socket_addr()?).await?;
-        let udp_listener = TransparentUdp::listen(self.cfg.bind.to_socket_addr()?)?;
+        let tcp_listener = create_tcp_listener(self.bind.to_socket_addr()?).await?;
+        let udp_listener = TransparentUdp::listen(self.bind.to_socket_addr()?)?;
 
         select! {
             r = self.serve_listener(tcp_listener) => r,
@@ -48,12 +52,16 @@ impl IServer for TProxyServer {
 }
 
 impl TProxyServer {
-    pub fn new(cfg: TProxyServerConfig, net: Net) -> Self {
-        TProxyServer { cfg, net }
+    pub fn new(TProxyServerConfig { bind, mark, net }: TProxyServerConfig) -> Self {
+        TProxyServer {
+            bind,
+            mark,
+            net: (*net).clone(),
+        }
     }
 
     async fn serve_udp(&self, listener: TransparentUdp) -> Result<()> {
-        let source = UdpSource::new(listener, self.cfg.mark);
+        let source = UdpSource::new(listener, self.mark);
 
         forward_udp(source, self.net.clone(), None)
             .await
@@ -93,8 +101,8 @@ impl ServerBuilder for TProxyServer {
     type Config = TProxyServerConfig;
     type Server = Self;
 
-    fn build(_: Net, net: Net, config: Self::Config) -> Result<Self> {
-        Ok(TProxyServer::new(config, net))
+    fn build(config: Self::Config) -> Result<Self> {
+        Ok(TProxyServer::new(config))
     }
 }
 
