@@ -5,6 +5,7 @@ use rd_interface::{
     async_trait, config::NetRef, prelude::*, registry::ServerBuilder, Address, Context, IServer,
     IntoDyn, Net, Registry, Result, TcpStream,
 };
+use tracing::instrument;
 
 use crate::{http::HttpServer, socks5::Socks5Server, util::PeekableTcpStream};
 
@@ -21,6 +22,7 @@ impl HttpSocks5Server {
             socks5_server: Socks5Server::new(listen_net.clone(), net.clone()),
         }
     }
+    #[instrument(err, skip(self, socket))]
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let buf = &mut [0u8; 1];
         let mut socket = PeekableTcpStream::new(socket);

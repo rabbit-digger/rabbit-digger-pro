@@ -3,6 +3,7 @@ use rd_interface::{
     Net, Result, TcpListener, TcpStream,
 };
 use tokio::io;
+use tracing::instrument;
 
 /// A echo server.
 #[rd_config]
@@ -36,6 +37,7 @@ impl IServer for EchoServer {
 }
 
 impl EchoServer {
+    #[instrument(err, skip(socket))]
     async fn serve_connection(socket: TcpStream) -> Result<()> {
         let (mut rx, mut tx) = io::split(socket);
         io::copy(&mut rx, &mut tx).await?;

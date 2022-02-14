@@ -13,6 +13,7 @@ use rd_interface::{
     Context, IServer, IUdpChannel, IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
 use tokio::select;
+use tracing::instrument;
 
 /// A server that forwards all connections to target.
 #[rd_config]
@@ -68,6 +69,7 @@ impl IServer for ForwardServer {
 }
 
 impl ForwardServer {
+    #[instrument(err, skip(net, socket))]
     async fn serve_connection(
         target: Address,
         socket: TcpStream,

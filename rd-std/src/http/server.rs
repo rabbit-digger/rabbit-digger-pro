@@ -4,6 +4,7 @@ use hyper::{
 };
 use rd_interface::{async_trait, Address, Context, IServer, IntoAddress, Net, Result, TcpStream};
 use std::net::SocketAddr;
+use tracing::instrument;
 
 #[derive(Clone)]
 pub struct HttpServer {
@@ -11,6 +12,7 @@ pub struct HttpServer {
 }
 
 impl HttpServer {
+    #[instrument(err, skip(self, socket))]
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let net = self.net.clone();
 

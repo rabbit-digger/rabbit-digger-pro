@@ -18,6 +18,7 @@ use std::{
     task,
 };
 use tokio::io::{AsyncWriteExt, BufWriter};
+use tracing::instrument;
 
 struct Socks5ServerConfig {
     net: Net,
@@ -58,6 +59,7 @@ impl Socks5Server {
         socket.flush().await?;
         return Ok(());
     }
+    #[instrument(err, skip(self, socket))]
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
         let mut socket = BufWriter::with_capacity(512, socket);
 

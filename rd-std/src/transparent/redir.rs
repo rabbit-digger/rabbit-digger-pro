@@ -8,6 +8,7 @@ use rd_interface::{
     IntoAddress, IntoDyn, Net, Result,
 };
 use tokio::net::{TcpListener, TcpStream};
+use tracing::instrument;
 
 #[rd_config]
 #[derive(Debug)]
@@ -47,6 +48,7 @@ impl RedirServer {
         }
     }
 
+    #[instrument(err, skip(net, socket))]
     async fn serve_connection(net: Net, socket: TcpStream, addr: SocketAddr) -> Result<()> {
         let target = socket.origin_addr()?;
 

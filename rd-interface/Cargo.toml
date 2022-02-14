@@ -18,3 +18,4 @@ tokio = { version = "1.5", features = ["io-util", "time"] }
 rd-derive = { version = "0.1", path = "../rd-derive" }
 schemars = "0.8.3"
 bytes = "1.1.0"
+tracing = "0.1"

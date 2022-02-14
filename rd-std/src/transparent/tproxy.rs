@@ -22,6 +22,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     select,
 };
+use tracing::instrument;
 
 #[rd_config]
 #[derive(Debug)]
@@ -83,6 +84,7 @@ impl TProxyServer {
         }
     }
 
+    #[instrument(err, skip(net, socket))]
     async fn serve_connection(net: Net, socket: TcpStream, addr: SocketAddr) -> Result<()> {
         let target = socket.local_addr()?;
 
