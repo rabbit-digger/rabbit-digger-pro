@@ -27,13 +27,13 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo
-          key: ${{ matrix.os }}-nightly-2022-01-01-cargo-v1
+          key: ${{ matrix.os }}-stable-cargo-v1
           restore-keys: |
-            ${{ matrix.os }}-nightly-2022-01-01-cargo-v1
+            ${{ matrix.os }}-stable-cargo-v1
       - name: Setup toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2022-01-01
+          toolchain: stable
           target: ${{ matrix.target }}
           override: true
       - name: Run tests
@@ -70,13 +70,13 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo
-          key: ${{ matrix.target }}-nightly-2022-01-01-cargo-v1
+          key: ${{ matrix.target }}-stable-cargo-v1
           restore-keys: |
-            ${{ matrix.target }}-nightly-2022-01-01-cargo-v1
+            ${{ matrix.target }}-stable-cargo-v1
       - name: Setup toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2022-01-01
+          toolchain: stable
           target: ${{ matrix.target }}
           override: true
       - name: Build release
