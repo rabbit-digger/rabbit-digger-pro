@@ -205,7 +205,7 @@ mod tests {
 
         let server = ForwardServer {
             listen_net: net.clone(),
-            net,
+            net: net.clone(),
             bind: "127.0.0.1:1234".into_address().unwrap(),
             target: "127.0.0.1:4321".into_address().unwrap(),
             udp: true,
