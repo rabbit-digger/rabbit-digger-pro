@@ -1,4 +1,4 @@
-cargo-features = ["strip"]
+# cargo-features = ["strip"]
 
 [package]
 name = "rabbit-digger-pro"
@@ -53,7 +53,7 @@ rpc = { path = "./protocol/rpc", optional = true }
 raw = { path = "./protocol/raw", optional = true }
 obfs = { path = "./protocol/obfs", optional = true }
 
-console-subscriber = { version = "0.1.2", optional = true }
+console-subscriber = { git = "https://github.com/tokio-rs/console", rev = "e0afa98801a74cc8362349935a6245e71ffa9f6f", version = "0.1.2", optional = true }
 
 tracing-opentelemetry = { version = "0.17.0", optional = true }
 opentelemetry = { version = "0.17.0", features = ["rt-tokio"], optional = true }
@@ -89,7 +89,7 @@ exclude = ["rabbit-digger"]
 lto = true
 codegen-units = 1
 panic = 'abort'
-strip = "symbols"
+# strip = "symbols"
 
 [[bin]]
 name = "rabbit-digger-pro"

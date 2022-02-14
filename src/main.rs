@@ -143,7 +143,7 @@ async fn main(args: Args) -> Result<()> {
 
     cfg_if! {
         if #[cfg(feature = "console")] {
-            let (layer, server) = console_subscriber::TasksLayer::builder().with_default_env().build();
+            let (layer, server) = console_subscriber::ConsoleLayer::builder().with_default_env().build();
             tokio::spawn(server.serve());
             let tr = tr.with(layer);
         }
