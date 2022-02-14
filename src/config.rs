@@ -1,11 +1,11 @@
 pub mod default;
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap, iter::once, mem::replace};
 
 use indexmap::IndexMap;
 use rd_interface::{
     schemars::{self, JsonSchema},
-    Value,
+    Result, Value,
 };
 use serde::{Deserialize, Serialize};
 
@@ -124,5 +124,67 @@ impl Server {
             Some(m) => Cow::Borrowed(m),
             None => Cow::Owned(Default::default()),
         }
+    }
+}
+
+fn with_prefix(prefix: &str, v: Vec<String>) -> Vec<String> {
+    once(prefix.to_string()).chain(v).collect()
+}
+
+impl Config {
+    // Flatten nested net
+    pub fn flatten_net(&mut self, delimiter: &str, registry: &crate::Registry) -> Result<()> {
+        loop {
+            let mut to_add = HashMap::new();
+            for (name, net) in self.net.iter_mut() {
+                let path = registry
+                    .get_net(&net.net_type)?
+                    .resolver
+                    .collect_net_ref(name, net.opt.clone())?
+                    .into_iter()
+                    .map(|(k, v)| (with_prefix("net", k), v));
+                to_add.extend(path);
+            }
+            for (name, server) in self.server.iter_mut() {
+                let path = registry
+                    .get_server(&server.server_type)?
+                    .resolver
+                    .collect_net_ref(name, server.opt.clone())?
+                    .into_iter()
+                    .map(|(k, v)| (with_prefix("server", k), v));
+                to_add.extend(path);
+            }
+            if to_add.len() == 0 {
+                break;
+            }
+
+            let mut cfg = serde_json::to_value(replace(self, Default::default()))?;
+            let mut to_add_net = HashMap::<String, Net>::new();
+
+            for (path, opt) in to_add.into_iter() {
+                let key = path.join(delimiter);
+                let pointer = format!("/{}", path.join("/"));
+
+                match cfg.pointer_mut(&pointer) {
+                    Some(val) => {
+                        *val = Value::String(key.clone());
+                        to_add_net.insert(key, serde_json::from_value(opt)?);
+                    }
+                    None => {
+                        return Err(rd_interface::Error::other(format!(
+                            "pointer not found: {}",
+                            pointer
+                        )))
+                    }
+                }
+            }
+            *self = serde_json::from_value(cfg)?;
+
+            for (key, value) in to_add_net {
+                self.net.insert(key, value);
+            }
+        }
+
+        Ok(())
     }
 }

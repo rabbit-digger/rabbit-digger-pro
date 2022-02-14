@@ -25,9 +25,10 @@ async fn real_main(args: Args) -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let content = read_to_string(args.config).await?;
-    let config: Config = serde_yaml::from_str(&content)?;
+    let mut config: Config = serde_yaml::from_str(&content)?;
 
     let registry = Registry::new_with_builtin()?;
+    config.flatten_net("##", &registry)?;
     let rd = RabbitDigger::new(registry).await?;
     rd.start(config).await?;
     rd.join().await?;

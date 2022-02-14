@@ -90,6 +90,10 @@ pub trait ErrorContext<T, E> {
     fn context<C>(self, context: C) -> Result<T, Error>
     where
         C: Display + Send + Sync + 'static;
+    fn with_context<C, F>(self, f: F) -> Result<T, Error>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C;
 }
 
 impl<T, E> ErrorContext<T, E> for Result<T, E>
@@ -101,5 +105,12 @@ where
         C: Display + Send + Sync + 'static,
     {
         self.map_err(|error| Error::WithContext(ErrorWithContext::new(context, error)))
+    }
+    fn with_context<C, F>(self, f: F) -> Result<T, Error>
+    where
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|error| Error::WithContext(ErrorWithContext::new(f(), error)))
     }
 }

@@ -1,9 +1,9 @@
 //! A registry with plugin name
 
-use anyhow::{anyhow, Context, Result};
 use rd_interface::{
+    error::ErrorContext,
     registry::{NetGetter, NetResolver, ServerResolver},
-    Net, Server, Value,
+    Net, Result, Server, Value,
 };
 use std::{collections::BTreeMap, fmt};
 
@@ -139,13 +139,13 @@ impl Registry {
         &self.server
     }
     pub fn get_net(&self, net_type: &str) -> Result<&NetItem> {
-        self.net
-            .get(net_type)
-            .ok_or_else(|| anyhow!("Net type is not loaded: {}", net_type))
+        self.net.get(net_type).ok_or_else(|| {
+            rd_interface::Error::other(format!("Net type is not loaded: {}", net_type))
+        })
     }
     pub fn get_server(&self, server_type: &str) -> Result<&ServerItem> {
-        self.server
-            .get(server_type)
-            .ok_or_else(|| anyhow!("Server type is not loaded: {}", server_type))
+        self.server.get(server_type).ok_or_else(|| {
+            rd_interface::Error::other(format!("Server type is not loaded: {}", server_type))
+        })
     }
 }
