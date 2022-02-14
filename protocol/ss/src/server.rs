@@ -9,6 +9,7 @@ use rd_std::util::{connect_tcp, forward_udp};
 use shadowsocks::{config::ServerType, context::Context, ServerConfig};
 use socks5_protocol::Address as S5Addr;
 use tokio::select;
+use tracing::instrument;
 
 mod source;
 
@@ -95,6 +96,7 @@ impl SSServer {
             });
         }
     }
+    #[instrument(err, skip(cfg, context, socket, net))]
     async fn serve_connection(
         cfg: Arc<ServerConfig>,
         context: Arc<Context>,

@@ -77,7 +77,7 @@ impl Inner {
                 .context(format!("post process of import: {:?}", i))?;
         }
 
-        config.flatten_net(&self.delimiter, &self.registry)?;
+        config.config.flatten_net(&self.delimiter, &self.registry)?;
 
         // restore patch
         SelectMap::from_cache(&config.config.id, &self.select_storage)

@@ -2,14 +2,11 @@ pub use self::{manager::ConfigManager, select_map::SelectMap};
 use anyhow::{anyhow, Context, Result};
 use futures::StreamExt;
 use notify_stream::{notify::RecursiveMode, notify_stream};
-use rabbit_digger::{Config, Registry};
+use rabbit_digger::Config;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::HashMap,
     future::pending,
-    iter::once,
-    mem::replace,
     path::PathBuf,
     time::{Duration, SystemTime},
 };
@@ -157,61 +154,7 @@ pub struct ConfigExt {
     import: Vec<Import>,
 }
 
-fn with_prefix(prefix: &str, v: Vec<String>) -> Vec<String> {
-    once(prefix.to_string()).chain(v).collect()
-}
-
 impl ConfigExt {
-    // Flatten nested net
-    pub fn flatten_net(&mut self, delimiter: &str, registry: &Registry) -> Result<()> {
-        loop {
-            let mut to_add = HashMap::new();
-            for (name, net) in self.config.net.iter_mut() {
-                let path = registry
-                    .get_net(&net.net_type)?
-                    .resolver
-                    .collect_net_ref(name, net.opt.clone())?
-                    .into_iter()
-                    .map(|(k, v)| (with_prefix("net", k), v));
-                to_add.extend(path);
-            }
-            for (name, server) in self.config.server.iter_mut() {
-                let path = registry
-                    .get_server(&server.server_type)?
-                    .resolver
-                    .collect_net_ref(name, server.opt.clone())?
-                    .into_iter()
-                    .map(|(k, v)| (with_prefix("server", k), v));
-                to_add.extend(path);
-            }
-            if to_add.len() == 0 {
-                break;
-            }
-
-            let mut cfg = serde_json::to_value(replace(&mut self.config, Default::default()))?;
-            let mut to_add_net = HashMap::<String, rabbit_digger::config::Net>::new();
-
-            for (path, opt) in to_add.into_iter() {
-                let key = path.join(delimiter);
-                let pointer = format!("/{}", path.join("/"));
-
-                match cfg.pointer_mut(&pointer) {
-                    Some(val) => {
-                        *val = Value::String(key.clone());
-                        to_add_net.insert(key, serde_json::from_value(opt)?);
-                    }
-                    None => return Err(anyhow!("pointer not found: {}", pointer)),
-                }
-            }
-            self.config = serde_json::from_value(cfg)?;
-
-            for (key, value) in to_add_net {
-                self.config.net.insert(key, value);
-            }
-        }
-
-        Ok(())
-    }
     pub async fn build_from_cache(self, cache: &dyn Storage) -> Result<Config> {
         let imports = self.import;
         let mut config = self.config;
