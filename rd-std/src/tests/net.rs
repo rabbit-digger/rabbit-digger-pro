@@ -396,6 +396,10 @@ impl IUdpSocket for MyUdpSocket {
 }
 
 fn check_address(addr: &Address) -> io::Result<()> {
+    match addr {
+        Address::Domain(d, _) if d == "localhost" => return Ok(()),
+        _ => {}
+    };
     let addr = addr.to_socket_addr()?;
     if addr.ip().is_loopback() {
         Ok(())
