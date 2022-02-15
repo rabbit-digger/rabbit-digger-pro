@@ -2,7 +2,7 @@
 name = "rabbit-digger"
 version = "0.1.1"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "Just a stub"
 license = "MIT OR Apache-2.0"
 
