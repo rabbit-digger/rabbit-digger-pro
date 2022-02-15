@@ -167,7 +167,12 @@ impl UdpSource {
                 };
 
                 if let Err(e) = ready!(udp.poll_send_to(cx, data, *to)) {
-                    tracing::error!("Failed to send to addr: {}. Reason: {:?}", to, e);
+                    tracing::error!(
+                        "Failed to send from {} to addr: {}. Reason: {:?}",
+                        from,
+                        to,
+                        e
+                    );
                 }
 
                 // Don't cache reserved address
