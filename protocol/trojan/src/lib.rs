@@ -1,15 +1,15 @@
 use client::{TrojanNet, TrojanNetConfig};
-use rd_interface::{registry::NetBuilder, Registry, Result};
+use rd_interface::{registry::Builder, Net, Registry, Result};
 
 mod client;
 mod stream;
 mod tls;
 mod websocket;
 
-impl NetBuilder for TrojanNet {
+impl Builder<Net> for TrojanNet {
     const NAME: &'static str = "trojan";
     type Config = TrojanNetConfig;
-    type Net = Self;
+    type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
         TrojanNet::new(config)

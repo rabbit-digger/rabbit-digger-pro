@@ -1,10 +1,7 @@
 use net::RpcNet;
 use rd_interface::{
-    config::NetRef,
-    prelude::*,
-    rd_config,
-    registry::{NetBuilder, ServerBuilder},
-    Address, Registry, Result,
+    config::NetRef, prelude::*, rd_config, registry::Builder, Address, Net, Registry, Result,
+    Server,
 };
 use server::RpcServer;
 
@@ -33,20 +30,20 @@ pub struct RpcServerConfig {
     listen: NetRef,
 }
 
-impl NetBuilder for RpcNet {
+impl Builder<Net> for RpcNet {
     const NAME: &'static str = "rpc";
     type Config = RpcNetConfig;
-    type Net = Self;
+    type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
         Ok(RpcNet::new((*config.net).clone(), config.endpoint))
     }
 }
 
-impl ServerBuilder for RpcServer {
+impl Builder<Server> for RpcServer {
     const NAME: &'static str = "rpc";
     type Config = RpcServerConfig;
-    type Server = Self;
+    type Item = Self;
 
     fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
         Ok(RpcServer::new((*listen).clone(), (*net).clone(), bind))

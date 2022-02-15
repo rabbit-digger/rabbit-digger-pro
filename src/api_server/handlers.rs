@@ -141,7 +141,7 @@ pub(super) async fn get_delay(
         .get_net(&net_name)
         .await
         .map_err(custom_reject)?
-        .map(|n| n.net());
+        .map(|n| n.as_net());
     let host = url.host_str();
     let port = url.port_or_known_default();
     let timeout = timeout.unwrap_or(5000);
