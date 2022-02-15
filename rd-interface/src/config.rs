@@ -80,10 +80,6 @@ impl VisitorContext {
 
 pub trait Config {
     fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()>;
-}
-
-pub trait ConfigExt: Config {
-    // Collect nested nets
     fn resolve_net(&mut self, getter: NetGetter) -> Result<()> {
         struct ResolveNetVisitor<'a>(NetGetter<'a>);
 
@@ -109,8 +105,6 @@ pub trait ConfigExt: Config {
         Ok(())
     }
 }
-
-impl<T: Config> ConfigExt for T {}
 
 impl Config for NetRef {
     fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()> {

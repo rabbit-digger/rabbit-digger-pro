@@ -5,7 +5,7 @@ use std::{
 
 pub use crate::config::NetRef;
 use crate::{
-    config::{Config, ConfigExt, Visitor, VisitorContext},
+    config::{Config, Visitor, VisitorContext},
     IntoDyn, Net, Result, Server,
 };
 pub use schemars::JsonSchema;
