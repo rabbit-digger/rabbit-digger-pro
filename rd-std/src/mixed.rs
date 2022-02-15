@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 
 use anyhow::Context as AnyhowContext;
 use rd_interface::{
-    async_trait, config::NetRef, prelude::*, registry::ServerBuilder, Address, Context, IServer,
-    IntoDyn, Net, Registry, Result, TcpStream,
+    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, IServer, IntoDyn,
+    Net, Registry, Result, Server, TcpStream,
 };
 use tracing::instrument;
 
@@ -96,10 +96,10 @@ pub struct MixedServerConfig {
     net: NetRef,
 }
 
-impl ServerBuilder for HttpSocks5 {
+impl Builder<Server> for HttpSocks5 {
     const NAME: &'static str = "http+socks5";
     type Config = MixedServerConfig;
-    type Server = Self;
+    type Item = Self;
 
     fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
         Ok(HttpSocks5::new((*listen).clone(), (*net).clone(), bind))

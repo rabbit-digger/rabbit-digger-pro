@@ -8,6 +8,7 @@ use std::{
 };
 
 use futures::{ready, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
+use parking_lot::RwLock as SyncRwLock;
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
@@ -27,21 +28,24 @@ use super::{
 
 pub struct RunningNet {
     name: String,
-    net: RwLock<Net>,
+    net: SyncRwLock<Net>,
 }
 
 impl RunningNet {
     pub fn new(name: String, net: Net) -> Arc<RunningNet> {
         Arc::new(RunningNet {
             name,
-            net: RwLock::new(net),
+            net: SyncRwLock::new(net),
         })
     }
-    pub async fn update_net(&self, net: Net) {
-        *self.net.write().await = net;
+    pub fn update_net(&self, net: Net) {
+        *self.net.write() = net;
     }
-    pub fn net(self: &Arc<Self>) -> Net {
+    pub fn as_net(self: &Arc<Self>) -> Net {
         self.clone()
+    }
+    fn net(&self) -> Net {
+        self.net.read().clone()
     }
 }
 
@@ -58,24 +62,24 @@ impl INet for RunningNet {
     #[instrument(err)]
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         ctx.append_net(&self.name);
-        self.net.read().await.tcp_connect(ctx, addr).await
+        self.net().tcp_connect(ctx, addr).await
     }
 
     #[instrument(err)]
     async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
         ctx.append_net(&self.name);
-        self.net.read().await.tcp_bind(ctx, addr).await
+        self.net().tcp_bind(ctx, addr).await
     }
 
     #[instrument(err)]
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         ctx.append_net(&self.name);
-        self.net.read().await.udp_bind(ctx, addr).await
+        self.net().udp_bind(ctx, addr).await
     }
 
     #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.net.read().await.lookup_host(addr).await
+        self.net().lookup_host(addr).await
     }
 }
 

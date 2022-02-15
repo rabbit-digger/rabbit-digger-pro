@@ -259,7 +259,7 @@ impl RabbitDigger {
             let server = item.build(
                 &|key| {
                     nets.get(key).map(|i| {
-                        let net = i.net();
+                        let net = i.as_net();
 
                         RunningServerNet::new(name.clone(), net.clone(), inner.conn_cfg.clone())
                             .into_dyn()
@@ -359,9 +359,9 @@ impl RabbitDigger {
                     update(&mut new_cfg);
 
                     let net = build_net(net_name, &new_cfg, &self.registry, &|key| {
-                        nets.get(key).map(|i| i.net())
+                        nets.get(key).map(|i| i.as_net())
                     })?;
-                    running_net.update_net(net).await;
+                    running_net.update_net(net);
 
                     *cfg = new_cfg;
                 }
@@ -457,7 +457,7 @@ fn build_nets(
 
     for (name, i) in all_net {
         let net = build_net(&name, &i, registry, &|key| {
-            running_map.get(key).map(|i| i.net())
+            running_map.get(key).map(|i| i.as_net())
         })
         .context(format!("Loading net {}", name))?;
 

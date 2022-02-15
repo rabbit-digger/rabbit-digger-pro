@@ -4,7 +4,7 @@ use futures::{future::BoxFuture, FutureExt};
 use rd_interface::{
     async_trait,
     prelude::*,
-    registry::{NetBuilder, NetRef},
+    registry::{Builder, NetRef},
     Address, Arc, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
 };
 
@@ -102,10 +102,10 @@ impl INet for ResolveNet {
     }
 }
 
-impl NetBuilder for ResolveNet {
+impl Builder<Net> for ResolveNet {
     const NAME: &'static str = "resolve";
     type Config = ResolveConfig;
-    type Net = Self;
+    type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
         Ok(ResolveNet::new(

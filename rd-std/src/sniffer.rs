@@ -2,8 +2,8 @@ pub use dns_sniffer::DNSSnifferNet;
 use rd_interface::{
     prelude::*,
     rd_config,
-    registry::{NetBuilder, NetRef},
-    Registry, Result,
+    registry::{Builder, NetRef},
+    Net, Registry, Result,
 };
 
 mod dns_sniffer;
@@ -16,10 +16,10 @@ pub struct DNSNetConfig {
     net: NetRef,
 }
 
-impl NetBuilder for DNSSnifferNet {
+impl Builder<Net> for DNSSnifferNet {
     const NAME: &'static str = "dns_sniffer";
     type Config = DNSNetConfig;
-    type Net = Self;
+    type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
         Ok(DNSSnifferNet::new((*config.net).clone()))

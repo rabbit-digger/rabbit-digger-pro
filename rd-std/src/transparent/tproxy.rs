@@ -14,9 +14,8 @@ use crate::{
 use futures::{ready, Sink, Stream};
 use rd_derive::rd_config;
 use rd_interface::{
-    async_trait, config::NetRef, constant::UDP_BUFFER_SIZE, error::ErrorContext,
-    registry::ServerBuilder, schemars, Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net,
-    Result,
+    async_trait, config::NetRef, constant::UDP_BUFFER_SIZE, error::ErrorContext, registry::Builder,
+    schemars, Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net, Result, Server,
 };
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -98,10 +97,10 @@ impl TProxyServer {
     }
 }
 
-impl ServerBuilder for TProxyServer {
+impl Builder<Server> for TProxyServer {
     const NAME: &'static str = "tproxy";
     type Config = TProxyServerConfig;
-    type Server = Self;
+    type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
         Ok(TProxyServer::new(config))

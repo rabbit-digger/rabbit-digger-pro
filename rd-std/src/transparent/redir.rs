@@ -4,8 +4,8 @@ use super::origin_addr::OriginAddrExt;
 use crate::{builtin::local::CompatTcp, util::connect_tcp};
 use rd_derive::rd_config;
 use rd_interface::{
-    async_trait, config::NetRef, registry::ServerBuilder, schemars, Address, Context, IServer,
-    IntoAddress, IntoDyn, Net, Result,
+    async_trait, config::NetRef, registry::Builder, schemars, Address, Context, IServer,
+    IntoAddress, IntoDyn, Net, Result, Server,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tracing::instrument;
@@ -62,10 +62,10 @@ impl RedirServer {
     }
 }
 
-impl ServerBuilder for RedirServer {
+impl Builder<Server> for RedirServer {
     const NAME: &'static str = "redir";
     type Config = RedirServerConfig;
-    type Server = Self;
+    type Item = Self;
 
     fn build(Self::Config { bind, net }: Self::Config) -> Result<Self> {
         Ok(RedirServer::new(bind, (*net).clone()))

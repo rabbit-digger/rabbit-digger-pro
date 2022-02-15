@@ -9,8 +9,8 @@ use std::{
 use crate::util::{connect_tcp, connect_udp};
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use rd_interface::{
-    async_trait, config::NetRef, prelude::*, registry::ServerBuilder, Address, Bytes, BytesMut,
-    Context, IServer, IUdpChannel, IntoDyn, Net, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Bytes, BytesMut, Context,
+    IServer, IUdpChannel, IntoDyn, Net, Result, Server, TcpListener, TcpStream, UdpSocket,
 };
 use tokio::select;
 use tracing::instrument;
@@ -119,10 +119,10 @@ impl ForwardServer {
     }
 }
 
-impl ServerBuilder for ForwardServer {
+impl Builder<Server> for ForwardServer {
     const NAME: &'static str = "forward";
     type Config = ForwardServerConfig;
-    type Server = Self;
+    type Item = Self;
 
     fn build(cfg: Self::Config) -> Result<Self> {
         Ok(ForwardServer::new(cfg))

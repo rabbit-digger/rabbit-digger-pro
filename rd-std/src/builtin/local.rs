@@ -9,9 +9,9 @@ use std::{
 use futures::{ready, Future, FutureExt, Sink, Stream};
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, prelude::*,
-    registry::NetBuilder, Address, Bytes, BytesMut, INet, IntoDyn, ReadBuf, Result, TcpListener,
-    TcpStream, UdpSocket,
+    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, prelude::*, registry::Builder,
+    Address, Bytes, BytesMut, INet, IntoDyn, Net, ReadBuf, Result, TcpListener, TcpStream,
+    UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
@@ -395,10 +395,10 @@ impl INet for LocalNet {
     }
 }
 
-impl NetBuilder for LocalNet {
+impl Builder<Net> for LocalNet {
     const NAME: &'static str = "local";
     type Config = LocalNetConfig;
-    type Net = Self;
+    type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
         Ok(LocalNet::new(config))

@@ -1,6 +1,6 @@
 use rd_interface::{
-    async_trait, config::NetRef, prelude::*, registry::ServerBuilder, Address, Context, IServer,
-    Net, Result, TcpListener, TcpStream,
+    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, IServer, Net,
+    Result, Server, TcpListener, TcpStream,
 };
 use tokio::io;
 use tracing::instrument;
@@ -55,10 +55,10 @@ impl EchoServer {
     }
 }
 
-impl ServerBuilder for EchoServer {
+impl Builder<Server> for EchoServer {
     const NAME: &'static str = "echo";
     type Config = EchoServerConfig;
-    type Server = Self;
+    type Item = Self;
 
     fn build(cfg: Self::Config) -> Result<Self> {
         Ok(EchoServer::new(cfg))
