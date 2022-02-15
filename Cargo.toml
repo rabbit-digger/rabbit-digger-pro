@@ -93,3 +93,6 @@ panic = 'abort'
 
 [[bin]]
 name = "rabbit-digger-pro"
+
+[patch.crates-io]
+shadowsocks-crypto = { git = "https://github.com/spacemeowx2/shadowsocks-crypto.git", rev = "4ee65b6a9ff30c90c56eadbaecb2f82730a6b3ce" }

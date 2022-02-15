@@ -35,7 +35,7 @@ async fn test_ss_server_client() {
     sleep(Duration::from_secs(1)).await;
 
     let client_cfg = client::SSNetConfig {
-        server: server_addr,
+        server: "localhost:16666".into_address().unwrap(),
         password: "password".into(),
         udp: true,
         cipher: Cipher::AES_128_GCM,
