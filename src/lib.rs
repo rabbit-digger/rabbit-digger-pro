@@ -13,7 +13,9 @@ pub mod storage;
 mod translate;
 mod util;
 
-pub fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> Result<()> {
+pub fn get_registry() -> Result<Registry> {
+    let mut registry = Registry::new_with_builtin()?;
+
     #[cfg(feature = "ss")]
     registry.init_with_registry("ss", ss::init)?;
     #[cfg(feature = "trojan")]
@@ -27,7 +29,7 @@ pub fn plugin_loader(_cfg: &rabbit_digger::Config, registry: &mut Registry) -> R
 
     registry.init_with_registry("rabbit-digger-pro", select::init)?;
 
-    Ok(())
+    Ok(registry)
 }
 
 pub fn deserialize_config(s: &str) -> Result<config::ConfigExt> {

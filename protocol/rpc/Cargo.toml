@@ -2,7 +2,7 @@
 name = "rpc"
 version = "0.1.0"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.4" }

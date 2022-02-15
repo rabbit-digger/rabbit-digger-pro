@@ -2,11 +2,14 @@ use std::net::SocketAddr;
 
 use self::source::UdpSource;
 use super::wrapper::{Cipher, CryptoStream};
-use rd_interface::{async_trait, prelude::*, Address, Arc, IServer, Net, Result, TcpStream};
+use rd_interface::{
+    async_trait, config::NetRef, prelude::*, Address, Arc, IServer, Net, Result, TcpStream,
+};
 use rd_std::util::{connect_tcp, forward_udp};
 use shadowsocks::{config::ServerType, context::Context, ServerConfig};
 use socks5_protocol::Address as S5Addr;
 use tokio::select;
+use tracing::instrument;
 
 mod source;
 
@@ -19,6 +22,10 @@ pub struct SSServerConfig {
     pub(crate) udp: bool,
 
     pub(crate) cipher: Cipher,
+    #[serde(default)]
+    pub(crate) net: NetRef,
+    #[serde(default)]
+    pub(crate) listen: NetRef,
 }
 
 pub struct SSServer {
@@ -40,7 +47,7 @@ impl IServer for SSServer {
 }
 
 impl SSServer {
-    pub fn new(listen: Net, net: Net, cfg: SSServerConfig) -> SSServer {
+    pub fn new(cfg: SSServerConfig) -> SSServer {
         let context = Arc::new(Context::new(ServerType::Local));
         let svr_cfg =
             ServerConfig::new(("example.com", 0), cfg.password.clone(), cfg.cipher.into());
@@ -49,8 +56,8 @@ impl SSServer {
             bind: cfg.bind,
             context,
             cfg: Arc::new(svr_cfg),
-            listen,
-            net,
+            listen: (*cfg.listen).clone(),
+            net: (*cfg.net).clone(),
         }
     }
     async fn serve_udp(&self) -> Result<()> {
@@ -89,6 +96,7 @@ impl SSServer {
             });
         }
     }
+    #[instrument(err, skip(cfg, context, socket, net))]
     async fn serve_connection(
         cfg: Arc<ServerConfig>,
         context: Arc<Context>,

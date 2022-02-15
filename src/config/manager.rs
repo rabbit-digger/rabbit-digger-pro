@@ -9,7 +9,7 @@ use super::{select_map::SelectMap, ConfigExt, Import, ImportSource};
 use anyhow::{Context, Result};
 use async_stream::stream;
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
-use rabbit_digger::Config;
+use rabbit_digger::{Config, Registry};
 
 const CFG_MGR_PREFIX: &'static str = "cfg_mgr";
 const SELECT_PREFIX: &'static str = "select";
@@ -17,6 +17,8 @@ const SELECT_PREFIX: &'static str = "select";
 struct Inner {
     file_cache: FileStorage,
     select_storage: FileStorage,
+    registry: Registry,
+    delimiter: String,
 }
 
 #[derive(Clone)]
@@ -25,7 +27,7 @@ pub struct ConfigManager {
 }
 
 impl ConfigManager {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(registry: Registry) -> Result<Self> {
         let file_cache = FileStorage::new(FolderType::Cache, CFG_MGR_PREFIX).await?;
         let select_storage = FileStorage::new(FolderType::Data, SELECT_PREFIX).await?;
 
@@ -33,6 +35,8 @@ impl ConfigManager {
             inner: Arc::new(Inner {
                 file_cache,
                 select_storage,
+                registry,
+                delimiter: "##".to_string(),
             }),
         };
 
@@ -67,12 +71,13 @@ impl Inner {
     async fn get_config(&self, config: &ConfigExt) -> Result<Config> {
         let mut config = config.clone();
 
-        let imports = config.import;
-        for i in imports {
+        for i in &config.import {
             crate::translate::post_process(&mut config.config, i.clone(), &self.file_cache)
                 .await
                 .context(format!("post process of import: {:?}", i))?;
         }
+
+        config.config.flatten_net(&self.delimiter, &self.registry)?;
 
         // restore patch
         SelectMap::from_cache(&config.config.id, &self.select_storage)

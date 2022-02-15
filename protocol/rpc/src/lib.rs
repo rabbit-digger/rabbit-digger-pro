@@ -4,7 +4,7 @@ use rd_interface::{
     prelude::*,
     rd_config,
     registry::{NetBuilder, ServerBuilder},
-    Address, Net, Registry, Result,
+    Address, Registry, Result,
 };
 use server::RpcServer;
 
@@ -26,6 +26,11 @@ pub struct RpcNetConfig {
 #[rd_config]
 pub struct RpcServerConfig {
     bind: Address,
+
+    #[serde(default)]
+    net: NetRef,
+    #[serde(default)]
+    listen: NetRef,
 }
 
 impl NetBuilder for RpcNet {
@@ -43,8 +48,8 @@ impl ServerBuilder for RpcServer {
     type Config = RpcServerConfig;
     type Server = Self;
 
-    fn build(listen: Net, net: Net, Self::Config { bind }: Self::Config) -> Result<Self> {
-        Ok(RpcServer::new(listen, net, bind))
+    fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
+        Ok(RpcServer::new((*listen).clone(), (*net).clone(), bind))
     }
 }
 

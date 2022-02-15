@@ -1,7 +1,7 @@
 use crate::wrapper::Cipher;
 
 use super::*;
-use rd_interface::{config::NetRef, IServer, IntoAddress, IntoDyn};
+use rd_interface::{config::NetRef, IServer, IntoAddress, IntoDyn, Value};
 use rd_std::tests::{
     assert_echo, assert_echo_udp, get_registry, spawn_echo_server, spawn_echo_server_udp, TestNet,
 };
@@ -22,22 +22,24 @@ async fn test_ss_server_client() {
 
     let server_addr = "127.0.0.1:16666".into_address().unwrap();
     let server_cfg = server::SSServerConfig {
+        listen: NetRef::new_with_value("local".to_string().into(), local.clone()),
+        net: NetRef::new_with_value("local".to_string().into(), local.clone()),
         bind: server_addr.clone(),
         password: "password".into(),
         udp: true,
         cipher: Cipher::AES_128_GCM,
     };
-    let server = server::SSServer::new(local.clone(), local.clone(), server_cfg);
+    let server = server::SSServer::new(server_cfg);
     tokio::spawn(async move { server.start().await });
 
     sleep(Duration::from_secs(1)).await;
 
     let client_cfg = client::SSNetConfig {
-        server: server_addr,
+        server: "localhost:16666".into_address().unwrap(),
         password: "password".into(),
         udp: true,
         cipher: Cipher::AES_128_GCM,
-        net: NetRef::new_with_value("local".to_string(), local.clone()),
+        net: NetRef::new_with_value(Value::String("local".to_string()), local.clone()),
     };
     let client = client::SSNet::new(client_cfg).into_dyn();
 

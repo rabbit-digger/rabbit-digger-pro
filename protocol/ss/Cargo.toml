@@ -2,13 +2,13 @@
 name = "ss"
 version = "0.1.0"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.4" }
 rd-std = { path = "../../rabbit-digger/rd-std/", version = "0.1" }
 # rd-interface = "0.3"
-shadowsocks = { version = "=1.12.3", default-features = false, features = [
+shadowsocks = { version = "1.13.1", default-features = false, features = [
     "stream-cipher",
     "aead-cipher-extra",
 ] }

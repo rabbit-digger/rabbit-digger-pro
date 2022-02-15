@@ -16,7 +16,7 @@ jobs:
       - name: Setup toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2022-01-01
+          toolchain: stable
           override: true
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
