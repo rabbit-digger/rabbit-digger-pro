@@ -438,6 +438,12 @@ fn build_nets(
             config::Net::new_opt("noop", EmptyConfig::default())?,
         );
     }
+    if !all_net.contains_key("blackhole") {
+        all_net.insert(
+            "blackhole".to_string(),
+            config::Net::new_opt("blackhole", EmptyConfig::default())?,
+        );
+    }
     if !all_net.contains_key("local") {
         all_net.insert(
             "local".to_string(),

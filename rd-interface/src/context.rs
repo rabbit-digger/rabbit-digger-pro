@@ -49,8 +49,8 @@ impl Context {
     /// new a empty context
     pub fn new() -> Context {
         Context {
-            data: HashMap::new(),
-            net_list: Vec::new(),
+            data: HashMap::with_capacity(16),
+            net_list: Vec::with_capacity(16),
         }
     }
     /// new a context from socket addr
