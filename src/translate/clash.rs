@@ -98,9 +98,11 @@ impl Clash {
         if target == "DIRECT" {
             return Ok(self.direct.clone().unwrap_or_else(|| "local".to_string()));
         }
-        // TODO: noop is not reject, add blackhole net
         if target == "REJECT" {
-            return Ok(self.reject.clone().unwrap_or_else(|| "noop".to_string()));
+            return Ok(self
+                .reject
+                .clone()
+                .unwrap_or_else(|| "blackhole".to_string()));
         }
         let net_name = self.name_map.get(target);
         net_name
