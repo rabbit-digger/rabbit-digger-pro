@@ -110,7 +110,7 @@ impl INet for RawNet {
         _ctx: &mut Context,
         addr: &Address,
     ) -> Result<rd_interface::TcpStream> {
-        let tcp = TcpStreamWrap(self.smoltcp_net.tcp_connect(addr.to_socket_addr()?).await?);
+        let tcp = TcpStreamWrap::new(self.smoltcp_net.tcp_connect(addr.to_socket_addr()?).await?);
 
         Ok(tcp.into_dyn())
     }

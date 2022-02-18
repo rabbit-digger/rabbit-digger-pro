@@ -38,6 +38,7 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
             let device = Box::new(get_by_device(
                 pcap_device_by_name(&dev)?,
                 get_filter(&destination_addr),
+                config,
             )?);
 
             (ethernet_address, BoxedAsyncDevice(device))
@@ -101,14 +102,18 @@ fn pcap_device_by_name(name: &str) -> Result<Device> {
 }
 
 #[cfg(unix)]
-fn get_by_device(device: Device, filter: Option<String>) -> Result<impl AsyncDevice> {
+fn get_by_device(
+    device: Device,
+    filter: Option<String>,
+    config: &RawNetConfig,
+) -> Result<impl AsyncDevice> {
     use tokio_smoltcp::device::AsyncCapture;
 
     let mut cap = Capture::from_device(device.clone())
         .context("Failed to capture device")?
         .promisc(true)
         .immediate_mode(true)
-        .timeout(5)
+        .timeout(500)
         .open()
         .context("Failed to open device")?;
 
@@ -124,7 +129,7 @@ fn get_by_device(device: Device, filter: Option<String>) -> Result<impl AsyncDev
         }
     }
     let mut caps = DeviceCapabilities::default();
-    caps.max_transmission_unit = 1500;
+    caps.max_transmission_unit = config.mtu;
     caps.checksum.ipv4 = Checksum::Tx;
     caps.checksum.tcp = Checksum::Tx;
     caps.checksum.udp = Checksum::Tx;
@@ -149,7 +154,11 @@ fn get_by_device(device: Device, filter: Option<String>) -> Result<impl AsyncDev
 }
 
 #[cfg(windows)]
-fn get_by_device(device: Device, filter: Option<String>) -> Result<impl AsyncDevice> {
+fn get_by_device(
+    device: Device,
+    filter: Option<String>,
+    config: &RawNetConfig,
+) -> Result<impl AsyncDevice> {
     use tokio::sync::mpsc::{Receiver, Sender};
     use tokio_smoltcp::device::ChannelCapture;
 
@@ -193,7 +202,7 @@ fn get_by_device(device: Device, filter: Option<String>) -> Result<impl AsyncDev
         }
     };
     let mut caps = DeviceCapabilities::default();
-    caps.max_transmission_unit = 1500;
+    caps.max_transmission_unit = config.mtu;
     caps.checksum.ipv4 = Checksum::Tx;
     caps.checksum.tcp = Checksum::Tx;
     caps.checksum.udp = Checksum::Tx;

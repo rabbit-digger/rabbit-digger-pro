@@ -78,7 +78,7 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<ChannelCapture> {
 
     let mut caps = DeviceCapabilities::default();
     caps.medium = cfg.layer.into();
-    caps.max_transmission_unit = 1500;
+    caps.max_transmission_unit = cfg.mtu;
     caps.checksum.ipv4 = Checksum::Tx;
     caps.checksum.tcp = Checksum::Tx;
     caps.checksum.udp = Checksum::Tx;

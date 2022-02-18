@@ -8,8 +8,14 @@ use rd_interface::{
 use tokio::sync::Mutex;
 use tokio_smoltcp::{TcpListener, TcpStream, UdpSocket};
 
-pub struct TcpStreamWrap(pub(crate) TcpStream);
+pub struct TcpStreamWrap(TcpStream);
 impl_async_read_write!(TcpStreamWrap, 0);
+
+impl TcpStreamWrap {
+    pub(crate) fn new(stream: TcpStream) -> Self {
+        Self(stream)
+    }
+}
 
 #[async_trait]
 impl ITcpStream for TcpStreamWrap {
@@ -28,7 +34,7 @@ pub struct TcpListenerWrap(pub(crate) Mutex<TcpListener>, pub(crate) SocketAddr)
 impl ITcpListener for TcpListenerWrap {
     async fn accept(&self) -> Result<(rd_interface::TcpStream, SocketAddr)> {
         let (tcp, addr) = self.0.lock().await.accept().await?;
-        Ok((TcpStreamWrap(tcp).into_dyn(), addr))
+        Ok((TcpStreamWrap::new(tcp).into_dyn(), addr))
     }
 
     async fn local_addr(&self) -> Result<SocketAddr> {
