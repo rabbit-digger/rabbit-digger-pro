@@ -1,9 +1,9 @@
 use crate::udp::{decrypt_payload, encrypt_payload};
-use bytes::{Bytes, BytesMut};
-use futures::{ready, Sink, SinkExt, StreamExt};
+use bytes::BytesMut;
+use futures::ready;
 use rd_interface::{
     async_trait, impl_async_read_write, prelude::*, Address as RDAddress, AsyncRead, AsyncWrite,
-    ITcpStream, IUdpSocket, ReadBuf, Stream, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    ITcpStream, IUdpSocket, ReadBuf, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use shadowsocks::{
     context::SharedContext,
@@ -12,7 +12,13 @@ use shadowsocks::{
     ProxyClientStream, ServerConfig,
 };
 use socks5_protocol::Address as S5Addr;
-use std::{io, net::SocketAddr, pin::Pin, str::FromStr, task};
+use std::{
+    io,
+    net::SocketAddr,
+    pin::Pin,
+    str::FromStr,
+    task::{self, Poll},
+};
 
 pub struct WrapAddress(pub RDAddress);
 
@@ -146,8 +152,6 @@ impl From<Cipher> for CipherKind {
 
 pub struct WrapSSTcp(pub ProxyClientStream<TcpStream>);
 
-impl_async_read_write!(WrapSSTcp, 0);
-
 #[async_trait]
 impl ITcpStream for WrapSSTcp {
     async fn peer_addr(&self) -> rd_interface::Result<SocketAddr> {
@@ -157,6 +161,8 @@ impl ITcpStream for WrapSSTcp {
     async fn local_addr(&self) -> rd_interface::Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
     }
+
+    impl_async_read_write!(0);
 }
 
 pub struct WrapSSUdp {
@@ -164,6 +170,7 @@ pub struct WrapSSUdp {
     method: CipherKind,
     key: Box<[u8]>,
     server_addr: SocketAddr,
+    send_buf: BytesMut,
 }
 
 impl WrapSSUdp {
@@ -176,70 +183,8 @@ impl WrapSSUdp {
             method,
             key,
             server_addr,
+            send_buf: BytesMut::new(),
         }
-    }
-}
-
-impl Stream for WrapSSUdp {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Option<Self::Item>> {
-        // Waiting for response from server SERVER -> CLIENT
-        let (mut recv_buf, _target_addr) = match ready!(self.socket.poll_next_unpin(cx)) {
-            Some(r) => r?,
-            None => return task::Poll::Ready(None),
-        };
-        let (n, addr) = decrypt_payload(self.method, &self.key, &mut recv_buf[..])?;
-
-        Some(Ok((
-            recv_buf.split_to(n),
-            match addr {
-                S5Addr::Domain(_, _) => unreachable!("Udp recv_from domain name"),
-                S5Addr::SocketAddr(s) => s,
-            },
-        )))
-        .into()
-    }
-}
-
-impl Sink<(Bytes, RDAddress)> for WrapSSUdp {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.socket.poll_ready_unpin(cx)
-    }
-
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        (payload, target): (Bytes, RDAddress),
-    ) -> Result<(), Self::Error> {
-        let mut send_buf = BytesMut::new();
-        let addr: S5Addr = WrapAddress::from(target).into();
-        encrypt_payload(self.method, &self.key, &addr, &payload, &mut send_buf)?;
-
-        let server_addr = self.server_addr.clone();
-        self.socket
-            .start_send_unpin((send_buf.freeze(), server_addr.into()))
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.socket.poll_flush_unpin(cx)
-    }
-
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.socket.poll_close_unpin(cx)
     }
 }
 
@@ -247,6 +192,41 @@ impl Sink<(Bytes, RDAddress)> for WrapSSUdp {
 impl IUdpSocket for WrapSSUdp {
     async fn local_addr(&self) -> rd_interface::Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
+        // Waiting for response from server SERVER -> CLIENT
+        ready!(self.socket.poll_recv_from(cx, buf))?;
+        let (n, addr) = decrypt_payload(self.method, &self.key, buf.filled_mut())?;
+        buf.set_filled(n);
+
+        Poll::Ready(Ok(match addr {
+            S5Addr::Domain(_, _) => unreachable!("Udp recv_from domain name"),
+            S5Addr::SocketAddr(s) => s,
+        }))
+    }
+
+    fn poll_send_to(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        target: &RDAddress,
+    ) -> Poll<io::Result<usize>> {
+        if self.send_buf.is_empty() {
+            let addr: S5Addr = WrapAddress::from(target.clone()).into();
+            encrypt_payload(self.method, &self.key, &addr, &buf, &mut self.send_buf)?;
+        }
+
+        ready!(self
+            .socket
+            .poll_send_to(cx, &self.send_buf, &self.server_addr.into()))?;
+        self.send_buf.clear();
+
+        Poll::Ready(Ok(buf.len()))
     }
 }
 
@@ -269,7 +249,7 @@ where
         self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
         buf: &mut ReadBuf<'_>,
-    ) -> task::Poll<io::Result<()>> {
+    ) -> Poll<io::Result<()>> {
         let CryptoStream(s, c) = Pin::get_mut(self);
         s.poll_read_decrypted(cx, &c, buf)
     }
@@ -283,21 +263,21 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
         buf: &[u8],
-    ) -> task::Poll<Result<usize, io::Error>> {
+    ) -> Poll<Result<usize, io::Error>> {
         self.0.poll_write_encrypted(cx, buf)
     }
 
     fn poll_flush(
         mut self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), io::Error>> {
+    ) -> Poll<Result<(), io::Error>> {
         self.0.poll_flush(cx)
     }
 
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), io::Error>> {
+    ) -> Poll<Result<(), io::Error>> {
         self.0.poll_shutdown(cx)
     }
 }

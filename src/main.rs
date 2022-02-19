@@ -168,8 +168,9 @@ async fn main(args: Args) -> Result<()> {
     }
 
     let log_filter = EnvFilter::from_default_env();
-    let log_writer_filter =
-        EnvFilter::new("rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug");
+    let log_writer_filter = EnvFilter::new(
+        "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug,ss=debug",
+    );
     tr.with(
         tracing_subscriber::fmt::layer()
             .with_writer(std::io::stdout)

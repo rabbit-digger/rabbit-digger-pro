@@ -8,11 +8,11 @@ use std::{
 use crate::types::{Command, Object};
 
 use crate::session::ClientSession;
-use futures::{ready, Future, FutureExt, Sink, Stream};
+use futures::{ready, Future, FutureExt};
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, impl_async_read_write, Address, Bytes, BytesMut, ITcpListener, ITcpStream,
-    IUdpSocket, IntoDyn, Result,
+    async_trait, impl_async_read_write, Address, ITcpListener, ITcpStream, IUdpSocket, IntoDyn,
+    Result,
 };
 use rd_std::util::async_fn_io::{AsyncFnIO, AsyncFnRead, AsyncFnWrite};
 
@@ -63,7 +63,7 @@ pub struct UdpWrapper {
     conn: ClientSession,
     obj: Object,
 
-    next_fut: Option<BoxFuture<io::Result<(BytesMut, SocketAddr)>>>,
+    next_fut: Option<BoxFuture<io::Result<(Vec<u8>, SocketAddr)>>>,
     send_fut: Option<BoxFuture<io::Result<()>>>,
 }
 
@@ -85,10 +85,23 @@ impl Drop for UdpWrapper {
     }
 }
 
-impl Stream for UdpWrapper {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
+#[async_trait]
+impl IUdpSocket for UdpWrapper {
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        let (resp, _) = self
+            .conn
+            .send(Command::LocalAddr(self.obj), None)
+            .await?
+            .wait()
+            .await?;
+        resp.to_value()
+    }
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
         let UdpWrapper {
             next_fut,
             conn,
@@ -100,10 +113,15 @@ impl Stream for UdpWrapper {
         loop {
             match next_fut {
                 Some(fut) => {
-                    let i = ready!(fut.lock().poll_unpin(cx));
+                    let (data, from) = ready!(fut.lock().poll_unpin(cx)?);
+
+                    let to_copy = data.len().min(buf.remaining());
+                    buf.initialize_unfilled_to(to_copy)
+                        .copy_from_slice(&data[..to_copy]);
+                    buf.advance(to_copy);
 
                     *next_fut = None;
-                    return Poll::Ready(Some(i));
+                    return Poll::Ready(Ok(from));
                 }
                 None => {
                     let conn = conn.clone();
@@ -114,90 +132,53 @@ impl Stream for UdpWrapper {
                             .wait()
                             .await?;
 
-                        Ok((BytesMut::from(&data[..]), resp.to_value()?))
+                        Ok((data, resp.to_value()?))
                     };
                     *next_fut = Some(Mutex::new(Box::pin(fut)));
                 }
             }
         }
     }
-}
 
-impl Sink<(Bytes, Address)> for UdpWrapper {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
+    fn poll_send_to(
+        &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        let send_fut = &mut self.send_fut;
-        match send_fut {
-            Some(fut) => {
-                ready!(fut.lock().poll_unpin(cx))?;
-
-                *send_fut = None;
-                Poll::Ready(Ok(()))
-            }
-            None => Poll::Ready(Ok(())),
-        }
-    }
-
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        (bytes, addr): (Bytes, Address),
-    ) -> Result<(), Self::Error> {
+        buf: &[u8],
+        target: &Address,
+    ) -> Poll<io::Result<usize>> {
         let UdpWrapper {
             send_fut,
             conn,
             obj,
             ..
         } = &mut *self;
-        match send_fut {
-            Some(_) => return Err(io::Error::new(io::ErrorKind::Other, "already sending")),
-            None => {
-                let conn = conn.clone();
-                let obj = *obj;
-                let fut = async move {
-                    let (resp, _) = conn
-                        .send(Command::SendTo(obj, addr), Some(&bytes))
-                        .await?
-                        .wait()
-                        .await?;
-                    resp.to_null()?;
-                    Ok(())
-                };
-                *send_fut = Some(Mutex::new(Box::pin(fut)));
+
+        loop {
+            match send_fut {
+                Some(fut) => {
+                    ready!(fut.lock().poll_unpin(cx))?;
+
+                    *send_fut = None;
+                    return Poll::Ready(Ok(buf.len()));
+                }
+                None => {
+                    let conn = conn.clone();
+                    let obj = *obj;
+                    let addr = target.clone();
+                    let data = buf.to_vec();
+                    let fut = async move {
+                        let (resp, _) = conn
+                            .send(Command::SendTo(obj, addr), Some(&data))
+                            .await?
+                            .wait()
+                            .await?;
+                        resp.to_null()?;
+                        Ok(())
+                    };
+                    *send_fut = Some(Mutex::new(Box::pin(fut)));
+                }
             }
         }
-
-        Ok(())
-    }
-
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.poll_ready(cx)
-    }
-
-    fn poll_close(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.poll_flush(cx)
-    }
-}
-
-#[async_trait]
-impl IUdpSocket for UdpWrapper {
-    async fn local_addr(&self) -> Result<SocketAddr> {
-        let (resp, _) = self
-            .conn
-            .send(Command::LocalAddr(self.obj), None)
-            .await?
-            .wait()
-            .await?;
-        resp.to_value()
     }
 }
 
@@ -263,8 +244,6 @@ impl AsyncFnWrite for TcpAsyncFn {
     }
 }
 
-impl_async_read_write!(TcpWrapper, 0);
-
 #[async_trait]
 impl ITcpStream for TcpWrapper {
     async fn peer_addr(&self) -> Result<std::net::SocketAddr> {
@@ -288,4 +267,6 @@ impl ITcpStream for TcpWrapper {
             .await?;
         resp.to_value()
     }
+
+    impl_async_read_write!(0);
 }

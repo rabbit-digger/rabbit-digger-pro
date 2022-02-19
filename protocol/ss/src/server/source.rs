@@ -1,13 +1,12 @@
 use std::{
     io,
-    pin::Pin,
     task::{self, Poll},
 };
 
 use bytes::BytesMut;
-use futures::{ready, Sink, SinkExt, Stream, StreamExt};
+use futures::ready;
 use rd_interface::UdpSocket;
-use rd_std::util::forward_udp::{RawUdpSource, UdpPacket};
+use rd_std::util::forward_udp::{RawUdpSource, UdpEndpoint};
 use shadowsocks::crypto::v1::CipherKind;
 use socks5_protocol::Address as S5Addr;
 
@@ -18,76 +17,63 @@ pub struct UdpSource {
 
     method: CipherKind,
     key: Box<[u8]>,
+    send_buf: BytesMut,
 }
 
 impl UdpSource {
     pub fn new(method: CipherKind, key: Box<[u8]>, udp: UdpSocket) -> UdpSource {
-        UdpSource { udp, method, key }
+        UdpSource {
+            udp,
+            method,
+            key,
+            send_buf: BytesMut::new(),
+        }
     }
 }
 
-impl Stream for UdpSource {
-    type Item = io::Result<UdpPacket>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
-        // TODO: support send_to domain
+impl RawUdpSource for UdpSource {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<io::Result<UdpEndpoint>> {
         let packet = loop {
-            let (mut recv_buf, from) = match ready!(self.udp.poll_next_unpin(cx)) {
-                Some(r) => r?,
-                None => return Poll::Ready(None),
-            };
-            let (n, addr) = decrypt_payload(self.method, &self.key, &mut recv_buf[..])?;
+            let from = ready!(self.udp.poll_recv_from(cx, buf))?;
+            let (n, addr) = decrypt_payload(self.method, &self.key, buf.filled_mut())?;
+            buf.set_filled(n);
             // drop the packet if it's sent to domain silently
             let to = match addr {
                 S5Addr::Domain(_, _) => continue,
                 S5Addr::SocketAddr(s) => s,
             };
 
-            break UdpPacket {
-                data: recv_buf.split_to(n).freeze(),
-                from,
-                to,
-            };
+            break UdpEndpoint { from, to };
         };
 
-        Poll::Ready(Some(Ok(packet)))
+        Poll::Ready(Ok(packet))
+    }
+
+    fn poll_send(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        endpoint: &UdpEndpoint,
+    ) -> Poll<io::Result<()>> {
+        if self.send_buf.is_empty() {
+            encrypt_payload(
+                self.method,
+                &self.key,
+                &endpoint.from.into(),
+                &buf,
+                &mut self.send_buf,
+            )?;
+        }
+
+        ready!(self
+            .udp
+            .poll_send_to(cx, &self.send_buf, &endpoint.to.into()))?;
+        self.send_buf.clear();
+
+        Poll::Ready(Ok(()))
     }
 }
-
-impl Sink<UdpPacket> for UdpSource {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.udp.poll_ready_unpin(cx)
-    }
-
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        UdpPacket { from, to, data }: UdpPacket,
-    ) -> Result<(), Self::Error> {
-        let mut send_buf = BytesMut::new();
-
-        encrypt_payload(self.method, &self.key, &from.into(), &data, &mut send_buf)?;
-
-        self.udp.start_send_unpin((send_buf.freeze(), to.into()))
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.udp.poll_flush_unpin(cx)
-    }
-
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.udp.poll_close_unpin(cx)
-    }
-}
-
-impl RawUdpSource for UdpSource {}

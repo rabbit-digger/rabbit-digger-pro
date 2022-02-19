@@ -1,10 +1,9 @@
-use std::{io, net::SocketAddr};
+use std::{io, net::SocketAddr, task::Poll};
 
 use crate::stream::IOStream;
-use bytes::{Buf, BufMut};
-use rd_interface::{
-    async_trait, impl_stream_sink, Address, Bytes, BytesMut, IUdpSocket, Result, NOT_IMPLEMENTED,
-};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use futures::{ready, SinkExt, StreamExt};
+use rd_interface::{async_trait, Address, IUdpSocket, ReadBuf, Result, NOT_IMPLEMENTED};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
@@ -96,20 +95,58 @@ impl Decoder for UdpCodec {
 
 pub(super) struct TrojanUdp {
     framed: Framed<Box<dyn IOStream>, UdpCodec>,
+    flushing: bool,
 }
 
 impl TrojanUdp {
     pub fn new(stream: Box<dyn IOStream>, head: Vec<u8>) -> Self {
         let framed = Framed::new(stream, UdpCodec { head });
-        Self { framed }
+        Self {
+            framed,
+            flushing: false,
+        }
     }
 }
-
-impl_stream_sink!(TrojanUdp, framed);
 
 #[async_trait]
 impl IUdpSocket for TrojanUdp {
     async fn local_addr(&self) -> rd_interface::Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
+        let (bytes, from) = match ready!(self.framed.poll_next_unpin(cx)) {
+            Some(r) => r?,
+            None => return Poll::Ready(Err(io::ErrorKind::UnexpectedEof.into())),
+        };
+
+        let to_copy = bytes.len().min(buf.remaining());
+        buf.initialize_unfilled_to(to_copy)
+            .copy_from_slice(&bytes[..to_copy]);
+        buf.advance(to_copy);
+
+        Poll::Ready(Ok(from))
+    }
+
+    fn poll_send_to(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+        target: &Address,
+    ) -> Poll<io::Result<usize>> {
+        loop {
+            if self.flushing {
+                ready!(self.framed.poll_flush_unpin(cx))?;
+                self.flushing = false;
+                return Poll::Ready(Ok(buf.len()));
+            }
+            ready!(self.framed.poll_ready_unpin(cx))?;
+            self.framed
+                .start_send_unpin((Bytes::copy_from_slice(buf), target.clone()))?;
+        }
     }
 }
