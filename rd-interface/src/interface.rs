@@ -243,6 +243,9 @@ impl Net {
             }
         }
     }
+    pub fn as_ptr(&self) -> *const dyn INet {
+        Arc::as_ptr(&self.0)
+    }
 }
 
 /// A Server.

@@ -222,7 +222,7 @@ impl JsonSchema for Address {
 mod tests {
     use super::*;
     use crate::{async_trait, rd_config, INet, IntoDyn};
-    use std::{collections::HashMap, sync::Arc};
+    use std::collections::HashMap;
 
     struct NotImplementedNet;
     #[async_trait]
@@ -246,6 +246,6 @@ mod tests {
         test.resolve_net(&|key| net_map.get(key).map(|i| i.clone()))
             .unwrap();
 
-        assert_eq!(Arc::as_ptr(&test.net[0]), Arc::as_ptr(&noop))
+        assert_eq!(test.net[0].as_ptr(), noop.as_ptr())
     }
 }
