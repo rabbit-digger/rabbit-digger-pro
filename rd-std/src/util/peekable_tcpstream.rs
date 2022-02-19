@@ -1,4 +1,4 @@
-use rd_interface::{async_trait, AsyncRead, AsyncWrite, ITcpStream, Result, TcpStream};
+use rd_interface::{async_trait, impl_async_write, AsyncRead, ITcpStream, TcpStream};
 use std::{
     collections::VecDeque,
     io,
@@ -13,12 +13,19 @@ pub struct PeekableTcpStream {
     buf: VecDeque<u8>,
 }
 
-impl AsyncRead for PeekableTcpStream {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-        buf: &mut ReadBuf,
-    ) -> Poll<io::Result<()>> {
+#[async_trait]
+impl ITcpStream for PeekableTcpStream {
+    async fn peer_addr(&self) -> crate::Result<SocketAddr> {
+        self.tcp.peer_addr().await
+    }
+
+    async fn local_addr(&self) -> crate::Result<SocketAddr> {
+        self.tcp.local_addr().await
+    }
+
+    impl_async_write!(tcp);
+
+    fn poll_read(&mut self, cx: &mut task::Context<'_>, buf: &mut ReadBuf) -> Poll<io::Result<()>> {
         let (first, ..) = &self.buf.as_slices();
         if !first.is_empty() {
             let read = first.len().min(buf.remaining());
@@ -33,46 +40,6 @@ impl AsyncRead for PeekableTcpStream {
         } else {
             Pin::new(&mut self.tcp).poll_read(cx, buf)
         }
-    }
-}
-impl AsyncWrite for PeekableTcpStream {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.tcp).poll_write(cx, buf)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.tcp).poll_flush(cx)
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.tcp).poll_shutdown(cx)
-    }
-
-    fn poll_write_vectored(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-        bufs: &[io::IoSlice<'_>],
-    ) -> Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.tcp).poll_write_vectored(cx, bufs)
-    }
-
-    fn is_write_vectored(&self) -> bool {
-        self.tcp.is_write_vectored()
-    }
-}
-
-#[async_trait]
-impl ITcpStream for PeekableTcpStream {
-    async fn peer_addr(&self) -> crate::Result<SocketAddr> {
-        self.tcp.peer_addr().await
-    }
-
-    async fn local_addr(&self) -> crate::Result<SocketAddr> {
-        self.tcp.local_addr().await
     }
 }
 

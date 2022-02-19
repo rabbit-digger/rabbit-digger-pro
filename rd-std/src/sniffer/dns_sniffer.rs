@@ -1,14 +1,13 @@
 use std::{
     net::SocketAddr,
-    pin::Pin,
     task::{self, Poll},
 };
 
 use super::service::ReverseLookup;
-use futures::{ready, Stream, StreamExt};
+use futures::ready;
 use rd_interface::{
-    async_trait, context::common_field::DestDomain, impl_sink, Address, AddressDomain, BytesMut,
-    Context, INet, IUdpSocket, IntoDyn, Net, Result, UdpSocket,
+    async_trait, context::common_field::DestDomain, Address, AddressDomain, Context, INet,
+    IUdpSocket, IntoDyn, Net, Result, UdpSocket,
 };
 
 /// This net is used for reverse lookup.
@@ -77,31 +76,34 @@ impl INet for DNSSnifferNet {
 
 struct MitmUdp(UdpSocket, ReverseLookup);
 
-impl Stream for MitmUdp {
-    type Item = std::io::Result<(BytesMut, SocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context) -> Poll<Option<Self::Item>> {
-        let this = &mut *self;
-        let (data, from_addr) = match ready!(this.0.poll_next_unpin(cx)) {
-            Some(r) => r?,
-            None => return Poll::Ready(None),
-        };
-
-        if from_addr.port() == 53 {
-            let packet = &data[..];
-            self.1.record_packet(packet);
-        }
-
-        Poll::Ready(Some(Ok((data, from_addr))))
-    }
-}
-
-impl_sink!(MitmUdp, 0);
-
 #[async_trait]
 impl IUdpSocket for MitmUdp {
     async fn local_addr(&self) -> Result<SocketAddr> {
         self.0.local_addr().await
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<std::io::Result<SocketAddr>> {
+        let this = &mut *self;
+        let from_addr = ready!(this.0.poll_recv_from(cx, buf))?;
+
+        if from_addr.port() == 53 {
+            self.1.record_packet(buf.filled());
+        }
+
+        Poll::Ready(Ok(from_addr))
+    }
+
+    fn poll_send_to(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        target: &Address,
+    ) -> Poll<std::io::Result<usize>> {
+        self.0.poll_send_to(cx, buf, target)
     }
 }
 
@@ -109,8 +111,7 @@ impl IUdpSocket for MitmUdp {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use futures::SinkExt;
-    use rd_interface::{Bytes, IntoAddress};
+    use rd_interface::{IntoAddress, ReadBuf};
 
     use crate::tests::TestNet;
 
@@ -133,35 +134,36 @@ mod tests {
 
         // dns request to baidu.com
         client
-            .send((
-                Bytes::from_static(&[
+            .send_to(
+                &[
                     0x00, 0x02, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,
                     0x62, 0x61, 0x69, 0x64, 0x75, 0x03, 0x63, 0x6F, 0x6D, 0x00, 0x00, 0x01, 0x00,
                     0x01,
-                ]),
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 53).into(),
-            ))
+                ],
+                &SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 53).into(),
+            )
             .await
             .unwrap();
-        let (_, addr) = dns_server.next().await.unwrap().unwrap();
+        let buf = &mut vec![0; 1024];
+        let addr = dns_server.recv_from(&mut ReadBuf::new(buf)).await.unwrap();
 
         assert_eq!(addr, client.local_addr().await.unwrap());
 
         // dns response to baidu.com. 220.181.38.148, 220.181.38.251
         dns_server
-            .send((
-                Bytes::from_static(&[
+            .send_to(
+                &[
                     0x00, 0x02, 0x81, 0x80, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x05,
                     0x62, 0x61, 0x69, 0x64, 0x75, 0x03, 0x63, 0x6F, 0x6D, 0x00, 0x00, 0x01, 0x00,
                     0x01, 0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01, 0xFA, 0x00, 0x04,
                     0xDC, 0xB5, 0x26, 0x94, 0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x01,
                     0xFA, 0x00, 0x04, 0xDC, 0xB5, 0x26, 0xFB,
-                ]),
-                addr.into(),
-            ))
+                ],
+                &addr.into(),
+            )
             .await
             .unwrap();
-        let _ = client.next().await.unwrap().unwrap();
+        let _ = client.recv_from(&mut ReadBuf::new(buf)).await.unwrap();
 
         assert_eq!(
             net.rl

@@ -2,7 +2,6 @@ use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
     io::{self, ErrorKind},
-    mem::replace,
     net::SocketAddr,
     pin::Pin,
     sync::atomic::{AtomicU16, Ordering},
@@ -10,11 +9,10 @@ use std::{
 };
 
 use super::channel::Channel;
-use futures::{lock::Mutex, ready, Future, Sink, SinkExt, Stream, StreamExt};
+use futures::{lock::Mutex, ready, Future, SinkExt, StreamExt};
 use rd_interface::{
-    async_trait, Address, Arc, AsyncRead, AsyncWrite, Bytes, BytesMut, Context, Error, INet,
-    ITcpListener, ITcpStream, IUdpSocket, IntoDyn, ReadBuf, Result, TcpListener, TcpStream,
-    UdpSocket,
+    async_trait, Address, Arc, Context, Error, INet, ITcpListener, ITcpStream, IUdpSocket, IntoDyn,
+    ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
 };
 use tokio::sync::mpsc::error::SendError;
 
@@ -113,8 +111,7 @@ impl INet for TestNet {
         let (udp_socket, other) = Pipe::new(UdpData {
             inner: self.inner.clone(),
             local_addr: key,
-            buf: None,
-            flushing: None,
+            flushing: false,
         });
         inner.ports.insert(key, Value::UdpSocket(other));
         Ok(MyUdpSocket(udp_socket).into_dyn())
@@ -136,14 +133,13 @@ pub struct TcpData {
 pub struct UdpData {
     inner: Arc<Mutex<Inner>>,
     local_addr: Port,
-    buf: Option<(BytesMut, u16)>,
-    flushing: Option<u16>,
+    flushing: bool,
 }
 pub type MyTcpStream = Pipe<Vec<u8>, TcpData>;
 #[derive(Debug)]
 pub struct MyTcpListener(Mutex<Pipe<MyTcpStream, Port>>);
 #[derive(Debug)]
-pub struct MyUdpSocket(Pipe<(BytesMut, SocketAddr), UdpData>);
+pub struct MyUdpSocket(Pipe<(Vec<u8>, SocketAddr), UdpData>);
 
 #[derive(Debug, PartialOrd, PartialEq, Ord, Eq, Copy, Clone, Hash)]
 enum Protocol {
@@ -154,7 +150,7 @@ enum Protocol {
 #[derive(Debug)]
 enum Value {
     TcpListener(Pipe<MyTcpStream, Port>),
-    UdpSocket(Pipe<(BytesMut, SocketAddr), UdpData>),
+    UdpSocket(Pipe<(Vec<u8>, SocketAddr), UdpData>),
 }
 
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -191,9 +187,16 @@ impl<T: Debug + Send + 'static, Data: Clone> Pipe<T, Data> {
     }
 }
 
-impl AsyncRead for MyTcpStream {
+#[async_trait]
+impl ITcpStream for MyTcpStream {
+    async fn peer_addr(&self) -> Result<SocketAddr> {
+        Ok(self.data.peer_addr.into())
+    }
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        Ok(self.data.local_addr.into())
+    }
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        &mut self,
         cx: &mut task::Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
@@ -221,13 +224,7 @@ impl AsyncRead for MyTcpStream {
             }
         }
     }
-}
-impl AsyncWrite for MyTcpStream {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
+    fn poll_write(&mut self, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         let MyTcpStream { channel, data, .. } = &mut *self;
 
         loop {
@@ -241,23 +238,13 @@ impl AsyncWrite for MyTcpStream {
             data.is_flushing = true;
         }
     }
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_flush(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         ready!(self.channel.poll_flush_unpin(cx)).map_err(map_err)?;
         Poll::Ready(Ok(()))
     }
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_shutdown(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         ready!(self.channel.poll_close_unpin(cx)).map_err(map_err)?;
         Poll::Ready(Ok(()))
-    }
-}
-
-#[async_trait]
-impl ITcpStream for MyTcpStream {
-    async fn peer_addr(&self) -> Result<SocketAddr> {
-        Ok(self.data.peer_addr.into())
-    }
-    async fn local_addr(&self) -> Result<SocketAddr> {
-        Ok(self.data.local_addr.into())
     }
 }
 
@@ -281,18 +268,10 @@ fn map_err<T>(_e: SendError<T>) -> io::Error {
     ErrorKind::BrokenPipe.into()
 }
 
-impl Stream for MyUdpSocket {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
-        self.0.channel.poll_next_unpin(cx).map(|i| i.map(|j| Ok(j)))
-    }
-}
-
 impl MyUdpSocket {
     fn poll_udp_port<F, R>(inner: &mut Inner, port: u16, func: F, default: R) -> R
     where
-        F: FnOnce(&mut Pipe<(BytesMut, SocketAddr), UdpData>) -> R,
+        F: FnOnce(&mut Pipe<(Vec<u8>, SocketAddr), UdpData>) -> R,
     {
         let target_key = Port(Protocol::Udp, port);
         match inner.ports.get_mut(&target_key) {
@@ -303,95 +282,81 @@ impl MyUdpSocket {
             None => default,
         }
     }
-    fn poll_send_to(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
-        let UdpData {
-            inner,
-            buf,
-            flushing,
-            local_addr,
-            ..
-        } = &mut self.0.data;
-        let mut inner = ready!(Pin::new(&mut inner.lock()).poll(cx));
-
-        loop {
-            if let Some(port) = flushing {
-                ready!(Self::poll_udp_port(
-                    &mut inner,
-                    *port,
-                    |u| u.channel.poll_flush_unpin(cx),
-                    Poll::Ready(Ok(()))
-                ))
-                .map_err(map_err)?;
-                *flushing = None;
-                break;
-            }
-            if let Some(item) = buf {
-                let addr = item.1.clone();
-                ready!(Self::poll_udp_port(
-                    &mut inner,
-                    addr,
-                    |u| u.channel.poll_ready_unpin(cx),
-                    Poll::Ready(Ok(()))
-                ))
-                .map_err(map_err)?;
-
-                let (b, a) = replace(buf, None).unwrap();
-                let from_addr: SocketAddr = local_addr.clone().into();
-                Self::poll_udp_port(
-                    &mut inner,
-                    addr,
-                    |u| u.channel.start_send_unpin((b, from_addr)),
-                    Ok(()),
-                )
-                .map_err(map_err)?;
-
-                *flushing = Some(a);
-            } else {
-                break;
-            }
-        }
-
-        Poll::Ready(Ok(()))
-    }
-}
-
-impl Sink<(Bytes, Address)> for MyUdpSocket {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.poll_send_to(cx)
-    }
-
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        (buf, addr): (Bytes, Address),
-    ) -> Result<(), Self::Error> {
-        self.0.data.buf = Some((BytesMut::from(&buf[..]), addr.port()));
-        Ok(())
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.poll_send_to(cx)
-    }
-
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.0.channel.poll_close_unpin(cx).map_err(map_err)
-    }
 }
 
 #[async_trait]
 impl IUdpSocket for MyUdpSocket {
     async fn local_addr(&self) -> Result<SocketAddr> {
         Ok(self.0.data.local_addr.into())
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
+        let (vec, addr) = match ready!(self.0.channel.poll_next_unpin(cx)) {
+            Some(v) => v,
+            None => return Poll::Ready(Err(io::ErrorKind::ConnectionRefused.into())),
+        };
+
+        let to_copy = vec.len().min(buf.remaining());
+        buf.initialize_unfilled_to(to_copy)
+            .copy_from_slice(&vec[..to_copy]);
+        buf.advance(to_copy);
+
+        Poll::Ready(Ok(addr.into()))
+    }
+
+    fn poll_send_to(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        target: &Address,
+    ) -> Poll<io::Result<usize>> {
+        let UdpData {
+            inner,
+            local_addr,
+            flushing,
+            ..
+        } = &mut self.0.data;
+        let mut inner = ready!(Pin::new(&mut inner.lock()).poll(cx));
+        let port = target.port();
+
+        loop {
+            if *flushing {
+                ready!(Self::poll_udp_port(
+                    &mut inner,
+                    port,
+                    |u| u.channel.poll_flush_unpin(cx),
+                    Poll::Ready(Ok(()))
+                ))
+                .map_err(map_err)?;
+                *flushing = false;
+                break;
+            }
+            ready!(Self::poll_udp_port(
+                &mut inner,
+                port,
+                |u| u.channel.poll_ready_unpin(cx),
+                Poll::Ready(Ok(()))
+            ))
+            .map_err(map_err)?;
+
+            let b = buf.to_vec();
+            let from_addr: SocketAddr = local_addr.clone().into();
+            Self::poll_udp_port(
+                &mut inner,
+                port,
+                |u| u.channel.start_send_unpin((b, from_addr)),
+                Ok(()),
+            )
+            .map_err(map_err)?;
+
+            *flushing = true;
+        }
+
+        Poll::Ready(Ok(buf.len()))
     }
 }
 
@@ -417,7 +382,7 @@ impl Value {
             _ => Err(ErrorKind::ConnectionRefused.into()),
         }
     }
-    fn get_udp_socket(&mut self) -> io::Result<&mut Pipe<(BytesMut, SocketAddr), UdpData>> {
+    fn get_udp_socket(&mut self) -> io::Result<&mut Pipe<(Vec<u8>, SocketAddr), UdpData>> {
         match self {
             Value::UdpSocket(s) => Ok(s),
             _ => Err(ErrorKind::ConnectionRefused.into()),

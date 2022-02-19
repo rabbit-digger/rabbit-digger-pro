@@ -6,7 +6,7 @@ use super::matcher::Matcher;
 use lru_time_cache::LruCache;
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, Address, Arc, Bytes, Context, INet, IntoDyn, Net, Result, TcpStream, UdpSocket,
+    async_trait, Address, Arc, Context, INet, IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
 use tracing::instrument;
 
@@ -99,15 +99,18 @@ impl INet for RuleNet {
             .await
     }
 
-    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
+    async fn udp_bind(&self, ctx: &mut Context, bind_addr: &Address) -> Result<UdpSocket> {
         let rule = self.rule.clone();
         let mut ctx = ctx.clone();
-        let addr = addr.clone();
-        let udp = UdpConnector::new(Box::new(move |item: &(Bytes, Address)| {
-            let target_addr = item.1.clone();
+        let bind_addr = bind_addr.clone();
+        let udp = UdpConnector::new(Box::new(move |buf: &[u8], target_addr: &Address| {
+            let buf = buf.to_vec();
+            let target_addr = target_addr.clone();
             Box::pin(async move {
                 let rule_item = rule.get_rule(&ctx, &target_addr).await?;
-                rule_item.target.udp_bind(&mut ctx, &addr).await
+                let mut udp = rule_item.target.udp_bind(&mut ctx, &bind_addr).await?;
+                udp.send_to(&buf, &target_addr).await?;
+                Ok(udp)
             })
         }));
         Ok(udp.into_dyn())

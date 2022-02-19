@@ -1,4 +1,4 @@
-use futures::{ready, Sink, SinkExt, Stream, StreamExt};
+use futures::ready;
 use socks5_protocol::{
     AuthMethod, AuthRequest, AuthResponse, CommandRequest, CommandResponse, Version,
 };
@@ -7,13 +7,12 @@ use crate::socks5::common::map_err;
 
 use super::common::{pack_udp, parse_udp, ra2sa};
 use rd_interface::{
-    async_trait, impl_async_read_write, Address, Bytes, BytesMut, INet, ITcpStream, IUdpSocket,
-    IntoAddress, IntoDyn, Net, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
+    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, Address, INet, ITcpStream,
+    IUdpSocket, IntoAddress, IntoDyn, Net, ReadBuf, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use std::{
     io,
     net::SocketAddr,
-    pin::Pin,
     task::{self, Poll},
 };
 use tokio::io::{AsyncWriteExt, BufWriter};
@@ -25,73 +24,57 @@ pub struct Socks5Client {
 
 pub struct Socks5TcpStream(TcpStream);
 
-impl_async_read_write!(Socks5TcpStream, 0);
-
-pub struct Socks5UdpSocket(UdpSocket, TcpStream, SocketAddr);
-
-impl Stream for Socks5UdpSocket {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
-        // 259 is max size of address, atype 1 + domain len 1 + domain 255 + port 2
-        let bytes = loop {
-            let (bytes, addr) = match ready!(self.0.poll_next_unpin(cx)) {
-                Some(r) => r?,
-                None => return Poll::Ready(None),
-            };
-            if addr == self.2 {
-                break bytes;
-            }
-        };
-
-        let (addr, payload) = parse_udp(bytes.freeze())?;
-
-        Poll::Ready(Some(Ok((
-            BytesMut::from(&payload[..]),
-            addr.to_socket_addr()?,
-        ))))
-    }
-}
-
-impl Sink<(Bytes, Address)> for Socks5UdpSocket {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.0.poll_ready_unpin(cx)
-    }
-
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        (buf, addr): (Bytes, Address),
-    ) -> Result<(), Self::Error> {
-        let Socks5UdpSocket(sink, _, server_addr) = &mut *self;
-        let bytes = pack_udp(addr.into(), &buf)?;
-
-        sink.start_send_unpin((bytes.into(), server_addr.clone().into()))
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.0.poll_flush_unpin(cx)
-    }
-
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.0.poll_close_unpin(cx)
-    }
+pub struct Socks5UdpSocket {
+    udp: UdpSocket,
+    _tcp: TcpStream,
+    server_addr: SocketAddr,
+    send_buf: Vec<u8>,
 }
 
 #[async_trait]
 impl IUdpSocket for Socks5UdpSocket {
     async fn local_addr(&self) -> Result<SocketAddr> {
-        self.0.local_addr().await
+        self.udp.local_addr().await
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
+        loop {
+            let addr = ready!(self.udp.poll_recv_from(cx, buf))?;
+            if addr == self.server_addr {
+                break;
+            }
+        }
+
+        let addr = parse_udp(buf)?;
+
+        Poll::Ready(Ok(addr.to_socket_addr()?))
+    }
+
+    fn poll_send_to(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        target: &Address,
+    ) -> Poll<io::Result<usize>> {
+        let Socks5UdpSocket {
+            udp,
+            server_addr,
+            send_buf,
+            ..
+        } = &mut *self;
+
+        if send_buf.is_empty() {
+            pack_udp(target.clone().into(), &buf, send_buf)?;
+        }
+
+        ready!(udp.poll_send_to(cx, &send_buf, &(*server_addr).into()))?;
+        send_buf.clear();
+
+        Poll::Ready(Ok(buf.len()))
     }
 }
 
@@ -104,6 +87,8 @@ impl ITcpStream for Socks5TcpStream {
     async fn local_addr(&self) -> Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
     }
+
+    impl_async_read_write!(0);
 }
 
 #[async_trait]
@@ -148,7 +133,13 @@ impl INet for Socks5Client {
 
         let addr = resp.address.to_socket_addr().map_err(map_err)?;
 
-        Ok(Socks5UdpSocket(client, socket, addr).into_dyn())
+        Ok(Socks5UdpSocket {
+            udp: client,
+            _tcp: socket,
+            server_addr: addr,
+            send_buf: Vec::with_capacity(UDP_BUFFER_SIZE),
+        }
+        .into_dyn())
     }
 }
 

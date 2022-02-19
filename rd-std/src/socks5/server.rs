@@ -1,10 +1,10 @@
 use super::common::{pack_udp, parse_udp, sa2ra};
 use crate::util::{connect_tcp, connect_udp};
 use anyhow::Context as AnyhowContext;
-use futures::{ready, Sink, SinkExt, Stream, StreamExt};
+use futures::ready;
 use rd_interface::{
-    async_trait, Address as RdAddr, Address as RDAddr, Bytes, BytesMut, Context, IServer,
-    IUdpChannel, IntoDyn, Net, Result, TcpStream, UdpSocket,
+    async_trait, constant::UDP_BUFFER_SIZE, Address as RdAddr, Address as RDAddr, Context, IServer,
+    IUdpChannel, IntoDyn, Net, ReadBuf, Result, TcpStream, UdpSocket,
 };
 use socks5_protocol::{
     Address, AuthMethod, AuthRequest, AuthResponse, Command, CommandReply, CommandRequest,
@@ -13,9 +13,8 @@ use socks5_protocol::{
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    pin::Pin,
     sync::Arc,
-    task,
+    task::{self, Poll},
 };
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tracing::instrument;
@@ -130,6 +129,7 @@ impl Socks5Server {
                     udp,
                     _tcp: socket,
                     endpoint: None,
+                    send_buf: Vec::with_capacity(UDP_BUFFER_SIZE),
                 };
                 connect_udp(ctx, udp_channel.into_dyn(), out)
                     .await
@@ -154,69 +154,58 @@ pub struct Socks5UdpSocket {
     // keep connection
     _tcp: TcpStream,
     endpoint: Option<SocketAddr>,
+    send_buf: Vec<u8>,
 }
 
-impl Stream for Socks5UdpSocket {
-    type Item = io::Result<(Bytes, RDAddr)>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
+impl IUdpChannel for Socks5UdpSocket {
+    fn poll_send_to(
+        &mut self,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<Option<Self::Item>> {
-        let (bytes, from_addr) = match ready!(self.udp.poll_next_unpin(cx)) {
-            Some(i) => i,
-            None => return None.into(),
-        }?;
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<RDAddr>> {
+        let from_addr = ready!(self.udp.poll_recv_from(cx, buf))?;
         if self.endpoint.is_none() {
             self.endpoint = Some(from_addr);
         }
 
-        let (addr, payload) = parse_udp(bytes.freeze())?;
+        let addr = parse_udp(buf)?;
 
-        Some(Ok((payload, addr))).into()
+        Poll::Ready(Ok(addr))
     }
-}
 
-impl Sink<(BytesMut, SocketAddr)> for Socks5UdpSocket {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
+    fn poll_recv_from(
+        &mut self,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.udp.poll_ready_unpin(cx)
-    }
+        buf: &[u8],
+        target: &SocketAddr,
+    ) -> Poll<io::Result<usize>> {
+        let Socks5UdpSocket {
+            udp,
+            endpoint,
+            send_buf,
+            ..
+        } = &mut *self;
 
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        (buf, saddr): (BytesMut, SocketAddr),
-    ) -> Result<(), Self::Error> {
-        let bytes = Bytes::copy_from_slice(&pack_udp(saddr.into(), &buf[..])?[..]);
-        match self.endpoint {
-            Some(endpoint) => self.udp.start_send_unpin((bytes, endpoint.into())),
-            None => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "udp endpoint not set",
-            )),
+        if send_buf.is_empty() {
+            pack_udp((*target).into(), &buf, send_buf)?;
         }
-    }
 
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.udp.poll_flush_unpin(cx)
-    }
+        match endpoint {
+            Some(endpoint) => {
+                ready!(udp.poll_send_to(cx, &send_buf, &(*endpoint).into()))?;
+                send_buf.clear();
+            }
+            None => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "udp endpoint not set",
+                )))
+            }
+        };
 
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.udp.poll_close_unpin(cx)
+        Poll::Ready(Ok(buf.len()))
     }
 }
-
-impl IUdpChannel for Socks5UdpSocket {}
 
 pub struct Socks5 {
     server: Socks5Server,

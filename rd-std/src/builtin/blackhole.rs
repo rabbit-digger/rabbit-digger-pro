@@ -1,10 +1,8 @@
-use std::{future::pending, io, net::SocketAddr, pin::Pin, task::Poll};
+use std::{future::pending, io, net::SocketAddr, task::Poll};
 
-use futures::{Sink, Stream};
 use rd_interface::{
-    async_trait, config::EmptyConfig, registry::Builder, Address, AsyncRead, AsyncWrite, Bytes,
-    BytesMut, INet, ITcpListener, ITcpStream, IUdpSocket, IntoDyn, Net, ReadBuf, Result,
-    NOT_IMPLEMENTED,
+    async_trait, config::EmptyConfig, registry::Builder, Address, INet, ITcpListener, ITcpStream,
+    IUdpSocket, IntoDyn, Net, ReadBuf, Result, NOT_IMPLEMENTED,
 };
 pub struct BlackholeNet;
 
@@ -20,42 +18,32 @@ impl Builder<Net> for BlackholeNet {
 
 struct BlackItem;
 
-impl AsyncRead for BlackItem {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-        _buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        Poll::Pending
-    }
-}
-
-impl AsyncWrite for BlackItem {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-        _buf: &[u8],
-    ) -> Poll<Result<usize, std::io::Error>> {
-        Poll::Pending
-    }
-
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), std::io::Error>> {
-        Poll::Pending
-    }
-
-    fn poll_shutdown(
-        self: Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), std::io::Error>> {
-        Poll::Pending
-    }
-}
-
 #[async_trait]
 impl ITcpStream for BlackItem {
+    fn poll_read(
+        &mut self,
+        _cx: &mut std::task::Context<'_>,
+        _buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Poll::Pending
+    }
+
+    fn poll_write(
+        &mut self,
+        _cx: &mut std::task::Context<'_>,
+        _buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        Poll::Pending
+    }
+
+    fn poll_flush(&mut self, _cx: &mut std::task::Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Pending
+    }
+
+    fn poll_shutdown(&mut self, _cx: &mut std::task::Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Pending
+    }
+
     async fn peer_addr(&self) -> Result<std::net::SocketAddr> {
         Err(NOT_IMPLEMENTED)
     }
@@ -76,50 +64,27 @@ impl ITcpListener for BlackItem {
     }
 }
 
-impl Stream for BlackItem {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
-
-    fn poll_next(
-        self: Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        Poll::Pending
-    }
-}
-
-impl Sink<(Bytes, Address)> for BlackItem {
-    type Error = io::Error;
-
-    fn poll_ready(
-        self: Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        Poll::Pending
-    }
-
-    fn start_send(self: Pin<&mut Self>, _item: (Bytes, Address)) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        Poll::Pending
-    }
-
-    fn poll_close(
-        self: Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        Poll::Pending
-    }
-}
-
 #[async_trait]
 impl IUdpSocket for BlackItem {
     async fn local_addr(&self) -> Result<std::net::SocketAddr> {
         Err(NOT_IMPLEMENTED)
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        _cx: &mut std::task::Context<'_>,
+        _buf: &mut ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
+        Poll::Pending
+    }
+
+    fn poll_send_to(
+        &mut self,
+        _cx: &mut std::task::Context<'_>,
+        _buf: &[u8],
+        _target: &Address,
+    ) -> Poll<io::Result<usize>> {
+        Poll::Pending
     }
 }
 

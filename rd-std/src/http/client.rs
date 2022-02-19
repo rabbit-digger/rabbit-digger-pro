@@ -18,8 +18,6 @@ pub struct HttpClient {
 
 pub struct HttpTcpStream(TcpStream);
 
-impl_async_read_write!(HttpTcpStream, 0);
-
 #[async_trait]
 impl ITcpStream for HttpTcpStream {
     async fn peer_addr(&self) -> Result<SocketAddr> {
@@ -29,6 +27,8 @@ impl ITcpStream for HttpTcpStream {
     async fn local_addr(&self) -> Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
     }
+
+    impl_async_read_write!(0);
 }
 
 #[async_trait]

@@ -7,13 +7,13 @@ use std::{
     task::{self, Poll},
 };
 
-use futures::{ready, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
+use futures::{ready, FutureExt, TryFutureExt};
 use parking_lot::RwLock as SyncRwLock;
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Bytes, BytesMut, Context, INet, IUdpSocket,
-    IntoDyn, Net, ReadBuf, Result, Server, Sink, TcpListener, TcpStream, UdpSocket, Value,
+    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net,
+    ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
     sync::{oneshot, RwLock, Semaphore},
@@ -42,7 +42,7 @@ impl RunningNet {
         *self.net.write() = net;
     }
     pub fn as_net(self: &Arc<Self>) -> Net {
-        self.clone()
+        Net::from(self.clone() as Arc<dyn INet>)
     }
     fn net(&self) -> Net {
         self.net.read().clone()
@@ -80,6 +80,10 @@ impl INet for RunningNet {
     #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         self.net().lookup_host(addr).await
+    }
+
+    fn get_inner(&self) -> Option<Net> {
+        Some(self.net())
     }
 }
 
@@ -165,6 +169,10 @@ impl INet for RunningServerNet {
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         self.net.lookup_host(addr).await
     }
+
+    fn get_inner(&self) -> Option<Net> {
+        Some(self.net.clone())
+    }
 }
 
 pub struct WrapUdpSocket {
@@ -189,68 +197,48 @@ impl WrapUdpSocket {
     }
 }
 
-impl Stream for WrapUdpSocket {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context,
-    ) -> Poll<Option<io::Result<(BytesMut, SocketAddr)>>> {
+#[async_trait]
+impl IUdpSocket for WrapUdpSocket {
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        self.inner.local_addr().await
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
         let WrapUdpSocket {
             inner,
             conn,
             stopped,
         } = &mut *self;
         if let Poll::Ready(_) = stopped.lock().poll_unpin(cx) {
-            return Poll::Ready(Some(Err(io::Error::new(
+            return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::ConnectionAborted,
                 "Aborted by user",
             )
-            .into())));
+            .into()));
         }
-        let (buf, addr) = match ready!(inner.poll_next_unpin(cx)?) {
-            Some(v) => v,
-            None => return Poll::Ready(None),
-        };
-        conn.send(EventType::UdpInbound(addr.into(), buf.len() as u64));
-        Poll::Ready(Some(Ok((buf, addr))))
+        let addr = ready!(inner.poll_recv_from(cx, buf)?);
+        conn.send(EventType::UdpInbound(
+            addr.into(),
+            buf.filled().len() as u64,
+        ));
+        Poll::Ready(Ok(addr))
     }
-}
 
-impl Sink<(Bytes, Address)> for WrapUdpSocket {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
+    fn poll_send_to(
+        &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready_unpin(cx)
-    }
+        buf: &[u8],
+        target: &Address,
+    ) -> Poll<io::Result<usize>> {
+        let r = ready!(self.inner.poll_send_to(cx, buf, target))?;
 
-    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, Address)) -> Result<(), Self::Error> {
         self.conn
-            .send(EventType::UdpOutbound(item.1.clone(), item.0.len() as u64));
-        self.inner.start_send_unpin(item)
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_flush_unpin(cx)
-    }
-
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_close_unpin(cx)
-    }
-}
-
-#[async_trait]
-impl IUdpSocket for WrapUdpSocket {
-    async fn local_addr(&self) -> Result<SocketAddr> {
-        self.inner.local_addr().await
+            .send(EventType::UdpOutbound(target.clone(), buf.len() as u64));
+        Poll::Ready(Ok(r))
     }
 }
 
@@ -276,11 +264,20 @@ impl WrapTcpStream {
     }
 }
 
-impl AsyncRead for WrapTcpStream {
+#[async_trait]
+impl rd_interface::ITcpStream for WrapTcpStream {
+    async fn peer_addr(&self) -> Result<SocketAddr> {
+        self.inner.peer_addr().await
+    }
+
+    async fn local_addr(&self) -> Result<SocketAddr> {
+        self.inner.local_addr().await
+    }
+
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        &mut self,
         cx: &mut task::Context<'_>,
-        buf: &mut ReadBuf,
+        buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         if let Poll::Ready(_) = self.stopped.poll_unpin(cx) {
             return Poll::Ready(Err(io::Error::new(
@@ -298,14 +295,8 @@ impl AsyncRead for WrapTcpStream {
             r => r,
         }
     }
-}
 
-impl AsyncWrite for WrapTcpStream {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
+    fn poll_write(&mut self, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         match Pin::new(&mut self.inner).poll_write(cx, buf) {
             Poll::Ready(Ok(s)) => {
                 self.conn.send(EventType::Outbound(s as u64));
@@ -315,41 +306,12 @@ impl AsyncWrite for WrapTcpStream {
         }
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_flush(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.inner).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_shutdown(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
-    }
-
-    fn poll_write_vectored(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-        bufs: &[io::IoSlice<'_>],
-    ) -> Poll<Result<usize, io::Error>> {
-        match Pin::new(&mut self.inner).poll_write_vectored(cx, bufs) {
-            Poll::Ready(Ok(s)) => {
-                self.conn.send(EventType::Outbound(s as u64));
-                Ok(s).into()
-            }
-            r => r,
-        }
-    }
-
-    fn is_write_vectored(&self) -> bool {
-        self.inner.is_write_vectored()
-    }
-}
-
-#[async_trait]
-impl rd_interface::ITcpStream for WrapTcpStream {
-    async fn peer_addr(&self) -> Result<SocketAddr> {
-        self.inner.peer_addr().await
-    }
-
-    async fn local_addr(&self) -> Result<SocketAddr> {
-        self.inner.local_addr().await
     }
 }
 

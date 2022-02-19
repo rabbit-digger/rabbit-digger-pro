@@ -3,7 +3,7 @@ use std::{io, net::SocketAddr};
 use crate::util::connect_udp;
 
 use super::{send_back::BackChannel, UdpPacket};
-use rd_interface::{Address, Bytes, Context, IntoDyn, Net, Result};
+use rd_interface::{Address, Context, IntoDyn, Net, Result};
 use tokio::{
     sync::mpsc::{channel, Sender},
     task::JoinHandle,
@@ -11,7 +11,7 @@ use tokio::{
 
 pub(super) struct UdpConnection {
     handle: JoinHandle<Result<()>>,
-    send_udp: Sender<(Bytes, SocketAddr)>,
+    send_udp: Sender<(Vec<u8>, SocketAddr)>,
 }
 
 impl UdpConnection {
@@ -38,7 +38,7 @@ impl UdpConnection {
             send_udp,
         }
     }
-    pub(super) fn send(&mut self, packet: (Bytes, SocketAddr)) -> Result<()> {
+    pub(super) fn send(&mut self, packet: (Vec<u8>, SocketAddr)) -> Result<()> {
         self.send_udp
             .try_send(packet)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e).into())
