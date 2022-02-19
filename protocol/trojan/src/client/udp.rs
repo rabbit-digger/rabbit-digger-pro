@@ -147,6 +147,7 @@ impl IUdpSocket for TrojanUdp {
             ready!(self.framed.poll_ready_unpin(cx))?;
             self.framed
                 .start_send_unpin((Bytes::copy_from_slice(buf), target.clone()))?;
+            self.flushing = true;
         }
     }
 }

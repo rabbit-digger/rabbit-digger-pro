@@ -1,9 +1,6 @@
 use std::net::Ipv4Addr;
 
-use rd_interface::{
-    config::{Config, NetRef},
-    prelude::*,
-};
+use rd_interface::{config::Config, prelude::*};
 use tokio_smoltcp::smoltcp::{phy::Medium, wire::IpCidr};
 
 #[rd_config]
@@ -88,8 +85,6 @@ impl From<Layer> for Medium {
 
 #[rd_config]
 pub struct RawNetConfig {
-    #[serde(default)]
-    pub net: NetRef,
     pub device: DeviceConfig,
     pub gateway: Option<String>,
 
