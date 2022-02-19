@@ -7,7 +7,7 @@ use crate::socks5::common::map_err;
 
 use super::common::{pack_udp, parse_udp, ra2sa};
 use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, Address, INet, ITcpStream,
+    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, Address, Fd, INet, ITcpStream,
     IUdpSocket, IntoAddress, IntoDyn, Net, ReadBuf, Result, TcpStream, UdpSocket, NOT_IMPLEMENTED,
 };
 use std::{
@@ -86,6 +86,13 @@ impl ITcpStream for Socks5TcpStream {
 
     async fn local_addr(&self) -> Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
+    }
+
+    fn read_passthrough(&self) -> Option<Fd> {
+        self.0.read_passthrough()
+    }
+    fn write_passthrough(&self) -> Option<Fd> {
+        self.0.write_passthrough()
     }
 
     impl_async_read_write!(0);

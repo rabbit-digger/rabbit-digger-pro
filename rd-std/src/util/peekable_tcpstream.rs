@@ -1,4 +1,4 @@
-use rd_interface::{async_trait, impl_async_write, AsyncRead, ITcpStream, TcpStream};
+use rd_interface::{async_trait, impl_async_write, AsyncRead, Fd, ITcpStream, TcpStream};
 use std::{
     collections::VecDeque,
     io,
@@ -21,6 +21,17 @@ impl ITcpStream for PeekableTcpStream {
 
     async fn local_addr(&self) -> crate::Result<SocketAddr> {
         self.tcp.local_addr().await
+    }
+
+    fn read_passthrough(&self) -> Option<Fd> {
+        if self.buf.is_empty() {
+            self.tcp.read_passthrough()
+        } else {
+            None
+        }
+    }
+    fn write_passthrough(&self) -> Option<Fd> {
+        self.tcp.write_passthrough()
     }
 
     impl_async_write!(tcp);

@@ -12,8 +12,8 @@ use parking_lot::RwLock as SyncRwLock;
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net,
-    ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket, Value,
+    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, Fd, INet, IUdpSocket, IntoDyn,
+    Net, ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
     sync::{oneshot, RwLock, Semaphore},
@@ -272,6 +272,13 @@ impl rd_interface::ITcpStream for WrapTcpStream {
 
     async fn local_addr(&self) -> Result<SocketAddr> {
         self.inner.local_addr().await
+    }
+
+    fn read_passthrough(&self) -> Option<Fd> {
+        self.inner.read_passthrough()
+    }
+    fn write_passthrough(&self) -> Option<Fd> {
+        self.inner.write_passthrough()
     }
 
     fn poll_read(
