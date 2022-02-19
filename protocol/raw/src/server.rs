@@ -41,7 +41,7 @@ impl RawServer {
         let net = (*config.net).clone();
         let listen = (*config.listen).clone();
         let raw_net = listen
-            .get_innet_net_by_type::<RawNet>()
+            .get_inner_net_by::<RawNet>()
             .ok_or_else(|| Error::other("net must be `raw` type."))?;
         let params = raw_net
             .get_params()
