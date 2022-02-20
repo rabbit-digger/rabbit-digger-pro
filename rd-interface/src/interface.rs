@@ -75,6 +75,52 @@ pub trait ITcpStream: Unpin + Send + Sync {
 pub struct TcpStream(Box<dyn ITcpStream>);
 
 impl TcpStream {
+    pub fn from<T>(rw: T) -> Self
+    where
+        T: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+    {
+        struct Wrapper<T>(T);
+
+        #[async_trait]
+        impl<T> ITcpStream for Wrapper<T>
+        where
+            T: AsyncRead + AsyncWrite + Send + Sync + Unpin,
+        {
+            fn poll_read(
+                &mut self,
+                cx: &mut task::Context<'_>,
+                buf: &mut ReadBuf<'_>,
+            ) -> Poll<io::Result<()>> {
+                Pin::new(&mut self.0).poll_read(cx, buf)
+            }
+
+            fn poll_write(
+                &mut self,
+                cx: &mut task::Context<'_>,
+                buf: &[u8],
+            ) -> Poll<io::Result<usize>> {
+                Pin::new(&mut self.0).poll_write(cx, buf)
+            }
+
+            fn poll_flush(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+                Pin::new(&mut self.0).poll_flush(cx)
+            }
+
+            fn poll_shutdown(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
+                Pin::new(&mut self.0).poll_shutdown(cx)
+            }
+
+            async fn peer_addr(&self) -> Result<SocketAddr> {
+                Err(NOT_IMPLEMENTED)
+            }
+
+            async fn local_addr(&self) -> Result<SocketAddr> {
+                Err(NOT_IMPLEMENTED)
+            }
+        }
+
+        Wrapper(rw).into_dyn()
+    }
     pub async fn peer_addr(&self) -> Result<SocketAddr> {
         self.0.peer_addr().await
     }
