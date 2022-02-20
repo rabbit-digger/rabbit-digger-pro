@@ -14,15 +14,18 @@ use serde_json::{from_value, json, Value};
 
 #[derive(Debug, Deserialize)]
 pub struct Clash {
-    rule_name: String,
+    rule_name: Option<String>,
     prefix: Option<String>,
     direct: Option<String>,
     reject: Option<String>,
 
     #[serde(default)]
     disable_proxy_group: bool,
+
+    /// Make all proxies in the group name
     #[serde(default)]
-    disable_rule: bool,
+    select: Option<String>,
+
     // reverse map from clash name to net name
     #[serde(skip)]
     name_map: BTreeMap<String, String>,
@@ -86,6 +89,29 @@ impl Clash {
                         "cipher": params.cipher,
                         "password": params.password,
                         "udp": params.udp.unwrap_or_default(),
+                    }),
+                )
+            }
+            "trojan" => {
+                #[derive(Debug, Deserialize)]
+                struct Param {
+                    server: String,
+                    port: u16,
+                    password: String,
+                    udp: Option<bool>,
+                    sni: Option<String>,
+                    skip_cert_verify: Option<bool>,
+                }
+                let params: Param = serde_json::from_value(p.opt)?;
+
+                Net::new(
+                    "trojan",
+                    json!({
+                        "server": format!("{}:{}", params.server, params.port),
+                        "password": params.password,
+                        "udp": params.udp.unwrap_or_default(),
+                        "sni": params.sni.unwrap_or(params.server),
+                        "skip_cert_verify": params.skip_cert_verify.unwrap_or_default(),
                     }),
                 )
             }
@@ -199,7 +225,7 @@ impl Clash {
     }
 
     fn proxy_group_name(&self, pg: impl AsRef<str>) -> String {
-        pg.as_ref().to_string()
+        self.prefix(pg)
     }
 
     fn prefix(&self, s: impl AsRef<str>) -> String {
@@ -211,10 +237,12 @@ impl Clash {
 
     pub async fn process(&mut self, config: &mut Config, content: String) -> Result<()> {
         let clash_config: ClashConfig = serde_yaml::from_str(&content)?;
+        let mut added_proxies = Vec::new();
 
         for p in clash_config.proxies {
             let old_name = p.name.clone();
             let name = self.prefix(&old_name);
+            added_proxies.push(name.clone());
             self.name_map.insert(old_name.clone(), name.clone());
             match self.proxy_to_net(p) {
                 Ok(p) => {
@@ -252,7 +280,7 @@ impl Clash {
             }
         }
 
-        if !self.disable_rule {
+        if let Some(rule_name) = &self.rule_name {
             let mut rule = Vec::new();
             for r in clash_config.rules {
                 match self.rule_to_rule(&r) {
@@ -262,9 +290,21 @@ impl Clash {
                     Err(e) => tracing::warn!("rule '{}' not translated: {:?}", r, e),
                 }
             }
+            config
+                .net
+                .insert(rule_name.clone(), Net::new("rule", json!({ "rule": rule })));
+        }
+
+        if let Some(select) = &self.select {
             config.net.insert(
-                self.rule_name.clone(),
-                Net::new("rule", json!({ "rule": rule })),
+                select.clone(),
+                Net::new(
+                    "select",
+                    json!({
+                        "selected": added_proxies.get(0).cloned().unwrap_or_else(|| "noop".to_string()),
+                        "list": added_proxies,
+                    }),
+                ),
             );
         }
 
