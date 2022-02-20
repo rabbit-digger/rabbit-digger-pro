@@ -28,7 +28,7 @@ impl TrojanNet {
     pub fn new(config: TrojanNetConfig) -> Result<Self> {
         let connector = TlsConnector::new(TlsConnectorConfig {
             skip_cert_verify: config.skip_cert_verify,
-            sni: config.sni,
+            sni: config.sni.unwrap_or_else(|| config.server.host()),
         })?;
         let server = config.server.clone();
 
@@ -67,7 +67,8 @@ pub struct TrojanNetConfig {
     udp: bool,
 
     /// sni
-    sni: String,
+    #[serde(default)]
+    sni: Option<String>,
     /// skip certificate verify
     #[serde(default)]
     skip_cert_verify: bool,
