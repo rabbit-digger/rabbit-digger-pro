@@ -26,7 +26,17 @@ impl SelectMap {
             if let Some(n) = config.net.get_mut(net) {
                 if n.net_type == "select" {
                     if let Some(o) = n.opt.as_object_mut() {
-                        o.insert("selected".to_string(), selected.to_string().into());
+                        if o.get("list")
+                            .into_iter()
+                            .filter_map(|v| v.as_array())
+                            .flatten()
+                            .flat_map(|v| v.as_str())
+                            .any(|i| i == selected)
+                        {
+                            o.insert("selected".to_string(), selected.to_string().into());
+                        } else {
+                            tracing::info!("The selected({}/{}) in the select map is not in the list, skip overriding.", selected, net);
+                        }
                     }
                 }
             }
