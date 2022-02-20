@@ -1,6 +1,5 @@
 use std::{
     io,
-    mem::replace,
     net::SocketAddr,
     pin::Pin,
     task::{self, Poll},
@@ -23,8 +22,6 @@ enum State {
         fut: Mutex<BoxFuture<Result<UdpSocket>>>,
     },
     Binded(UdpSocket),
-    // Dummy state for replace
-    Dummy,
 }
 
 /// A UdpConnector is a UdpSocket that lazily binds when first packet is about to send.
@@ -52,7 +49,6 @@ impl IUdpSocket for UdpConnector {
             State::Idle { .. } | State::Binding { .. } => Err(rd_interface::Error::NotFound(
                 "UdpConnector is not connected".to_string(),
             )),
-            State::Dummy => unreachable!(),
         }
     }
 
@@ -64,7 +60,7 @@ impl IUdpSocket for UdpConnector {
         loop {
             match &mut self.state {
                 State::Binded(udp) => return udp.poll_recv_from(cx, buf),
-                State::Idle { .. } | State::Binding { .. } | State::Dummy => {
+                State::Idle { .. } | State::Binding { .. } => {
                     ready!(self.semaphore.poll_acquire(cx));
                 }
             }
@@ -79,29 +75,26 @@ impl IUdpSocket for UdpConnector {
     ) -> Poll<io::Result<usize>> {
         loop {
             let mut result: Option<io::Result<usize>> = None;
-            let old_state = replace(&mut self.state, State::Dummy);
 
-            self.state = match old_state {
+            match &mut self.state {
+                State::Binded(ref mut udp) => {
+                    result = Some(ready!(udp.poll_send_to(cx, buf, target)));
+                }
+                State::Binding { fut, .. } => {
+                    let udp = ready!(fut.lock().poll_unpin(cx));
+                    self.semaphore.add_permits(1);
+                    self.state = State::Binded(udp?)
+                }
                 State::Idle { connector } => {
                     let connector = connector
                         .lock()
                         .take()
                         .expect("connector shouldn't be None");
                     let fut = connector(&buf, &target);
-                    State::Binding {
+                    self.state = State::Binding {
                         fut: Mutex::new(fut),
                     }
                 }
-                State::Binded(mut udp) => {
-                    result = Some(ready!(udp.poll_send_to(cx, buf, target)));
-                    State::Binded(udp)
-                }
-                State::Binding { fut, .. } => {
-                    let udp = ready!(fut.lock().poll_unpin(cx));
-                    self.semaphore.add_permits(1);
-                    State::Binded(udp?)
-                }
-                State::Dummy => unreachable!(),
             };
 
             if let Some(result) = result {

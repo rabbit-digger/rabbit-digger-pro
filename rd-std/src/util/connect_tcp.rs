@@ -12,9 +12,6 @@ use tracing::instrument;
 
 use super::DropAbort;
 
-#[cfg(unix)]
-mod unix;
-
 #[derive(Debug)]
 pub(super) struct CopyBuffer {
     read_done: bool,
@@ -23,9 +20,6 @@ pub(super) struct CopyBuffer {
     cap: usize,
     amt: u64,
     buf: Box<[u8]>,
-
-    #[cfg(target_os = "linux")]
-    splice: Option<unix::SpliceState>,
 }
 
 impl CopyBuffer {
@@ -37,8 +31,6 @@ impl CopyBuffer {
             cap: 0,
             amt: 0,
             buf: vec![0; buffer_size].into_boxed_slice(),
-            #[cfg(target_os = "linux")]
-            splice: None,
         }
     }
 
@@ -52,11 +44,6 @@ impl CopyBuffer {
             // If our buffer is empty, then we need to read some data to
             // continue.
             if self.pos == self.cap && !self.read_done {
-                #[cfg(target_os = "linux")]
-                if let Some(p) = unix::poll_splice(cx, &mut self.splice, &mut reader, &mut writer) {
-                    let _copied = ready!(p)?;
-                    continue;
-                }
                 let me = &mut *self;
                 let mut buf = ReadBuf::new(&mut me.buf);
 
