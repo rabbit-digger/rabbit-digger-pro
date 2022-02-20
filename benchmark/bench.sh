@@ -36,6 +36,9 @@ iperf3 -c 127.0.0.1 -p 20002 $UDP_FLAGS >> ./results/iperf3-aes-256-gcm.txt
 iperf3 -c 127.0.0.1 -p 20003 $TCP_FLAGS >  ./results/iperf3-chacha20-ietf-poly1305.txt
 iperf3 -c 127.0.0.1 -p 20003 $UDP_FLAGS >> ./results/iperf3-chacha20-ietf-poly1305.txt
 
+iperf3 -c 127.0.0.1 -p 20004 $TCP_FLAGS >  ./results/iperf3-rc4-md5.txt
+iperf3 -c 127.0.0.1 -p 20004 $UDP_FLAGS >> ./results/iperf3-rc4-md5.txt
+
 
 kill -INT %1
 kill -9 %2

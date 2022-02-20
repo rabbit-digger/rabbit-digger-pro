@@ -18,6 +18,12 @@ server:
     password: bench
     bind: 127.0.0.1:30003
     udp: true
+  ss-server-rc4-md5:
+    type: shadowsocks
+    cipher: rc4-md5
+    password: bench
+    bind: 127.0.0.1:30004
+    udp: true
 
   iperf3-forward:
     type: forward
@@ -56,4 +62,15 @@ server:
       cipher: chacha20-ietf-poly1305
       password: bench
       server: 127.0.0.1:30003
+      udp: true
+  forward-rc4-md5:
+    type: forward
+    target: 127.0.0.1:5201
+    bind: 127.0.0.1:20004
+    udp: true
+    net:
+      type: shadowsocks
+      cipher: rc4-md5
+      password: bench
+      server: 127.0.0.1:30004
       udp: true
