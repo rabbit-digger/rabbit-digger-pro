@@ -71,6 +71,16 @@ pub struct IpCidrMatcher {
 
 #[rd_config]
 #[derive(Debug, Clone)]
+pub struct SrcIpCidrMatcher {
+    #[serde(
+        serialize_with = "display_fromstr::serialize",
+        deserialize_with = "display_fromstr::deserialize"
+    )]
+    pub ipcidr: IpCidr,
+}
+
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct GeoIpMatcher {
     pub country: String,
 }
@@ -100,6 +110,7 @@ pub struct AnyMatcher {}
 pub enum Matcher {
     Domain(DomainMatcher),
     IpCidr(IpCidrMatcher),
+    SrcIpCidr(SrcIpCidrMatcher),
     GeoIp(GeoIpMatcher),
     Any(AnyMatcher),
 }
@@ -129,6 +140,7 @@ impl matcher::Matcher for Matcher {
         match self {
             Matcher::Domain(i) => i.match_rule(match_context),
             Matcher::IpCidr(i) => i.match_rule(match_context),
+            Matcher::SrcIpCidr(i) => i.match_rule(match_context),
             Matcher::GeoIp(i) => i.match_rule(match_context),
             Matcher::Any(i) => i.match_rule(match_context),
         }
