@@ -29,11 +29,10 @@ fn splice(from_fd: RawFd, to_fd: RawFd, size: usize) -> io::Result<usize> {
 }
 
 #[derive(Debug)]
-pub struct Pipe {
+struct Pipe {
     rpipe: i32,
     wpipe: i32,
     n: usize,
-    read: usize,
 }
 
 impl Pipe {
@@ -48,9 +47,28 @@ impl Pipe {
                 rpipe: pipes.assume_init()[0],
                 wpipe: pipes.assume_init()[1],
                 n: 0,
-                read: 0,
             })
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct SpliceState {
+    pipe: Pipe,
+    read: usize,
+}
+
+impl SpliceState {
+    pub fn new() -> io::Result<Self> {
+        Ok(Self {
+            pipe: Pipe::new()?,
+            read: 0,
+        })
+    }
+    fn take_read(&mut self) -> usize {
+        let read = self.read;
+        self.read = 0;
+        read
     }
 }
 
@@ -65,24 +83,20 @@ impl Drop for Pipe {
 
 fn poll_splice_inner(
     cx: &mut Context<'_>,
-    pipe: &mut Option<Pipe>,
+    state: &mut Option<SpliceState>,
     from_fd: RawFd,
     to_fd: RawFd,
     from: &mut TcpStream,
     to: &mut TcpStream,
 ) -> Poll<io::Result<usize>> {
     let from = Pin::new(from);
-    let mut to = Pin::new(to);
+    let to = Pin::new(to);
 
-    if pipe.is_none() {
-        *pipe = Some(Pipe::new()?);
+    if state.is_none() {
+        *state = Some(SpliceState::new()?);
     }
-    let Pipe {
-        rpipe,
-        wpipe,
-        n,
-        read,
-    } = pipe.as_mut().unwrap();
+    let state = state.as_mut().unwrap();
+    let Pipe { rpipe, wpipe, n } = &mut state.pipe;
 
     // wait for ready
     let mut buf = ReadBuf::new(&mut [0; 0]);
@@ -92,29 +106,28 @@ fn poll_splice_inner(
         match splice(from_fd, *wpipe, PIPE_BUFFER_SIZE - *n) {
             Ok(x) => {
                 *n += x;
-                *read += x;
+                state.read += x;
             }
-            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
-            Err(err) => return Poll::Ready(Err(err)),
-        }
-    }
-    while *n > 0 {
-        ready!(to.as_mut().poll_write(cx, &[0; 0]))?;
-        match splice(*rpipe, to_fd, *n) {
-            Ok(x) => *n -= x,
-            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
             Err(err) => return Poll::Ready(Err(err)),
         }
     }
 
-    let ret = *read;
-    *read = 0;
-    Poll::Ready(Ok(ret))
+    ready!(to.poll_write(cx, &[0; 0]))?;
+    while *n > 0 {
+        match splice(*rpipe, to_fd, *n) {
+            Ok(x) => *n -= x,
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
+            Err(err) => return Poll::Ready(Err(err)),
+        }
+    }
+
+    Poll::Ready(Ok(state.take_read()))
 }
 
 pub fn poll_splice(
     cx: &mut Context<'_>,
-    pipe: &mut Option<Pipe>,
+    state: &mut Option<SpliceState>,
     from: &mut TcpStream,
     to: &mut TcpStream,
 ) -> Option<Poll<io::Result<usize>>> {
@@ -122,7 +135,7 @@ pub fn poll_splice(
     let to_fd = to.write_passthrough();
 
     if let (Some(Fd::Unix(from_fd)), Some(Fd::Unix(to_fd))) = (from_fd, to_fd) {
-        Some(poll_splice_inner(cx, pipe, from_fd, to_fd, from, to))
+        Some(poll_splice_inner(cx, state, from_fd, to_fd, from, to))
     } else {
         None
     }

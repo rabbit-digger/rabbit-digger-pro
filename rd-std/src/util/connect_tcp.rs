@@ -25,7 +25,7 @@ pub(super) struct CopyBuffer {
     buf: Box<[u8]>,
 
     #[cfg(target_os = "linux")]
-    pipe: Option<unix::Pipe>,
+    splice: Option<unix::SpliceState>,
 }
 
 impl CopyBuffer {
@@ -38,7 +38,7 @@ impl CopyBuffer {
             amt: 0,
             buf: vec![0; buffer_size].into_boxed_slice(),
             #[cfg(target_os = "linux")]
-            pipe: None,
+            splice: None,
         }
     }
 
@@ -53,7 +53,7 @@ impl CopyBuffer {
             // continue.
             if self.pos == self.cap && !self.read_done {
                 #[cfg(target_os = "linux")]
-                if let Some(p) = unix::poll_splice(cx, &mut self.pipe, &mut reader, &mut writer) {
+                if let Some(p) = unix::poll_splice(cx, &mut self.splice, &mut reader, &mut writer) {
                     let _copied = ready!(p)?;
                     continue;
                 }
