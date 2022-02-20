@@ -3,7 +3,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
 };
 
-use rd_interface::{Arc, Context, IntoAddress, Net, Result};
+use rd_interface::{Arc, Context, IntoAddress, Net, Result, TcpStream};
 use rd_std::util::{connect_tcp, forward_udp};
 use tokio::{select, spawn};
 use tokio_smoltcp::{
@@ -62,7 +62,7 @@ impl Forward {
                     let target = net
                         .tcp_connect(ctx, &SocketAddr::from(orig_addr).into_address()?)
                         .await?;
-                    connect_tcp(ctx, tcp, target).await?;
+                    connect_tcp(ctx, TcpStream::from(tcp), target).await?;
                     Ok(()) as Result<()>
                 });
             }
