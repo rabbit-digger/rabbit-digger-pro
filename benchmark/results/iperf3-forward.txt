@@ -1,0 +1,38 @@
+Connecting to host 127.0.0.1, port 20000
+[  5] local 127.0.0.1 port 34036 connected to 127.0.0.1 port 20000
+[ ID] Interval           Transfer     Bitrate         Retr  Cwnd
+[  5]   0.00-1.00   sec   872 MBytes  7.32 Gbits/sec    0   2.31 MBytes       
+[  5]   1.00-2.00   sec   872 MBytes  7.32 Gbits/sec    0   2.31 MBytes       
+[  5]   2.00-3.00   sec   911 MBytes  7.65 Gbits/sec    0   2.31 MBytes       
+[  5]   3.00-4.00   sec   918 MBytes  7.70 Gbits/sec    0   2.31 MBytes       
+[  5]   4.00-5.00   sec   895 MBytes  7.51 Gbits/sec    0   2.31 MBytes       
+[  5]   5.00-6.00   sec   904 MBytes  7.58 Gbits/sec    0   2.31 MBytes       
+[  5]   6.00-7.00   sec   928 MBytes  7.78 Gbits/sec    0   2.31 MBytes       
+[  5]   7.00-8.00   sec   928 MBytes  7.78 Gbits/sec    0   2.31 MBytes       
+[  5]   8.00-9.00   sec   909 MBytes  7.62 Gbits/sec    0   2.31 MBytes       
+[  5]   9.00-10.00  sec   901 MBytes  7.56 Gbits/sec    0   2.31 MBytes       
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-10.00  sec  8.83 GBytes  7.58 Gbits/sec    0             sender
+[  5]   0.00-10.00  sec  8.82 GBytes  7.57 Gbits/sec                  receiver
+
+iperf Done.
+Connecting to host 127.0.0.1, port 20000
+[  5] local 127.0.0.1 port 58766 connected to 127.0.0.1 port 20000
+[ ID] Interval           Transfer     Bitrate         Total Datagrams
+[  5]   0.00-1.00   sec   119 MBytes   999 Mbits/sec  124934  
+[  5]   1.00-2.00   sec   119 MBytes  1000 Mbits/sec  125053  
+[  5]   2.00-3.00   sec   119 MBytes  1.00 Gbits/sec  125005  
+[  5]   3.00-4.00   sec   119 MBytes  1000 Mbits/sec  124983  
+[  5]   4.00-5.00   sec   119 MBytes  1.00 Gbits/sec  125022  
+[  5]   5.00-6.00   sec   119 MBytes  1000 Mbits/sec  124965  
+[  5]   6.00-7.00   sec   119 MBytes  1000 Mbits/sec  124995  
+[  5]   7.00-8.00   sec   119 MBytes  1000 Mbits/sec  124968  
+[  5]   8.00-9.00   sec   119 MBytes   999 Mbits/sec  124990  
+[  5]   9.00-10.00  sec   119 MBytes  1.00 Gbits/sec  124961  
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Jitter    Lost/Total Datagrams
+[  5]   0.00-10.00  sec  1.16 GBytes  1000 Mbits/sec  0.000 ms  0/1249876 (0%)  sender
+[  5]   0.00-10.00  sec  1.00 GBytes   860 Mbits/sec  0.015 ms  174454/1249854 (14%)  receiver
+
+iperf Done.
