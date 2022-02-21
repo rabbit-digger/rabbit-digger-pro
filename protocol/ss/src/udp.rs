@@ -27,8 +27,7 @@ use bytes::{BufMut, BytesMut};
 use shadowsocks::crypto::v1::{random_iv_or_salt, Cipher, CipherCategory, CipherKind};
 use socks5_protocol::{sync::FromIO, Address};
 
-#[must_use]
-fn write_to_buf<'a>(addr: &Address, buf: &'a mut BytesMut) -> io::Result<()> {
+fn write_to_buf(addr: &Address, buf: &mut BytesMut) -> io::Result<()> {
     let mut writer = buf.writer();
     addr.write_to(&mut writer).map_err(|e| e.to_io_err())?;
 
@@ -43,7 +42,7 @@ pub fn encrypt_payload(
     payload: &[u8],
     dst: &mut BytesMut,
 ) -> io::Result<()> {
-    Ok(match method.category() {
+    match method.category() {
         CipherCategory::None => {
             dst.reserve(addr.serialized_len().map_err(|e| e.to_io_err())? + payload.len());
             write_to_buf(addr, dst)?;
@@ -51,7 +50,9 @@ pub fn encrypt_payload(
         }
         CipherCategory::Stream => encrypt_payload_stream(method, key, addr, payload, dst)?,
         CipherCategory::Aead => encrypt_payload_aead(method, key, addr, payload, dst)?,
-    })
+    };
+
+    Ok(())
 }
 
 fn encrypt_payload_stream(
@@ -75,7 +76,7 @@ fn encrypt_payload_stream(
         random_iv_or_salt(iv);
     }
 
-    let mut cipher = Cipher::new(method, key, &iv);
+    let mut cipher = Cipher::new(method, key, iv);
 
     write_to_buf(addr, dst)?;
     dst.put_slice(payload);
@@ -191,7 +192,7 @@ fn decrypt_payload_aead(
 
     let (salt, data) = payload.split_at_mut(salt_len);
 
-    let mut cipher = Cipher::new(method, &key, &salt);
+    let mut cipher = Cipher::new(method, key, salt);
     let tag_len = cipher.tag_len();
 
     if data.len() < tag_len {

@@ -113,7 +113,7 @@ impl ITcpStream for Connect {
 
                     *pos += tmp_buf.filled().len();
 
-                    if let Some(at) = find_subsequence_end(&read_buf, b"\r\n\r\n") {
+                    if let Some(at) = find_subsequence_end(read_buf, b"\r\n\r\n") {
                         read_buf.truncate(*pos);
                         self.read = ReadState::Write(read_buf.split_off(at), 0);
                     }

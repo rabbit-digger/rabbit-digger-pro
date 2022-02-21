@@ -5,7 +5,7 @@ use tokio::sync::broadcast;
 static BROADCAST: OnceCell<broadcast::Sender<Box<[u8]>>> = OnceCell::new();
 
 pub fn get_sender() -> &'static broadcast::Sender<Box<[u8]>> {
-    &BROADCAST.get_or_init(|| {
+    BROADCAST.get_or_init(|| {
         let (tx, _) = broadcast::channel::<Box<[u8]>>(32);
         tx
     })
@@ -31,5 +31,11 @@ impl LogWriter {
         LogWriter {
             sender: get_sender().clone(),
         }
+    }
+}
+
+impl Default for LogWriter {
+    fn default() -> Self {
+        Self::new()
     }
 }

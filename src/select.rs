@@ -25,7 +25,7 @@ impl SelectNet {
     fn net(&self) -> Result<&Net> {
         self.0
             .as_ref()
-            .ok_or_else(|| Error::Other(format!("select net not found").into()))
+            .ok_or_else(|| Error::Other("select net not found".into()))
     }
 }
 

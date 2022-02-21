@@ -32,7 +32,7 @@ impl ClientSession {
             .wait()
             .await?
             .0
-            .to_null()?;
+            .into_null()?;
 
         Ok(t)
     }

@@ -32,7 +32,7 @@ impl Encoder<(Bytes, Address)> for UdpCodec {
         dst.reserve(
             self.head.len() + addr.serialized_len().map_err(|e| e.to_io_err())? + item.0.len(),
         );
-        if self.head.len() > 0 {
+        if !self.head.is_empty() {
             dst.extend_from_slice(&self.head);
             self.head = Vec::new();
         }
@@ -51,7 +51,7 @@ impl Encoder<(Bytes, Address)> for UdpCodec {
 
 fn copy_2(b: &[u8]) -> [u8; 2] {
     let mut buf = [0u8; 2];
-    buf.copy_from_slice(&b);
+    buf.copy_from_slice(b);
     buf
 }
 

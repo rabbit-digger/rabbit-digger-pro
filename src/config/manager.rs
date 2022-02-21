@@ -11,8 +11,8 @@ use async_stream::stream;
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use rabbit_digger::{Config, Registry};
 
-const CFG_MGR_PREFIX: &'static str = "cfg_mgr";
-const SELECT_PREFIX: &'static str = "select";
+const CFG_MGR_PREFIX: &str = "cfg_mgr";
+const SELECT_PREFIX: &str = "select";
 
 struct Inner {
     file_cache: FileStorage,
@@ -87,7 +87,7 @@ impl Inner {
 
         Ok(config.config)
     }
-    async fn wait_source(&self, cfg_src: &ImportSource, imports: &Vec<Import>) -> Result<()> {
+    async fn wait_source(&self, cfg_src: &ImportSource, imports: &[Import]) -> Result<()> {
         let mut events = FuturesUnordered::new();
         events.push(cfg_src.wait(&self.file_cache));
         for Import { source, .. } in imports {

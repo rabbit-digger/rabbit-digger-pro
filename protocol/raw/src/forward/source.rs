@@ -43,24 +43,21 @@ impl RawUdpSource for Source {
             let u8buf = buf.initialize_unfilled();
             let size = ready!(raw.poll_recv(cx, u8buf))?;
 
-            match parse_udp(&u8buf[..size]) {
-                Ok(v) => {
-                    let broadcast = match ip_cidr {
-                        IpCidr::Ipv4(v4) => v4.broadcast().map(Into::into).map(IpAddr::V4),
-                        _ => None,
-                    };
+            if let Ok(v) = parse_udp(&u8buf[..size]) {
+                let broadcast = match ip_cidr {
+                    IpCidr::Ipv4(v4) => v4.broadcast().map(Into::into).map(IpAddr::V4),
+                    _ => None,
+                };
 
-                    let to = v.1;
-                    if broadcast == Some(to.ip())
-                        || to.ip().is_multicast()
-                        || to.ip() == IpAddr::from(ip_cidr.address())
-                    {
-                        continue;
-                    }
-
-                    break v;
+                let to = v.1;
+                if broadcast == Some(to.ip())
+                    || to.ip().is_multicast()
+                    || to.ip() == IpAddr::from(ip_cidr.address())
+                {
+                    continue;
                 }
-                _ => {}
+
+                break v;
             };
         };
 
@@ -78,7 +75,7 @@ impl RawUdpSource for Source {
         endpoint: &forward_udp::UdpEndpoint,
     ) -> Poll<io::Result<()>> {
         if self.send_buf.is_empty() {
-            if let Some(ip_packet) = pack_udp(endpoint.from, endpoint.to, &buf) {
+            if let Some(ip_packet) = pack_udp(endpoint.from, endpoint.to, buf) {
                 self.send_buf = ip_packet;
             } else {
                 tracing::debug!("Unsupported src/dst");

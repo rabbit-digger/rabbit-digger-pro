@@ -76,7 +76,7 @@ impl ImportSource {
             ImportSource::Storage(ImportStorage { folder, key }) => {
                 let storage = FileStorage::new(FolderType::Data, folder).await?;
                 let item = storage
-                    .get(&key)
+                    .get(key)
                     .await?
                     .ok_or_else(|| anyhow!("Not found"))?;
                 item.content
@@ -86,9 +86,7 @@ impl ImportSource {
     fn get_expire_duration(&self) -> Option<Duration> {
         match self {
             ImportSource::Path(_) => None,
-            ImportSource::Poll(ImportUrl { interval, .. }) => {
-                interval.map(|i| Duration::from_secs(i))
-            }
+            ImportSource::Poll(ImportUrl { interval, .. }) => interval.map(Duration::from_secs),
             ImportSource::Storage(_) => None,
         }
     }
@@ -108,7 +106,7 @@ impl ImportSource {
                         let expired_at = updated_at + Duration::from_secs(*interval);
                         let tts = expired_at
                             .duration_since(SystemTime::now())
-                            .unwrap_or_else(|_| Duration::ZERO);
+                            .unwrap_or(Duration::ZERO);
                         sleep(tts).await
                     }
                 }
@@ -116,7 +114,7 @@ impl ImportSource {
             ImportSource::Storage(ImportStorage { folder, key }) => {
                 let storage = FileStorage::new(FolderType::Data, folder).await?;
                 let path = storage
-                    .get_path(&key)
+                    .get_path(key)
                     .await?
                     .ok_or_else(|| anyhow!("Not found"))?;
 

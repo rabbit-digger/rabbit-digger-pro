@@ -201,7 +201,7 @@ async fn main(args: Args) -> Result<()> {
         Some(Command::Server { api_server }) => {
             let app = App::new().await?;
 
-            app.run_api_server(&api_server).await?;
+            app.run_api_server(api_server).await?;
 
             tokio::signal::ctrl_c().await?;
 

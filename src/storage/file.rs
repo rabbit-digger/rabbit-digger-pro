@@ -67,10 +67,10 @@ impl FileStorage {
     pub async fn get_path(&self, key: &str) -> Result<Option<PathBuf>> {
         let index = self.get_index().await?;
 
-        Ok(match index.index.get(key) {
-            Some(item) => Some(self.storage_dir.join(&item.content)),
-            None => None,
-        })
+        Ok(index
+            .index
+            .get(key)
+            .map(|item| self.storage_dir.join(&item.content)))
     }
     async fn get_index(&self) -> Result<Index> {
         let index_path = self.index_path.clone();

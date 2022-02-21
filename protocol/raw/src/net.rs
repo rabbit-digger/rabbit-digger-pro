@@ -42,7 +42,7 @@ impl RawNet {
             .gateway
             .as_ref()
             .map(|gateway| {
-                IpAddress::from_str(&gateway)
+                IpAddress::from_str(gateway)
                     .map_err(|_| Error::Other("Failed to parse gateway".into()))
             })
             .transpose()?;

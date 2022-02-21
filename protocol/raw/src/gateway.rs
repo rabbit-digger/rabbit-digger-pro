@@ -129,7 +129,7 @@ where
                             Action::Pass
                         }
                     }
-                    _ => return Action::Pass,
+                    _ => Action::Pass,
                 }
             }
             Layer::L3 => process_ip(&packet[..]),
@@ -163,24 +163,17 @@ where
     }
 
     fn correct_arp_request(&self, packet: &mut Vec<u8>) -> smoltcp::Result<()> {
-        match self.layer {
-            Layer::L2 => {
-                // SAFETY: we know that the packet is a valid EthernetFrame
-                let mut frame = EthernetFrame::new_unchecked(packet);
-                match frame.ethertype() {
-                    EthernetProtocol::Arp => {
-                        let mut arp_packet = ArpPacket::new_checked(frame.payload_mut())?;
-                        if arp_packet.operation() == ArpOperation::Request
-                            && arp_packet.source_hardware_addr() == self.ethernet_addr.as_bytes()
-                        {
-                            arp_packet
-                                .set_source_protocol_addr(&self.override_v4.ip().octets()[..]);
-                        }
-                    }
-                    _ => {}
+        if let Layer::L2 = self.layer {
+            // SAFETY: we know that the packet is a valid EthernetFrame
+            let mut frame = EthernetFrame::new_unchecked(packet);
+            if frame.ethertype() == EthernetProtocol::Arp {
+                let mut arp_packet = ArpPacket::new_checked(frame.payload_mut())?;
+                if arp_packet.operation() == ArpOperation::Request
+                    && arp_packet.source_hardware_addr() == self.ethernet_addr.as_bytes()
+                {
+                    arp_packet.set_source_protocol_addr(&self.override_v4.ip().octets()[..]);
                 }
             }
-            _ => {}
         };
         Ok(())
     }

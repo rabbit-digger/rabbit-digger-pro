@@ -40,7 +40,7 @@ impl ITcpListener for TcpListenerWrapper {
             .await?
             .wait()
             .await?;
-        let (obj, addr) = resp.to_object_value()?;
+        let (obj, addr) = resp.into_object_value()?;
 
         Ok((TcpWrapper::new(self.conn.clone(), obj).into_dyn(), addr))
     }
@@ -52,7 +52,7 @@ impl ITcpListener for TcpListenerWrapper {
             .await?
             .wait()
             .await?;
-        resp.to_value()
+        resp.into_value()
     }
 }
 
@@ -91,7 +91,7 @@ impl IUdpSocket for UdpWrapper {
             .await?
             .wait()
             .await?;
-        resp.to_value()
+        resp.into_value()
     }
 
     fn poll_recv_from(
@@ -108,7 +108,7 @@ impl IUdpSocket for UdpWrapper {
 
         let (data, from) = ready!(next_fut.poll_next(cx, || {
             let conn = conn.clone();
-            let obj = obj.clone();
+            let obj = *obj;
             let fut = async move {
                 let (resp, data) = conn
                     .send(Command::RecvFrom(obj), None)
@@ -116,7 +116,7 @@ impl IUdpSocket for UdpWrapper {
                     .wait()
                     .await?;
 
-                Ok((data, resp.to_value()?))
+                Ok((data, resp.into_value()?))
             };
             Box::pin(fut)
         }))?;
@@ -126,7 +126,7 @@ impl IUdpSocket for UdpWrapper {
             .copy_from_slice(&data[..to_copy]);
         buf.advance(to_copy);
 
-        return Poll::Ready(Ok(from));
+        Poll::Ready(Ok(from))
     }
 
     fn poll_send_to(
@@ -144,7 +144,7 @@ impl IUdpSocket for UdpWrapper {
 
         ready!(send_fut.poll_next(cx, || {
             let conn = conn.clone();
-            let obj = obj.clone();
+            let obj = *obj;
             let addr = target.clone();
             let data = buf.to_vec();
             Box::pin(async move {
@@ -153,7 +153,7 @@ impl IUdpSocket for UdpWrapper {
                     .await?
                     .wait()
                     .await?;
-                resp.to_null()?;
+                resp.into_null()?;
                 Ok(())
             })
         }))?;
@@ -191,7 +191,7 @@ impl AsyncFnRead for TcpAsyncFn {
             .await?;
 
         let (resp, data) = getter.wait().await?;
-        resp.to_null()?;
+        resp.into_null()?;
         Ok(data)
     }
 }
@@ -202,7 +202,7 @@ impl AsyncFnWrite for TcpAsyncFn {
         let getter = self.conn.send(Command::Write(self.obj), Some(&buf)).await?;
 
         let (resp, _) = getter.wait().await?;
-        let size = resp.to_value::<u32>()?;
+        let size = resp.into_value::<u32>()?;
 
         Ok(size as usize)
     }
@@ -234,7 +234,7 @@ impl ITcpStream for TcpWrapper {
             .await?
             .wait()
             .await?;
-        resp.to_value()
+        resp.into_value()
     }
 
     async fn local_addr(&self) -> Result<std::net::SocketAddr> {
@@ -245,7 +245,7 @@ impl ITcpStream for TcpWrapper {
             .await?
             .wait()
             .await?;
-        resp.to_value()
+        resp.into_value()
     }
 
     impl_async_read_write!(0);

@@ -31,12 +31,12 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
 
     let (ethernet_address, device) = match &config.device {
         DeviceConfig::String(dev) => {
-            let ethernet_address = crate::device::get_interface_info(&dev)
+            let ethernet_address = crate::device::get_interface_info(dev)
                 .context("Failed to get interface info")?
                 .ethernet_address;
 
             let device = Box::new(get_by_device(
-                pcap_device_by_name(&dev)?,
+                pcap_device_by_name(dev)?,
                 get_filter(&destination_addr),
                 config,
             )?);
@@ -59,7 +59,7 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
                 TunTap::Tun => EthernetAddress::BROADCAST,
                 #[cfg(unix)]
                 TunTap::Tap => {
-                    crate::device::get_interface_info(&device.name())
+                    crate::device::get_interface_info(device.name())
                         .context("Failed to get interface info")?
                         .ethernet_address
                 }
@@ -109,7 +109,7 @@ fn get_by_device(
 ) -> Result<impl AsyncDevice> {
     use tokio_smoltcp::device::AsyncCapture;
 
-    let mut cap = Capture::from_device(device.clone())
+    let mut cap = Capture::from_device(device)
         .context("Failed to capture device")?
         .promisc(true)
         .immediate_mode(true)
@@ -136,21 +136,13 @@ fn get_by_device(
     caps.checksum.icmpv4 = Checksum::Tx;
     caps.checksum.icmpv6 = Checksum::Tx;
 
-    Ok(AsyncCapture::new(
+    AsyncCapture::new(
         cap.setnonblock().context("Failed to set nonblock")?,
-        |d| {
-            let r = d.next().map_err(map_err).map(|p| p.to_vec());
-            // eprintln!("recv {:?}", r);
-            r
-        },
-        |d, pkt| {
-            let r = d.sendpacket(pkt).map_err(map_err);
-            // eprintln!("send {:?}", r);
-            r
-        },
+        |d| d.next().map_err(map_err).map(|p| p.to_vec()),
+        |d, pkt| d.sendpacket(pkt).map_err(map_err),
         caps,
     )
-    .context("Failed to create async capture")?)
+    .context("Failed to create async capture")
 }
 
 #[cfg(windows)]

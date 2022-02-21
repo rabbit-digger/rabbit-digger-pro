@@ -47,7 +47,7 @@ impl From<WrapAddress> for S5Addr {
 }
 
 #[rd_config]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Debug, Copy, Clone)]
 pub enum Cipher {
     #[serde(rename = "none")]
@@ -218,7 +218,7 @@ impl IUdpSocket for WrapSSUdp {
     ) -> Poll<io::Result<usize>> {
         if self.send_buf.is_empty() {
             let addr: S5Addr = WrapAddress::from(target.clone()).into();
-            encrypt_payload(self.method, &self.key, &addr, &buf, &mut self.send_buf)?;
+            encrypt_payload(self.method, &self.key, &addr, buf, &mut self.send_buf)?;
         }
 
         ready!(self
@@ -251,7 +251,7 @@ where
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let CryptoStream(s, c) = Pin::get_mut(self);
-        s.poll_read_decrypted(cx, &c, buf)
+        s.poll_read_decrypted(cx, c, buf)
     }
 }
 

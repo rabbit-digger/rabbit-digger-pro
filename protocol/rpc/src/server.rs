@@ -50,7 +50,7 @@ impl RpcServer {
             Command::TcpConnect(ctx, addr) => {
                 let tcp = self
                     .net
-                    .tcp_connect(&mut Context::from_value(ctx.clone())?, &addr)
+                    .tcp_connect(&mut Context::from_value(ctx.clone())?, addr)
                     .await?;
 
                 Ok((
@@ -61,7 +61,7 @@ impl RpcServer {
             Command::TcpBind(ctx, addr) => {
                 let listener = self
                     .net
-                    .tcp_bind(&mut Context::from_value(ctx.clone())?, &addr)
+                    .tcp_bind(&mut Context::from_value(ctx.clone())?, addr)
                     .await?;
 
                 Ok((
@@ -72,7 +72,7 @@ impl RpcServer {
             Command::UdpBind(ctx, addr) => {
                 let udp = self
                     .net
-                    .udp_bind(&mut Context::from_value(ctx.clone())?, &addr)
+                    .udp_bind(&mut Context::from_value(ctx.clone())?, addr)
                     .await?;
 
                 Ok((
@@ -86,7 +86,7 @@ impl RpcServer {
                 Ok((RpcValue::Null, None))
             }
             Command::LookupHost(addr) => {
-                let addrs = self.net.lookup_host(&addr).await?;
+                let addrs = self.net.lookup_host(addr).await?;
 
                 Ok((RpcValue::Value(to_value(addrs)?), None))
             }
@@ -116,7 +116,7 @@ impl RpcServer {
                     let mut udp = ready!(obj.poll_lock(cx));
                     let udp = udp.udp_socket_mut()?;
 
-                    ready!(udp.poll_send_to(cx, &data, addr))?;
+                    ready!(udp.poll_send_to(cx, data, addr))?;
 
                     Poll::Ready(Ok((RpcValue::Null, None)))
                 })
@@ -143,7 +143,7 @@ impl RpcServer {
                 poll_fn(|cx| {
                     let mut tcp = ready!(obj.poll_lock(cx));
                     let tcp = Pin::new(tcp.tcp_stream_mut()?);
-                    let write = ready!(tcp.poll_write(cx, &req.data()))?;
+                    let write = ready!(tcp.poll_write(cx, req.data()))?;
 
                     Poll::Ready(Ok((RpcValue::Value(to_value(write)?), None)))
                 })

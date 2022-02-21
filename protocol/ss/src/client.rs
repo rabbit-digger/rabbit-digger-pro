@@ -82,10 +82,9 @@ impl INet for SSNet {
             .await?
             .into_iter()
             .next()
-            .ok_or(io::Error::new(
-                io::ErrorKind::AddrNotAvailable,
-                "Failed to lookup domain",
-            ))?;
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::AddrNotAvailable, "Failed to lookup domain")
+            })?;
 
         let socket = self
             .net

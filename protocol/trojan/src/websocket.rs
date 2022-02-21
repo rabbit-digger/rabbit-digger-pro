@@ -18,7 +18,7 @@ pub struct WebSocketStream<S> {
 
 impl<S: IOStream> WebSocketStream<S> {
     pub async fn connect(stream: S, host: &str, path: &str) -> Result<Self> {
-        let url = format!("wss://{}/{}", host, path.trim_start_matches("/"));
+        let url = format!("wss://{}/{}", host, path.trim_start_matches('/'));
         let (client, _resp) = client_async(url, stream).await.map_err(map_other)?;
 
         Ok(WebSocketStream {
@@ -35,7 +35,7 @@ impl<S: IOStream> AsyncRead for WebSocketStream<S> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        if self.read.len() == 0 {
+        if self.read.is_empty() {
             let msg = loop {
                 let msg = match ready!(self.client.poll_next_unpin(cx)) {
                     Some(msg) => msg.map_err(map_other)?,

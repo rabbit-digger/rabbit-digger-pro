@@ -64,7 +64,7 @@ impl RawUdpSource for UdpSource {
                 self.method,
                 &self.key,
                 &endpoint.from.into(),
-                &buf,
+                buf,
                 &mut self.send_buf,
             )?;
         }

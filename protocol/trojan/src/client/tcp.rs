@@ -52,7 +52,7 @@ impl ITcpStream for TrojanTcp {
                         *is_first = false;
                     }
 
-                    let sent = ready!(stream.poll_write(cx, &head))?;
+                    let sent = ready!(stream.poll_write(cx, head))?;
                     head.drain(..sent);
                     head.len()
                 }
