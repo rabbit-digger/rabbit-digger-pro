@@ -1,20 +1,18 @@
 use std::{
     io,
     net::SocketAddr,
-    pin::Pin,
     task::{self, Poll},
 };
 
 use crate::types::{Command, Object};
 
 use crate::session::ClientSession;
-use futures::{ready, Future, FutureExt};
-use parking_lot::Mutex;
+use futures::ready;
 use rd_interface::{
     async_trait, impl_async_read_write, Address, ITcpListener, ITcpStream, IUdpSocket, IntoDyn,
     Result,
 };
-use rd_std::util::async_fn_io::{AsyncFnIO, AsyncFnRead, AsyncFnWrite};
+use rd_std::util::async_fn::{AsyncFnIO, AsyncFnRead, AsyncFnWrite, PollAsyncFn};
 
 pub struct TcpListenerWrapper {
     conn: ClientSession,
@@ -58,13 +56,12 @@ impl ITcpListener for TcpListenerWrapper {
     }
 }
 
-type BoxFuture<T> = Mutex<Pin<Box<dyn Future<Output = T> + Send + 'static>>>;
 pub struct UdpWrapper {
     conn: ClientSession,
     obj: Object,
 
-    next_fut: Option<BoxFuture<io::Result<(Vec<u8>, SocketAddr)>>>,
-    send_fut: Option<BoxFuture<io::Result<()>>>,
+    next_fut: PollAsyncFn<io::Result<(Vec<u8>, SocketAddr)>>,
+    send_fut: PollAsyncFn<io::Result<()>>,
 }
 
 impl UdpWrapper {
@@ -73,8 +70,8 @@ impl UdpWrapper {
             conn,
             obj,
 
-            next_fut: None,
-            send_fut: None,
+            next_fut: PollAsyncFn::new(),
+            send_fut: PollAsyncFn::new(),
         }
     }
 }
@@ -108,36 +105,28 @@ impl IUdpSocket for UdpWrapper {
             obj,
             ..
         } = &mut *self;
-        let obj = *obj;
 
-        loop {
-            match next_fut {
-                Some(fut) => {
-                    let (data, from) = ready!(fut.lock().poll_unpin(cx)?);
+        let (data, from) = ready!(next_fut.poll_next(cx, || {
+            let conn = conn.clone();
+            let obj = obj.clone();
+            let fut = async move {
+                let (resp, data) = conn
+                    .send(Command::RecvFrom(obj), None)
+                    .await?
+                    .wait()
+                    .await?;
 
-                    let to_copy = data.len().min(buf.remaining());
-                    buf.initialize_unfilled_to(to_copy)
-                        .copy_from_slice(&data[..to_copy]);
-                    buf.advance(to_copy);
+                Ok((data, resp.to_value()?))
+            };
+            Box::pin(fut)
+        }))?;
 
-                    *next_fut = None;
-                    return Poll::Ready(Ok(from));
-                }
-                None => {
-                    let conn = conn.clone();
-                    let fut = async move {
-                        let (resp, data) = conn
-                            .send(Command::RecvFrom(obj), None)
-                            .await?
-                            .wait()
-                            .await?;
+        let to_copy = data.len().min(buf.remaining());
+        buf.initialize_unfilled_to(to_copy)
+            .copy_from_slice(&data[..to_copy]);
+        buf.advance(to_copy);
 
-                        Ok((data, resp.to_value()?))
-                    };
-                    *next_fut = Some(Mutex::new(Box::pin(fut)));
-                }
-            }
-        }
+        return Poll::Ready(Ok(from));
     }
 
     fn poll_send_to(
@@ -153,32 +142,23 @@ impl IUdpSocket for UdpWrapper {
             ..
         } = &mut *self;
 
-        loop {
-            match send_fut {
-                Some(fut) => {
-                    ready!(fut.lock().poll_unpin(cx))?;
+        ready!(send_fut.poll_next(cx, || {
+            let conn = conn.clone();
+            let obj = obj.clone();
+            let addr = target.clone();
+            let data = buf.to_vec();
+            Box::pin(async move {
+                let (resp, _) = conn
+                    .send(Command::SendTo(obj, addr), Some(&data))
+                    .await?
+                    .wait()
+                    .await?;
+                resp.to_null()?;
+                Ok(())
+            })
+        }))?;
 
-                    *send_fut = None;
-                    return Poll::Ready(Ok(buf.len()));
-                }
-                None => {
-                    let conn = conn.clone();
-                    let obj = *obj;
-                    let addr = target.clone();
-                    let data = buf.to_vec();
-                    let fut = async move {
-                        let (resp, _) = conn
-                            .send(Command::SendTo(obj, addr), Some(&data))
-                            .await?
-                            .wait()
-                            .await?;
-                        resp.to_null()?;
-                        Ok(())
-                    };
-                    *send_fut = Some(Mutex::new(Box::pin(fut)));
-                }
-            }
-        }
+        Poll::Ready(Ok(buf.len()))
     }
 }
 
