@@ -1,8 +1,13 @@
-pub use self::{manager::ConfigManager, select_map::SelectMap};
+pub use self::{importer::get_importer_registry, manager::ConfigManager, select_map::SelectMap};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rabbit_digger::Config;
+use rd_interface::{
+    prelude::*,
+    rd_config,
+    schemars::{schema::SchemaObject, schema_for},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -21,19 +26,22 @@ mod importer;
 mod manager;
 mod select_map;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct ImportUrl {
     pub url: String,
     pub interval: Option<u64>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct ImportStorage {
     pub folder: String,
     pub key: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[rd_config]
+#[derive(Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ImportSource {
     Path(PathBuf),
@@ -134,15 +142,32 @@ impl ImportSource {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[rd_config]
+#[derive(Debug, Clone)]
 pub struct Import {
     pub name: Option<String>,
     #[serde(rename = "type")]
     pub format: String,
-    #[serde(flatten)]
     pub(super) source: ImportSource,
     #[serde(flatten)]
     pub opt: Value,
+}
+
+impl Import {
+    // Append fields other than opt to a schema
+    pub(crate) fn append_schema(mut schema: SchemaObject) -> SchemaObject {
+        let properties = &mut schema.object().properties;
+        properties.insert(
+            "name".to_string(),
+            schema_for!(Option<String>).schema.into(),
+        );
+        properties.insert(
+            "source".to_string(),
+            schema_for!(ImportSource).schema.into(),
+        );
+        schema.object().required.insert("source".to_string());
+        schema
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

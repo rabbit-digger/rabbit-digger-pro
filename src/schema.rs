@@ -6,12 +6,16 @@ use rabbit_digger::rd_interface::schemars::{
     },
     visit::{visit_root_schema, visit_schema_object, Visitor},
 };
+use rd_interface::{registry::Resolver, schemars::schema_for};
 use serde_json::Value;
 use std::iter::FromIterator;
 use std::{collections::BTreeMap, path::Path};
 use tokio::fs::{create_dir_all, write};
 
-use crate::get_registry;
+use crate::{
+    config::{get_importer_registry, Import, ImportSource},
+    get_registry,
+};
 
 fn record(value_schema: Schema) -> Schema {
     let mut schema = SchemaObject::default();
@@ -19,12 +23,18 @@ fn record(value_schema: Schema) -> Schema {
     schema.into()
 }
 
-fn any_of_schema(any_of: Vec<Schema>) -> Schema {
+fn array(value_schema: Schema) -> Schema {
+    let mut schema = SchemaObject::default();
+    schema.array().items = Some(value_schema.into());
+    schema.into()
+}
+
+fn any_of_schema(any_of: Vec<SchemaObject>) -> Schema {
     SchemaObject {
         instance_type: Some(InstanceType::Object.into()),
         subschemas: Some(
             SubschemaValidation {
-                any_of: Some(any_of),
+                any_of: Some(any_of.into_iter().map(Into::into).collect()),
                 ..Default::default()
             }
             .into(),
@@ -92,40 +102,73 @@ pub async fn write_schema(path: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+fn merge_config<'a, Item>(
+    prefix: &str,
+    root: &mut RootSchema,
+    iter: impl Iterator<Item = (&'a str, &'a Resolver<Item>)>,
+) -> Vec<SchemaObject>
+where
+    Item: 'a,
+{
+    let mut schemas: Vec<SchemaObject> = Vec::new();
+
+    for (id, resolver) in iter {
+        let mut schema = append_type(resolver.schema(), id);
+        let mut visitor = PrefixVisitor(format!("{}_{}_", prefix, id));
+
+        visitor.visit_root_schema(&mut schema);
+        schemas.push(schema.schema);
+        root.definitions.extend(schema.definitions);
+    }
+
+    schemas
+}
+
 pub async fn generate_schema() -> Result<RootSchema> {
     let registry = get_registry()?;
+    let importer_registry = get_importer_registry();
 
-    let mut nets: Vec<Schema> = Vec::new();
-    let mut servers: Vec<Schema> = Vec::new();
     let mut root: RootSchema = RootSchema::default();
 
-    for (id, net) in registry.net().iter() {
-        let mut schema = append_type(net.resolver.schema(), id);
-        let mut visitor = PrefixVisitor(format!("net_{}_", id));
-
-        visitor.visit_root_schema(&mut schema);
-
-        nets.push(schema.schema.into());
-        root.definitions.extend(schema.definitions);
-    }
-    for (id, server) in registry.server().iter() {
-        let mut schema = append_type(server.resolver.schema(), id);
-        let mut visitor = PrefixVisitor(format!("server_{}_", id));
-
-        visitor.visit_root_schema(&mut schema);
-        servers.push(schema.schema.into());
-        root.definitions.extend(schema.definitions);
-    }
+    let net_schema = any_of_schema(merge_config(
+        "net",
+        &mut root,
+        registry
+            .net()
+            .iter()
+            .map(|(k, v)| (k.as_ref(), &v.resolver)),
+    ));
+    let server_schema = any_of_schema(merge_config(
+        "server",
+        &mut root,
+        registry
+            .server()
+            .iter()
+            .map(|(k, v)| (k.as_ref(), &v.resolver)),
+    ));
+    let import_schema = any_of_schema(
+        merge_config(
+            "import",
+            &mut root,
+            importer_registry.iter().map(|(k, v)| (*k, v)),
+        )
+        .into_iter()
+        .map(Import::append_schema)
+        .collect(),
+    );
 
     let string_schema = SchemaObject {
         instance_type: Some(InstanceType::String.into()),
         ..Default::default()
     }
     .into();
-    let net_schema = any_of_schema(nets);
-    let server_schema = record(any_of_schema(servers));
 
     root.definitions.insert("Net".to_string(), net_schema);
+    root.definitions.insert("Server".to_string(), server_schema);
+
+    let source_schema = schema_for!(ImportSource);
+    root.definitions.extend(source_schema.definitions);
+
     root.schema = SchemaObject {
         instance_type: Some(InstanceType::Object.into()),
         metadata: Some(
@@ -143,7 +186,11 @@ pub async fn generate_schema() -> Result<RootSchema> {
                         "net".to_string(),
                         record(Schema::new_ref("#/definitions/Net".into())),
                     ),
-                    ("server".to_string(), server_schema),
+                    (
+                        "server".to_string(),
+                        record(Schema::new_ref("#/definitions/Server".into())),
+                    ),
+                    ("import".to_string(), array(import_schema)),
                 ]),
                 ..Default::default()
             }

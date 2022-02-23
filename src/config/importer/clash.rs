@@ -8,15 +8,18 @@ use rabbit_digger::{
         IpCidrMatcher, Matcher, SrcIpCidrMatcher,
     },
 };
-use rd_interface::{async_trait, config::NetRef};
+use rd_interface::{
+    async_trait, config::NetRef, prelude::*, rd_config, registry::Builder, IntoDyn,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::{config::ImportSource, storage::Storage};
 
-use super::Importer;
+use super::{BoxImporter, Importer};
 
-#[derive(Debug, Deserialize)]
+#[rd_config]
+#[derive(Debug)]
 pub struct Clash {
     rule_name: Option<String>,
     prefix: Option<String>,
@@ -33,6 +36,24 @@ pub struct Clash {
     // reverse map from clash name to net name
     #[serde(skip)]
     name_map: BTreeMap<String, String>,
+}
+
+impl Builder<BoxImporter> for Clash {
+    const NAME: &'static str = "clash";
+
+    type Config = Clash;
+
+    type Item = Clash;
+
+    fn build(config: Self::Config) -> rd_interface::Result<Self::Item> {
+        Ok(config)
+    }
+}
+
+impl IntoDyn<BoxImporter> for Clash {
+    fn into_dyn(self) -> BoxImporter {
+        Box::new(self)
+    }
 }
 
 #[derive(Debug, Deserialize)]
