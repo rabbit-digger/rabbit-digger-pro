@@ -1,4 +1,4 @@
-use crate::{self as rd_interface, Address, Net};
+use crate::{self as rd_interface, registry::NetGetter, Address, Net};
 use resolvable::{Resolvable, ResolvableSchema};
 use schemars::{
     schema::{InstanceType, Metadata, SchemaObject, SubschemaValidation},
@@ -7,7 +7,7 @@ use schemars::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{registry::NetGetter, Result};
+use crate::Result;
 
 mod resolvable;
 
@@ -80,30 +80,6 @@ impl VisitorContext {
 
 pub trait Config {
     fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()>;
-    fn resolve_net(&mut self, getter: NetGetter) -> Result<()> {
-        struct ResolveNetVisitor<'a>(NetGetter<'a>);
-
-        impl<'a> Visitor for ResolveNetVisitor<'a> {
-            fn visit_net_ref(
-                &mut self,
-                _ctx: &mut VisitorContext,
-                net_ref: &mut NetRef,
-            ) -> Result<()> {
-                let name = net_ref.represent().as_str();
-                let net = name
-                    .map(|name| self.0(name))
-                    .flatten()
-                    .ok_or_else(|| crate::Error::NotFound(net_ref.represent().to_string()))?
-                    .clone();
-                net_ref.set_value(net);
-                Ok(())
-            }
-        }
-
-        self.visit(&mut VisitorContext::new(), &mut ResolveNetVisitor(getter))?;
-
-        Ok(())
-    }
 }
 
 impl Config for NetRef {
@@ -218,6 +194,27 @@ impl JsonSchema for Address {
     }
 }
 
+pub fn resolve_net(config: &mut impl Config, getter: NetGetter) -> Result<()> {
+    struct ResolveNetVisitor<'a>(NetGetter<'a>);
+
+    impl<'a> Visitor for ResolveNetVisitor<'a> {
+        fn visit_net_ref(&mut self, _ctx: &mut VisitorContext, net_ref: &mut NetRef) -> Result<()> {
+            let name = net_ref.represent().as_str();
+            let net = name
+                .map(|name| self.0(name))
+                .flatten()
+                .ok_or_else(|| crate::Error::NotFound(net_ref.represent().to_string()))?
+                .clone();
+            net_ref.set_value(net);
+            Ok(())
+        }
+    }
+
+    config.visit(&mut VisitorContext::new(), &mut ResolveNetVisitor(getter))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,8 +240,7 @@ mod tests {
         let noop = NotImplementedNet.into_dyn();
 
         net_map.insert("test".to_string(), noop.clone());
-        test.resolve_net(&|key| net_map.get(key).map(|i| i.clone()))
-            .unwrap();
+        resolve_net(&mut test, &|key| net_map.get(key).map(|i| i.clone())).unwrap();
 
         assert_eq!(test.net[0].as_ptr(), noop.as_ptr())
     }
