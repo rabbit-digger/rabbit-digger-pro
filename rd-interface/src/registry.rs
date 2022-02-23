@@ -68,7 +68,7 @@ pub type NetResolver = Resolver<Net>;
 pub type ServerResolver = Resolver<Server>;
 
 impl<ItemType> Resolver<ItemType> {
-    fn new<N: Builder<ItemType>>() -> Self {
+    pub fn new<N: Builder<ItemType>>() -> Self {
         let schema = schema_for!(N::Config);
         Self {
             parse_config: |cfg| {

@@ -105,6 +105,7 @@ mod impl_std {
     use crate::{Address, Result};
     use std::collections::{BTreeMap, HashMap, LinkedList, VecDeque};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+    use std::path::PathBuf;
 
     macro_rules! impl_container_config {
         ($($x:ident),+ $(,)?) => ($(
@@ -134,6 +135,7 @@ mod impl_std {
     impl_empty_config! { Address }
     impl_empty_config! { String, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, bool, f32, f64 }
     impl_empty_config! { IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6 }
+    impl_empty_config! { PathBuf }
     impl_container_config! { Vec, Option, VecDeque, Result, LinkedList }
     impl_key_container_config! { HashMap, BTreeMap }
 
@@ -166,7 +168,7 @@ impl JsonSchema for EmptyConfig {
     }
 }
 
-crate::impl_empty_config! { EmptyConfig }
+crate::impl_empty_config! { EmptyConfig, Value }
 
 impl JsonSchema for Address {
     fn is_referenceable() -> bool {
