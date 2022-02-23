@@ -1,76 +1,59 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/rabbit-digger/schema/master/rabbit-digger-pro-schema.json
+ss-common: &ss-common
+  type: shadowsocks
+  password: bench
+  udp: true
+forward-common: &forward-common
+  type: forward
+  target: 127.0.0.1:5201
+  udp: true
+
 server:
   ss-server-aes-128-gcm:
-    type: shadowsocks
+    <<: *ss-common
     cipher: aes-128-gcm
-    password: bench
     bind: 127.0.0.1:30001
-    udp: true
   ss-server-aes-256-gcm:
-    type: shadowsocks
+    <<: *ss-common
     cipher: aes-256-gcm
-    password: bench
     bind: 127.0.0.1:30002
-    udp: true
   ss-server-chacha20-ietf-poly1305:
-    type: shadowsocks
+    <<: *ss-common
     cipher: chacha20-ietf-poly1305
-    password: bench
     bind: 127.0.0.1:30003
-    udp: true
   ss-server-rc4-md5:
-    type: shadowsocks
+    <<: *ss-common
     cipher: rc4-md5
-    password: bench
     bind: 127.0.0.1:30004
-    udp: true
 
   iperf3-forward:
-    type: forward
-    target: 127.0.0.1:5201
+    <<: *forward-common
     bind: 127.0.0.1:20000
-    udp: true
   forward-ss-aes-128-gcm:
-    type: forward
-    target: 127.0.0.1:5201
+    <<: *forward-common
     bind: 127.0.0.1:20001
-    udp: true
     net:
-      type: shadowsocks
+      <<: *ss-common
       cipher: aes-128-gcm
-      password: bench
       server: 127.0.0.1:30001
-      udp: true
   forward-ss-aes-256-gcm:
-    type: forward
-    target: 127.0.0.1:5201
+    <<: *forward-common
     bind: 127.0.0.1:20002
-    udp: true
     net:
-      type: shadowsocks
+      <<: *ss-common
       cipher: aes-256-gcm
-      password: bench
       server: 127.0.0.1:30002
-      udp: true
   forward-chacha20-ietf-poly1305:
-    type: forward
-    target: 127.0.0.1:5201
+    <<: *forward-common
     bind: 127.0.0.1:20003
-    udp: true
     net:
-      type: shadowsocks
+      <<: *ss-common
       cipher: chacha20-ietf-poly1305
-      password: bench
       server: 127.0.0.1:30003
-      udp: true
   forward-rc4-md5:
-    type: forward
-    target: 127.0.0.1:5201
+    <<: *forward-common
     bind: 127.0.0.1:20004
-    udp: true
     net:
-      type: shadowsocks
+      <<: *ss-common
       cipher: rc4-md5
-      password: bench
       server: 127.0.0.1:30004
-      udp: true
