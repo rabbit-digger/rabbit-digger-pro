@@ -1,5 +1,4 @@
 use std::{
-    io,
     net::{IpAddr, SocketAddrV4},
     str::FromStr,
 };
@@ -7,22 +6,28 @@ use std::{
 use crate::{
     config::RawNetConfig,
     device,
-    forward::forward_net,
-    gateway::GatewayDevice,
+    gateway::{GatewayDevice, MapTable},
     wrap::{TcpListenerWrap, TcpStreamWrap, UdpSocketWrap},
 };
+use parking_lot::Mutex as SyncMutex;
 use rd_interface::{
     async_trait, registry::Builder, Address, Arc, Context, Error, INet, IntoDyn, Net, Result,
 };
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::sync::Mutex;
 use tokio_smoltcp::{
     smoltcp::wire::{IpAddress, IpCidr},
     BufferSize, Net as SmoltcpNet, NetConfig,
 };
 
+pub(crate) struct NetParams {
+    pub(crate) smoltcp_net: Arc<SmoltcpNet>,
+    pub(crate) map: MapTable,
+    pub(crate) ip_cidr: IpCidr,
+}
+
 pub struct RawNet {
     smoltcp_net: Arc<SmoltcpNet>,
-    forward_handle: Option<JoinHandle<io::Result<()>>>,
+    pub(crate) params: SyncMutex<Option<NetParams>>,
 }
 
 impl RawNet {
@@ -37,7 +42,7 @@ impl RawNet {
             .gateway
             .as_ref()
             .map(|gateway| {
-                IpAddress::from_str(&gateway)
+                IpAddress::from_str(gateway)
                     .map_err(|_| Error::Other("Failed to parse gateway".into()))
             })
             .transpose()?;
@@ -58,20 +63,17 @@ impl RawNet {
             },
         };
 
-        let net = (*config.net).clone();
-        let mut forward_handle = None;
-
+        let mut params = None;
         let smoltcp_net = if config.forward {
             let device = GatewayDevice::new(device, ethernet_addr, 100, ip_cidr, ip_addr);
             let map = device.get_map();
             let smoltcp_net = Arc::new(SmoltcpNet::new(device, net_config));
 
-            forward_handle = Some(tokio::spawn(forward_net(
-                net,
-                smoltcp_net.clone(),
+            params = Some(NetParams {
+                smoltcp_net: smoltcp_net.clone(),
                 map,
                 ip_cidr,
-            )));
+            });
             smoltcp_net
         } else {
             Arc::new(SmoltcpNet::new(device, net_config))
@@ -79,16 +81,11 @@ impl RawNet {
 
         Ok(RawNet {
             smoltcp_net,
-            forward_handle,
+            params: SyncMutex::new(params),
         })
     }
-}
-
-impl Drop for RawNet {
-    fn drop(&mut self) {
-        if let Some(handle) = self.forward_handle.take() {
-            handle.abort();
-        }
+    pub(crate) fn get_params(&self) -> Option<NetParams> {
+        self.params.lock().take()
     }
 }
 

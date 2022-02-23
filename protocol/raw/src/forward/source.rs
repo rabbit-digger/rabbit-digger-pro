@@ -1,13 +1,10 @@
 use std::{
-    collections::VecDeque,
     io,
     net::{IpAddr, SocketAddr, SocketAddrV4},
-    pin::Pin,
-    task,
+    task::{self, Poll},
 };
 
-use futures::{ready, Sink, Stream};
-use rd_interface::{Bytes, Result};
+use futures::ready;
 use rd_std::util::forward_udp::{self, RawUdpSource};
 use tokio_smoltcp::{
     smoltcp::{
@@ -18,12 +15,9 @@ use tokio_smoltcp::{
     RawSocket,
 };
 
-const SEND_QUEUE_SIZE: usize = 128;
-
 pub struct Source {
     raw: RawSocket,
-    recv_buf: Box<[u8]>,
-    send_buf: VecDeque<Vec<u8>>,
+    send_buf: Vec<u8>,
     ip_cidr: IpCidr,
 }
 
@@ -31,116 +25,79 @@ impl Source {
     pub fn new(raw: RawSocket, ip_cidr: IpCidr) -> Source {
         Source {
             raw,
-            recv_buf: Box::new([0u8; 65536]),
-            send_buf: VecDeque::with_capacity(SEND_QUEUE_SIZE),
+            send_buf: Vec::new(),
             ip_cidr,
         }
     }
 }
 
-impl Stream for Source {
-    type Item = io::Result<forward_udp::UdpPacket>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
+impl RawUdpSource for Source {
+    fn poll_recv(
+        &mut self,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<Option<Self::Item>> {
-        let Source {
-            raw,
-            recv_buf,
-            ip_cidr,
-            ..
-        } = &mut *self;
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<io::Result<forward_udp::UdpEndpoint>> {
+        let Source { raw, ip_cidr, .. } = &mut *self;
 
         let (from, to, data) = loop {
-            let size = ready!(raw.poll_recv(cx, recv_buf))?;
+            let u8buf = buf.initialize_unfilled();
+            let size = ready!(raw.poll_recv(cx, u8buf))?;
 
-            match parse_udp(&recv_buf[..size]) {
-                Ok(v) => {
-                    let broadcast = match ip_cidr {
-                        IpCidr::Ipv4(v4) => v4.broadcast().map(Into::into).map(IpAddr::V4),
-                        _ => None,
-                    };
+            if let Ok(v) = parse_udp(&u8buf[..size]) {
+                let broadcast = match ip_cidr {
+                    IpCidr::Ipv4(v4) => v4.broadcast().map(Into::into).map(IpAddr::V4),
+                    _ => None,
+                };
 
-                    let to = v.1;
-                    if broadcast == Some(to.ip())
-                        || to.ip().is_multicast()
-                        || to.ip() == IpAddr::from(ip_cidr.address())
-                    {
-                        continue;
-                    }
-
-                    break v;
+                let to = v.1;
+                if broadcast == Some(to.ip())
+                    || to.ip().is_multicast()
+                    || to.ip() == IpAddr::from(ip_cidr.address())
+                {
+                    continue;
                 }
-                _ => {}
+
+                break v;
             };
         };
 
-        let data = Bytes::copy_from_slice(data);
+        buf.initialize_unfilled_to(data.len())
+            .copy_from_slice(&data);
+        buf.advance(data.len());
 
-        Some(Ok(forward_udp::UdpPacket { from, to, data })).into()
+        Poll::Ready(Ok(forward_udp::UdpEndpoint { from, to }))
+    }
+
+    fn poll_send(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        endpoint: &forward_udp::UdpEndpoint,
+    ) -> Poll<io::Result<()>> {
+        if self.send_buf.is_empty() {
+            if let Some(ip_packet) = pack_udp(endpoint.from, endpoint.to, buf) {
+                self.send_buf = ip_packet;
+            } else {
+                tracing::debug!("Unsupported src/dst");
+                return Poll::Ready(Ok(()));
+            }
+        }
+        ready!(self.raw.poll_send(cx, &self.send_buf))?;
+        self.send_buf.clear();
+        Poll::Ready(Ok(()))
     }
 }
-
-impl Sink<forward_udp::UdpPacket> for Source {
-    type Error = io::Error;
-
-    fn poll_ready(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        if self.send_buf.len() < SEND_QUEUE_SIZE {
-            Ok(()).into()
-        } else {
-            self.poll_flush(cx)
-        }
-    }
-
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        forward_udp::UdpPacket { from, to, data }: forward_udp::UdpPacket,
-    ) -> Result<(), Self::Error> {
-        if let Some(ip_packet) = pack_udp(from, to, &data) {
-            self.send_buf.push_back(ip_packet);
-        } else {
-            tracing::debug!("Unsupported src/dst");
-        }
-        Ok(())
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        let Source { raw, send_buf, .. } = &mut *self;
-
-        while let Some(buf) = send_buf.get(0) {
-            ready!(raw.poll_send(cx, buf))?;
-            send_buf.pop_front();
-        }
-
-        Ok(()).into()
-    }
-
-    fn poll_close(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.poll_flush(cx)
-    }
-}
-
-impl RawUdpSource for Source {}
 
 /// buf is a ip packet
-fn parse_udp(buf: &[u8]) -> smoltcp::Result<(SocketAddr, SocketAddr, &[u8])> {
+fn parse_udp(buf: &[u8]) -> smoltcp::Result<(SocketAddr, SocketAddr, Vec<u8>)> {
     let ipv4 = Ipv4Packet::new_checked(buf)?;
     let udp = UdpPacket::new_checked(ipv4.payload())?;
 
     let src = SocketAddrV4::new(ipv4.src_addr().into(), udp.src_port());
     let dst = SocketAddrV4::new(ipv4.dst_addr().into(), udp.dst_port());
 
-    Ok((src.into(), dst.into(), udp.payload()))
+    // TODO: avoid to_vec
+    Ok((src.into(), dst.into(), udp.payload().to_vec()))
 }
 
 fn pack_udp(src: SocketAddr, dst: SocketAddr, payload: &[u8]) -> Option<Vec<u8>> {

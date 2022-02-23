@@ -14,10 +14,11 @@ use uuid::Uuid;
 
 use crate::types::{Object, Response};
 
+type WaitMap = SyncMutex<HashMap<u32, oneshot::Sender<(Response, Vec<u8>)>>>;
 pub struct ClientSessionState {
     session_id: Uuid,
     seq_id: SyncMutex<u32>,
-    wait_map: SyncMutex<HashMap<u32, oneshot::Sender<(Response, Vec<u8>)>>>,
+    wait_map: WaitMap,
 }
 
 impl ClientSessionState {

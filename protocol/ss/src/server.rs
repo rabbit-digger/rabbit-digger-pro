@@ -117,7 +117,7 @@ impl SSServer {
                 },
             )
             .await?;
-        connect_tcp(ctx, socket, target).await?;
+        connect_tcp(ctx, TcpStream::from(socket), target).await?;
         Ok(())
     }
 }

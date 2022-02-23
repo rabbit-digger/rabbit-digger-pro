@@ -26,7 +26,7 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<TunAsyncDevice> {
     let netmask = !0u32 >> (32 - cfg.destination_addr.prefix_len());
 
     config
-        .address(IpAddr::from(Ipv4Addr::from(cfg.addr)))
+        .address(IpAddr::from(cfg.addr))
         .destination(match cfg.destination_addr.address() {
             IpAddress::Ipv4(v4) => IpAddr::from(Ipv4Addr::from(v4)),
             IpAddress::Ipv6(v6) => IpAddr::from(Ipv6Addr::from(v6)),

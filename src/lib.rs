@@ -10,7 +10,6 @@ pub mod log;
 pub mod schema;
 mod select;
 pub mod storage;
-mod translate;
 mod util;
 
 pub fn get_registry() -> Result<Registry> {
@@ -33,7 +32,7 @@ pub fn get_registry() -> Result<Registry> {
 }
 
 pub fn deserialize_config(s: &str) -> Result<config::ConfigExt> {
-    let raw_yaml = serde_yaml::from_str(&s)?;
+    let raw_yaml = serde_yaml::from_str(s)?;
     let merged = merge_keys_serde(raw_yaml)?;
     Ok(serde_yaml::from_value(merged)?)
 }

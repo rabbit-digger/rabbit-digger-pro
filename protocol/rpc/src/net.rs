@@ -44,7 +44,7 @@ impl INet for RpcNet {
             .wait()
             .await?;
 
-        let tcp = TcpWrapper::new(conn, resp.to_object()?);
+        let tcp = TcpWrapper::new(conn, resp.into_object()?);
 
         Ok(tcp.into_dyn())
     }
@@ -61,7 +61,7 @@ impl INet for RpcNet {
             .wait()
             .await?;
 
-        let listener = TcpListenerWrapper::new(conn, resp.to_object()?);
+        let listener = TcpListenerWrapper::new(conn, resp.into_object()?);
 
         Ok(listener.into_dyn())
     }
@@ -74,7 +74,7 @@ impl INet for RpcNet {
             .wait()
             .await?;
 
-        let udp = UdpWrapper::new(conn, resp.to_object()?);
+        let udp = UdpWrapper::new(conn, resp.into_object()?);
 
         Ok(udp.into_dyn())
     }
@@ -85,6 +85,6 @@ impl INet for RpcNet {
 
         let (resp, _) = getter.wait().await?;
 
-        resp.to_value()
+        resp.into_value()
     }
 }

@@ -1,5 +1,5 @@
 pub use self::{manager::ConfigManager, select_map::SelectMap};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rabbit_digger::Config;
@@ -17,6 +17,7 @@ use crate::{
     util::DebounceStreamExt,
 };
 
+mod importer;
 mod manager;
 mod select_map;
 
@@ -41,6 +42,12 @@ pub enum ImportSource {
 }
 
 impl ImportSource {
+    pub fn new_path(path: PathBuf) -> Self {
+        ImportSource::Path(path)
+    }
+    pub fn new_poll(url: String, interval: Option<u64>) -> Self {
+        ImportSource::Poll(ImportUrl { url, interval })
+    }
     pub fn cache_key(&self) -> String {
         match self {
             ImportSource::Path(path) => format!("path:{:?}", path),
@@ -76,7 +83,7 @@ impl ImportSource {
             ImportSource::Storage(ImportStorage { folder, key }) => {
                 let storage = FileStorage::new(FolderType::Data, folder).await?;
                 let item = storage
-                    .get(&key)
+                    .get(key)
                     .await?
                     .ok_or_else(|| anyhow!("Not found"))?;
                 item.content
@@ -86,9 +93,7 @@ impl ImportSource {
     fn get_expire_duration(&self) -> Option<Duration> {
         match self {
             ImportSource::Path(_) => None,
-            ImportSource::Poll(ImportUrl { interval, .. }) => {
-                interval.map(|i| Duration::from_secs(i))
-            }
+            ImportSource::Poll(ImportUrl { interval, .. }) => interval.map(Duration::from_secs),
             ImportSource::Storage(_) => None,
         }
     }
@@ -108,7 +113,7 @@ impl ImportSource {
                         let expired_at = updated_at + Duration::from_secs(*interval);
                         let tts = expired_at
                             .duration_since(SystemTime::now())
-                            .unwrap_or_else(|_| Duration::ZERO);
+                            .unwrap_or(Duration::ZERO);
                         sleep(tts).await
                     }
                 }
@@ -116,7 +121,7 @@ impl ImportSource {
             ImportSource::Storage(ImportStorage { folder, key }) => {
                 let storage = FileStorage::new(FolderType::Data, folder).await?;
                 let path = storage
-                    .get_path(&key)
+                    .get_path(key)
                     .await?
                     .ok_or_else(|| anyhow!("Not found"))?;
 
@@ -152,19 +157,4 @@ pub struct ConfigExt {
     config: Config,
     #[serde(default)]
     import: Vec<Import>,
-}
-
-impl ConfigExt {
-    pub async fn build_from_cache(self, cache: &dyn Storage) -> Result<Config> {
-        let imports = self.import;
-        let mut config = self.config;
-        for i in imports {
-            let mut temp_config = Config::default();
-            crate::translate::post_process(&mut temp_config, i.clone(), cache)
-                .await
-                .context(format!("post process of import: {:?}", i))?;
-            config.merge(temp_config);
-        }
-        Ok(config)
-    }
 }

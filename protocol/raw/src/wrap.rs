@@ -1,15 +1,18 @@
-use std::{io, net::SocketAddr, pin::Pin, task};
+use std::{
+    io,
+    net::SocketAddr,
+    task::{self, Poll},
+};
 
-use futures::{ready, Sink, Stream};
+use futures::ready;
 use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, impl_async_read_write, Address, Bytes, BytesMut,
-    ITcpListener, ITcpStream, IUdpSocket, IntoDyn, Result,
+    async_trait, impl_async_read_write, Address, ITcpListener, ITcpStream, IUdpSocket, IntoDyn,
+    Result,
 };
 use tokio::sync::Mutex;
 use tokio_smoltcp::{TcpListener, TcpStream, UdpSocket};
 
 pub struct TcpStreamWrap(TcpStream);
-impl_async_read_write!(TcpStreamWrap, 0);
 
 impl TcpStreamWrap {
     pub(crate) fn new(stream: TcpStream) -> Self {
@@ -26,6 +29,8 @@ impl ITcpStream for TcpStreamWrap {
     async fn local_addr(&self) -> Result<SocketAddr> {
         Ok(self.0.local_addr()?)
     }
+
+    impl_async_read_write!(0);
 }
 
 pub struct TcpListenerWrap(pub(crate) Mutex<TcpListener>, pub(crate) SocketAddr);
@@ -44,85 +49,11 @@ impl ITcpListener for TcpListenerWrap {
 
 pub struct UdpSocketWrap {
     inner: UdpSocket,
-    recv_buf: Box<[u8]>,
-    send_buf: Option<(Bytes, Address)>,
 }
 
 impl UdpSocketWrap {
     pub(crate) fn new(inner: UdpSocket) -> Self {
-        Self {
-            inner,
-            recv_buf: vec![0; UDP_BUFFER_SIZE].into_boxed_slice(),
-            send_buf: None,
-        }
-    }
-}
-
-impl Stream for UdpSocketWrap {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Option<Self::Item>> {
-        let UdpSocketWrap {
-            inner,
-            recv_buf: buf,
-            ..
-        } = &mut *self;
-        let (size, from) = ready!(inner.poll_recv_from(cx, buf))?;
-        Some(Ok((BytesMut::from(&buf[..size]), from))).into()
-    }
-}
-
-impl Sink<(Bytes, Address)> for UdpSocketWrap {
-    type Error = io::Error;
-
-    fn poll_ready(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        if self.send_buf.is_some() {
-            ready!(self.poll_flush(cx))?;
-        }
-        Ok(()).into()
-    }
-
-    fn start_send(mut self: Pin<&mut Self>, item: (Bytes, Address)) -> Result<(), Self::Error> {
-        self.send_buf = Some(item);
-
-        Ok(())
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        let UdpSocketWrap {
-            inner,
-            send_buf: buf,
-            ..
-        } = &mut *self;
-        if let Some((buf, to)) = buf {
-            // TODO: support domain
-            let size = ready!(inner.poll_send_to(cx, buf, to.to_socket_addr()?))?;
-            if size != buf.len() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "failed to send all bytes",
-                ))
-                .into();
-            }
-        }
-        Ok(()).into()
-    }
-
-    fn poll_close(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        ready!(self.poll_flush(cx))?;
-        Ok(()).into()
+        Self { inner }
     }
 }
 
@@ -130,5 +61,37 @@ impl Sink<(Bytes, Address)> for UdpSocketWrap {
 impl IUdpSocket for UdpSocketWrap {
     async fn local_addr(&self) -> Result<SocketAddr> {
         Ok(self.inner.local_addr()?)
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
+        let UdpSocketWrap { inner, .. } = &mut *self;
+        let (size, from) = ready!(inner.poll_recv_from(cx, buf.initialize_unfilled()))?;
+        buf.advance(size);
+        Poll::Ready(Ok(from))
+    }
+
+    fn poll_send_to(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        target: &Address,
+    ) -> Poll<io::Result<usize>> {
+        let UdpSocketWrap { inner, .. } = &mut *self;
+
+        // TODO: support domain
+        let size = ready!(inner.poll_send_to(cx, buf, target.to_socket_addr()?))?;
+        if size != buf.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "failed to send all bytes",
+            ))
+            .into();
+        }
+
+        Poll::Ready(Ok(size))
     }
 }

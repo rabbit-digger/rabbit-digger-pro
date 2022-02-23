@@ -10,8 +10,8 @@ use futures::ready;
 use pin_project_lite::pin_project;
 use rand::prelude::*;
 use rd_interface::{
-    async_trait, prelude::*, rd_config, Address, AsyncWrite, ITcpStream, IntoDyn, ReadBuf, Result,
-    TcpStream, NOT_IMPLEMENTED,
+    async_trait, prelude::*, rd_config, Address, AsyncWrite, Fd, ITcpStream, IntoDyn, ReadBuf,
+    Result, TcpStream, NOT_IMPLEMENTED,
 };
 use tokio::io::AsyncRead;
 
@@ -68,24 +68,54 @@ impl Connect {
     }
 }
 
-impl AsyncRead for Connect {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        let mut this = self.project();
+struct UrlEncode<'a>(&'a [u8]);
+
+impl<'a> fmt::Display for UrlEncode<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for i in self.0 {
+            write!(f, "%{:02x}", i)?;
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl ITcpStream for Connect {
+    async fn peer_addr(&self) -> Result<std::net::SocketAddr> {
+        self.inner.peer_addr().await
+    }
+
+    async fn local_addr(&self) -> Result<std::net::SocketAddr> {
+        self.inner.local_addr().await
+    }
+
+    fn read_passthrough(&self) -> Option<Fd> {
+        if let ReadState::Done = self.read {
+            self.inner.read_passthrough()
+        } else {
+            None
+        }
+    }
+    fn write_passthrough(&self) -> Option<Fd> {
+        if let WriteState::Done = self.write {
+            self.inner.write_passthrough()
+        } else {
+            None
+        }
+    }
+
+    fn poll_read(&mut self, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         loop {
-            match this.read {
+            match &mut self.read {
                 ReadState::Read(ref mut read_buf, pos) => {
                     let mut tmp_buf = ReadBuf::new(&mut read_buf[*pos..]);
-                    ready!(Pin::new(&mut this.inner).poll_read(cx, &mut tmp_buf))?;
+                    ready!(Pin::new(&mut self.inner).poll_read(cx, &mut tmp_buf))?;
 
                     *pos += tmp_buf.filled().len();
 
-                    if let Some(at) = find_subsequence_end(&read_buf, b"\r\n\r\n") {
+                    if let Some(at) = find_subsequence_end(read_buf, b"\r\n\r\n") {
                         read_buf.truncate(*pos);
-                        *this.read = ReadState::Write(read_buf.split_off(at), 0);
+                        self.read = ReadState::Write(read_buf.split_off(at), 0);
                     }
                 }
                 ReadState::Write(ref write_buf, pos) => {
@@ -99,38 +129,19 @@ impl AsyncRead for Connect {
                     *pos += to_read;
 
                     if write_buf.len() == *pos {
-                        *this.read = ReadState::Done;
+                        self.read = ReadState::Done;
                     }
                     return Poll::Ready(Ok(()));
                 }
                 ReadState::Done => {
-                    return Pin::new(&mut this.inner).poll_read(cx, buf);
+                    return Pin::new(&mut self.inner).poll_read(cx, buf);
                 }
             }
         }
     }
-}
-
-struct UrlEncode<'a>(&'a [u8]);
-
-impl<'a> fmt::Display for UrlEncode<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for i in self.0 {
-            write!(f, "%{:02x}", i)?;
-        }
-        Ok(())
-    }
-}
-
-impl AsyncWrite for Connect {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
-        let mut this = self.project();
+    fn poll_write(&mut self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
         loop {
-            match this.write {
+            match &mut self.write {
                 WriteState::Wait => {
                     let head_len = thread_rng().gen_range(0..64usize).min(buf.len());
                     let head = &buf[..head_len];
@@ -140,49 +151,35 @@ impl AsyncWrite for Connect {
                     cursor.write_fmt(format_args!(
                         "GET /{path} HTTP/1.1\r\nHost: {host}\r\n\r\n",
                         path = UrlEncode(head),
-                        host = this.obfs_param
+                        host = self.obfs_param
                     ))?;
                     cursor.write_all(body)?;
 
                     let buf = cursor.into_inner();
 
-                    *this.write = WriteState::Write(buf, 0);
+                    self.write = WriteState::Write(buf, 0);
                 }
                 WriteState::Write(ref buf, pos) => {
-                    let wrote = ready!(Pin::new(&mut this.inner).poll_write(cx, &buf[*pos..]))?;
+                    let wrote = ready!(Pin::new(&mut self.inner).poll_write(cx, &buf[*pos..]))?;
                     *pos += wrote;
 
                     if buf.len() == *pos {
-                        *this.write = WriteState::Done;
+                        self.write = WriteState::Done;
                     }
                 }
                 WriteState::Done => {
-                    return Pin::new(&mut this.inner).poll_write(cx, buf);
+                    return Pin::new(&mut self.inner).poll_write(cx, buf);
                 }
             };
         }
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.inner).poll_flush(cx)
     }
 
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), io::Error>> {
+    fn poll_shutdown(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
-    }
-}
-
-#[async_trait]
-impl ITcpStream for Connect {
-    async fn peer_addr(&self) -> Result<std::net::SocketAddr> {
-        self.inner.peer_addr().await
-    }
-
-    async fn local_addr(&self) -> Result<std::net::SocketAddr> {
-        self.inner.local_addr().await
     }
 }
 

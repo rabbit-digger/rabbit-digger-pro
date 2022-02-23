@@ -1,20 +1,18 @@
 use std::{
     io,
     net::SocketAddr,
-    pin::Pin,
     task::{self, Poll},
 };
 
 use crate::types::{Command, Object};
 
 use crate::session::ClientSession;
-use futures::{ready, Future, FutureExt, Sink, Stream};
-use parking_lot::Mutex;
+use futures::ready;
 use rd_interface::{
-    async_trait, impl_async_read_write, Address, Bytes, BytesMut, ITcpListener, ITcpStream,
-    IUdpSocket, IntoDyn, Result,
+    async_trait, impl_async_read_write, Address, ITcpListener, ITcpStream, IUdpSocket, IntoDyn,
+    Result,
 };
-use rd_std::util::async_fn_io::{AsyncFnIO, AsyncFnRead, AsyncFnWrite};
+use rd_std::util::async_fn::{AsyncFnIO, AsyncFnRead, AsyncFnWrite, PollAsyncFn};
 
 pub struct TcpListenerWrapper {
     conn: ClientSession,
@@ -42,7 +40,7 @@ impl ITcpListener for TcpListenerWrapper {
             .await?
             .wait()
             .await?;
-        let (obj, addr) = resp.to_object_value()?;
+        let (obj, addr) = resp.into_object_value()?;
 
         Ok((TcpWrapper::new(self.conn.clone(), obj).into_dyn(), addr))
     }
@@ -54,17 +52,16 @@ impl ITcpListener for TcpListenerWrapper {
             .await?
             .wait()
             .await?;
-        resp.to_value()
+        resp.into_value()
     }
 }
 
-type BoxFuture<T> = Mutex<Pin<Box<dyn Future<Output = T> + Send + 'static>>>;
 pub struct UdpWrapper {
     conn: ClientSession,
     obj: Object,
 
-    next_fut: Option<BoxFuture<io::Result<(BytesMut, SocketAddr)>>>,
-    send_fut: Option<BoxFuture<io::Result<()>>>,
+    next_fut: PollAsyncFn<io::Result<(Vec<u8>, SocketAddr)>>,
+    send_fut: PollAsyncFn<io::Result<()>>,
 }
 
 impl UdpWrapper {
@@ -73,8 +70,8 @@ impl UdpWrapper {
             conn,
             obj,
 
-            next_fut: None,
-            send_fut: None,
+            next_fut: PollAsyncFn::new(),
+            send_fut: PollAsyncFn::new(),
         }
     }
 }
@@ -82,109 +79,6 @@ impl UdpWrapper {
 impl Drop for UdpWrapper {
     fn drop(&mut self) {
         self.conn.close_object(self.obj)
-    }
-}
-
-impl Stream for UdpWrapper {
-    type Item = io::Result<(BytesMut, SocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
-        let UdpWrapper {
-            next_fut,
-            conn,
-            obj,
-            ..
-        } = &mut *self;
-        let obj = *obj;
-
-        loop {
-            match next_fut {
-                Some(fut) => {
-                    let i = ready!(fut.lock().poll_unpin(cx));
-
-                    *next_fut = None;
-                    return Poll::Ready(Some(i));
-                }
-                None => {
-                    let conn = conn.clone();
-                    let fut = async move {
-                        let (resp, data) = conn
-                            .send(Command::RecvFrom(obj), None)
-                            .await?
-                            .wait()
-                            .await?;
-
-                        Ok((BytesMut::from(&data[..]), resp.to_value()?))
-                    };
-                    *next_fut = Some(Mutex::new(Box::pin(fut)));
-                }
-            }
-        }
-    }
-}
-
-impl Sink<(Bytes, Address)> for UdpWrapper {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        let send_fut = &mut self.send_fut;
-        match send_fut {
-            Some(fut) => {
-                ready!(fut.lock().poll_unpin(cx))?;
-
-                *send_fut = None;
-                Poll::Ready(Ok(()))
-            }
-            None => Poll::Ready(Ok(())),
-        }
-    }
-
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        (bytes, addr): (Bytes, Address),
-    ) -> Result<(), Self::Error> {
-        let UdpWrapper {
-            send_fut,
-            conn,
-            obj,
-            ..
-        } = &mut *self;
-        match send_fut {
-            Some(_) => return Err(io::Error::new(io::ErrorKind::Other, "already sending")),
-            None => {
-                let conn = conn.clone();
-                let obj = *obj;
-                let fut = async move {
-                    let (resp, _) = conn
-                        .send(Command::SendTo(obj, addr), Some(&bytes))
-                        .await?
-                        .wait()
-                        .await?;
-                    resp.to_null()?;
-                    Ok(())
-                };
-                *send_fut = Some(Mutex::new(Box::pin(fut)));
-            }
-        }
-
-        Ok(())
-    }
-
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.poll_ready(cx)
-    }
-
-    fn poll_close(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.poll_flush(cx)
     }
 }
 
@@ -197,7 +91,74 @@ impl IUdpSocket for UdpWrapper {
             .await?
             .wait()
             .await?;
-        resp.to_value()
+        resp.into_value()
+    }
+
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<io::Result<SocketAddr>> {
+        let UdpWrapper {
+            next_fut,
+            conn,
+            obj,
+            ..
+        } = &mut *self;
+
+        let (data, from) = ready!(next_fut.poll_next(cx, || {
+            let conn = conn.clone();
+            let obj = *obj;
+            let fut = async move {
+                let (resp, data) = conn
+                    .send(Command::RecvFrom(obj), None)
+                    .await?
+                    .wait()
+                    .await?;
+
+                Ok((data, resp.into_value()?))
+            };
+            Box::pin(fut)
+        }))?;
+
+        let to_copy = data.len().min(buf.remaining());
+        buf.initialize_unfilled_to(to_copy)
+            .copy_from_slice(&data[..to_copy]);
+        buf.advance(to_copy);
+
+        Poll::Ready(Ok(from))
+    }
+
+    fn poll_send_to(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        target: &Address,
+    ) -> Poll<io::Result<usize>> {
+        let UdpWrapper {
+            send_fut,
+            conn,
+            obj,
+            ..
+        } = &mut *self;
+
+        ready!(send_fut.poll_next(cx, || {
+            let conn = conn.clone();
+            let obj = *obj;
+            let addr = target.clone();
+            let data = buf.to_vec();
+            Box::pin(async move {
+                let (resp, _) = conn
+                    .send(Command::SendTo(obj, addr), Some(&data))
+                    .await?
+                    .wait()
+                    .await?;
+                resp.into_null()?;
+                Ok(())
+            })
+        }))?;
+
+        Poll::Ready(Ok(buf.len()))
     }
 }
 
@@ -230,7 +191,7 @@ impl AsyncFnRead for TcpAsyncFn {
             .await?;
 
         let (resp, data) = getter.wait().await?;
-        resp.to_null()?;
+        resp.into_null()?;
         Ok(data)
     }
 }
@@ -241,7 +202,7 @@ impl AsyncFnWrite for TcpAsyncFn {
         let getter = self.conn.send(Command::Write(self.obj), Some(&buf)).await?;
 
         let (resp, _) = getter.wait().await?;
-        let size = resp.to_value::<u32>()?;
+        let size = resp.into_value::<u32>()?;
 
         Ok(size as usize)
     }
@@ -263,8 +224,6 @@ impl AsyncFnWrite for TcpAsyncFn {
     }
 }
 
-impl_async_read_write!(TcpWrapper, 0);
-
 #[async_trait]
 impl ITcpStream for TcpWrapper {
     async fn peer_addr(&self) -> Result<std::net::SocketAddr> {
@@ -275,7 +234,7 @@ impl ITcpStream for TcpWrapper {
             .await?
             .wait()
             .await?;
-        resp.to_value()
+        resp.into_value()
     }
 
     async fn local_addr(&self) -> Result<std::net::SocketAddr> {
@@ -286,6 +245,8 @@ impl ITcpStream for TcpWrapper {
             .await?
             .wait()
             .await?;
-        resp.to_value()
+        resp.into_value()
     }
+
+    impl_async_read_write!(0);
 }

@@ -57,33 +57,27 @@ pub struct Response {
 }
 
 impl Response {
-    pub fn to_null(self) -> rd_interface::Result<()> {
-        let val = self
-            .result
-            .map_err(|e| rd_interface::Error::other(e.to_string()))?;
+    pub fn into_null(self) -> rd_interface::Result<()> {
+        let val = self.result.map_err(rd_interface::Error::other)?;
 
         match val {
             RpcValue::Null => Ok(()),
             _ => Err(rd_interface::Error::other("not null")),
         }
     }
-    pub fn to_value<T>(self) -> rd_interface::Result<T>
+    pub fn into_value<T>(self) -> rd_interface::Result<T>
     where
         T: DeserializeOwned,
     {
-        let val = self
-            .result
-            .map_err(|e| rd_interface::Error::other(e.to_string()))?;
+        let val = self.result.map_err(rd_interface::Error::other)?;
 
         match val {
             RpcValue::Value(v) => Ok(serde_json::from_value(v)?),
             _ => Err(rd_interface::Error::other("invalid response")),
         }
     }
-    pub fn to_object(self) -> rd_interface::Result<Object> {
-        let val = self
-            .result
-            .map_err(|e| rd_interface::Error::other(e.to_string()))?;
+    pub fn into_object(self) -> rd_interface::Result<Object> {
+        let val = self.result.map_err(rd_interface::Error::other)?;
 
         match val {
             RpcValue::Object(o) => Ok(o),
@@ -91,13 +85,11 @@ impl Response {
         }
     }
 
-    pub fn to_object_value<T>(self) -> rd_interface::Result<(Object, T)>
+    pub fn into_object_value<T>(self) -> rd_interface::Result<(Object, T)>
     where
         T: DeserializeOwned,
     {
-        let val = self
-            .result
-            .map_err(|e| rd_interface::Error::other(e.to_string()))?;
+        let val = self.result.map_err(rd_interface::Error::other)?;
 
         match val {
             RpcValue::ObjectValue(o, v) => Ok((o, serde_json::from_value(v)?)),

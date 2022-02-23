@@ -1,9 +1,9 @@
 use std::{pin::Pin, task::Poll};
 
-use futures::{future::poll_fn, ready, SinkExt};
+use futures::{future::poll_fn, ready};
 use rd_interface::{
-    async_trait, Address, AsyncRead, AsyncWrite, Bytes, Context, IServer, Net, ReadBuf, Result,
-    Stream, TcpStream,
+    async_trait, constant::UDP_BUFFER_SIZE, Address, AsyncRead, AsyncWrite, Context, IServer, Net,
+    ReadBuf, Result, TcpStream,
 };
 use serde_json::to_value;
 
@@ -50,7 +50,7 @@ impl RpcServer {
             Command::TcpConnect(ctx, addr) => {
                 let tcp = self
                     .net
-                    .tcp_connect(&mut Context::from_value(ctx.clone())?, &addr)
+                    .tcp_connect(&mut Context::from_value(ctx.clone())?, addr)
                     .await?;
 
                 Ok((
@@ -61,7 +61,7 @@ impl RpcServer {
             Command::TcpBind(ctx, addr) => {
                 let listener = self
                     .net
-                    .tcp_bind(&mut Context::from_value(ctx.clone())?, &addr)
+                    .tcp_bind(&mut Context::from_value(ctx.clone())?, addr)
                     .await?;
 
                 Ok((
@@ -72,7 +72,7 @@ impl RpcServer {
             Command::UdpBind(ctx, addr) => {
                 let udp = self
                     .net
-                    .udp_bind(&mut Context::from_value(ctx.clone())?, &addr)
+                    .udp_bind(&mut Context::from_value(ctx.clone())?, addr)
                     .await?;
 
                 Ok((
@@ -86,47 +86,39 @@ impl RpcServer {
                 Ok((RpcValue::Null, None))
             }
             Command::LookupHost(addr) => {
-                let addrs = self.net.lookup_host(&addr).await?;
+                let addrs = self.net.lookup_host(addr).await?;
 
                 Ok((RpcValue::Value(to_value(addrs)?), None))
             }
             Command::RecvFrom(obj) => {
                 let obj = req.get_object(*obj)?;
+                let mut buf = [0; UDP_BUFFER_SIZE];
 
                 poll_fn(move |cx| {
                     let mut udp = ready!(obj.poll_lock(cx));
-                    let udp = Pin::new(udp.udp_socket_mut()?);
-                    let (buf, from) = match ready!(udp.poll_next(cx)) {
-                        Some(item) => item?,
-                        None => return Poll::Ready(Err(rd_interface::Error::other("no data"))),
-                    };
+                    let mut udp = Pin::new(udp.udp_socket_mut()?);
 
-                    Poll::Ready(Ok((RpcValue::Value(to_value(from)?), Some(buf.to_vec()))))
+                    let mut read_buf = ReadBuf::new(&mut buf);
+                    let from = ready!(udp.poll_recv_from(cx, &mut read_buf))?;
+
+                    Poll::Ready(Ok((
+                        RpcValue::Value(to_value(from)?),
+                        Some(read_buf.filled().to_vec()),
+                    )))
                 })
                 .await
             }
             Command::SendTo(obj, addr) => {
                 let obj = req.get_object(*obj)?;
-                let mut is_ready = false;
-                let mut flushing = false;
-                let data = Bytes::copy_from_slice(req.data());
+                let data = req.data();
 
                 poll_fn(move |cx| {
                     let mut udp = ready!(obj.poll_lock(cx));
                     let udp = udp.udp_socket_mut()?;
 
-                    loop {
-                        if !is_ready {
-                            ready!(udp.poll_ready_unpin(cx))?;
-                            is_ready = true;
-                        }
-                        if flushing {
-                            ready!(udp.poll_flush_unpin(cx))?;
-                            return Poll::Ready(Ok((RpcValue::Null, None)));
-                        }
-                        udp.start_send_unpin((data.clone(), addr.clone()))?;
-                        flushing = true;
-                    }
+                    ready!(udp.poll_send_to(cx, data, addr))?;
+
+                    Poll::Ready(Ok((RpcValue::Null, None)))
                 })
                 .await
             }
@@ -151,7 +143,7 @@ impl RpcServer {
                 poll_fn(|cx| {
                     let mut tcp = ready!(obj.poll_lock(cx));
                     let tcp = Pin::new(tcp.tcp_stream_mut()?);
-                    let write = ready!(tcp.poll_write(cx, &req.data()))?;
+                    let write = ready!(tcp.poll_write(cx, req.data()))?;
 
                     Poll::Ready(Ok((RpcValue::Value(to_value(write)?), None)))
                 })

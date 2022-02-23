@@ -21,11 +21,20 @@ impl TrojanTcp {
     }
 }
 
-impl_async_read!(TrojanTcp, stream);
+#[async_trait]
+impl ITcpStream for TrojanTcp {
+    async fn peer_addr(&self) -> rd_interface::Result<SocketAddr> {
+        Err(NOT_IMPLEMENTED)
+    }
 
-impl AsyncWrite for TrojanTcp {
+    async fn local_addr(&self) -> rd_interface::Result<SocketAddr> {
+        Err(NOT_IMPLEMENTED)
+    }
+
+    impl_async_read!(stream);
+
     fn poll_write(
-        mut self: Pin<&mut Self>,
+        &mut self,
         cx: &mut task::Context<'_>,
         buf: &[u8],
     ) -> task::Poll<io::Result<usize>> {
@@ -43,7 +52,7 @@ impl AsyncWrite for TrojanTcp {
                         *is_first = false;
                     }
 
-                    let sent = ready!(stream.poll_write(cx, &head))?;
+                    let sent = ready!(stream.poll_write(cx, head))?;
                     head.drain(..sent);
                     head.len()
                 }
@@ -58,28 +67,11 @@ impl AsyncWrite for TrojanTcp {
         Pin::new(&mut self.stream).poll_write(cx, buf)
     }
 
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<io::Result<()>> {
+    fn poll_flush(&mut self, cx: &mut task::Context<'_>) -> task::Poll<io::Result<()>> {
         Pin::new(&mut self.stream).poll_flush(cx)
     }
 
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<io::Result<()>> {
+    fn poll_shutdown(&mut self, cx: &mut task::Context<'_>) -> task::Poll<io::Result<()>> {
         Pin::new(&mut self.stream).poll_shutdown(cx)
-    }
-}
-
-#[async_trait]
-impl ITcpStream for TrojanTcp {
-    async fn peer_addr(&self) -> rd_interface::Result<SocketAddr> {
-        Err(NOT_IMPLEMENTED)
-    }
-
-    async fn local_addr(&self) -> rd_interface::Result<SocketAddr> {
-        Err(NOT_IMPLEMENTED)
     }
 }
