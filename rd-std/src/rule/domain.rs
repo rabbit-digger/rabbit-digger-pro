@@ -22,7 +22,20 @@ impl DomainMatcher {
         match self.method {
             Method::Keyword => domain.contains(&self.domain),
             Method::Match => domain == self.domain,
-            Method::Suffix => domain.ends_with(&self.domain),
+            Method::Suffix => {
+                if domain.starts_with("+.") {
+                    self.domain
+                        .strip_prefix('+')
+                        .map(|d| domain.ends_with(d))
+                        .unwrap_or(false)
+                        || domain
+                            .strip_prefix("+.")
+                            .map(|d| domain.ends_with(d))
+                            .unwrap_or(false)
+                } else {
+                    domain.ends_with(&self.domain)
+                }
+            }
         }
     }
 }
