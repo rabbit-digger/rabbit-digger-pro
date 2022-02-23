@@ -10,7 +10,6 @@ pub mod log;
 pub mod schema;
 mod select;
 pub mod storage;
-mod translate;
 mod util;
 
 pub fn get_registry() -> Result<Registry> {

@@ -1,5 +1,5 @@
 pub use self::{manager::ConfigManager, select_map::SelectMap};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rabbit_digger::Config;
@@ -17,6 +17,7 @@ use crate::{
     util::DebounceStreamExt,
 };
 
+mod importer;
 mod manager;
 mod select_map;
 
@@ -41,6 +42,12 @@ pub enum ImportSource {
 }
 
 impl ImportSource {
+    pub fn new_path(path: PathBuf) -> Self {
+        ImportSource::Path(path)
+    }
+    pub fn new_poll(url: String, interval: Option<u64>) -> Self {
+        ImportSource::Poll(ImportUrl { url, interval })
+    }
     pub fn cache_key(&self) -> String {
         match self {
             ImportSource::Path(path) => format!("path:{:?}", path),
@@ -150,19 +157,4 @@ pub struct ConfigExt {
     config: Config,
     #[serde(default)]
     import: Vec<Import>,
-}
-
-impl ConfigExt {
-    pub async fn build_from_cache(self, cache: &dyn Storage) -> Result<Config> {
-        let imports = self.import;
-        let mut config = self.config;
-        for i in imports {
-            let mut temp_config = Config::default();
-            crate::translate::post_process(&mut temp_config, i.clone(), cache)
-                .await
-                .context(format!("post process of import: {:?}", i))?;
-            config.merge(temp_config);
-        }
-        Ok(config)
-    }
 }
