@@ -1,9 +1,12 @@
 use futures::{future::BoxFuture, Future, FutureExt};
 use rd_interface::{
-    context::common_field::{DestDomain, DestSocketAddr},
+    context::common_field::{DestDomain, DestSocketAddr, SrcSocketAddr},
     Address, AddressDomain, Result,
 };
-use std::{net::SocketAddr, pin, task};
+use std::{
+    net::{IpAddr, SocketAddr},
+    pin, task,
+};
 
 pub(super) enum MaybeAsync<T> {
     Sync {
@@ -41,6 +44,7 @@ pub(super) trait Matcher: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct MatchContext {
     address: Address,
+    src_ip_addr: Option<IpAddr>,
     dest_socket_addr: Option<SocketAddr>,
     dest_domain: Option<AddressDomain>,
 }
@@ -52,6 +56,7 @@ impl MatchContext {
     ) -> Result<MatchContext> {
         Ok(MatchContext {
             address: addr.clone(),
+            src_ip_addr: ctx.get_common::<SrcSocketAddr>()?.map(|v| v.0.ip()),
             dest_socket_addr: ctx.get_common::<DestSocketAddr>()?.map(|v| v.0),
             dest_domain: ctx.get_common::<DestDomain>()?.map(|v| v.0),
         })
@@ -59,11 +64,14 @@ impl MatchContext {
     pub fn address(&self) -> &Address {
         &self.address
     }
-    pub fn dest_socket_addr(&self) -> &Option<SocketAddr> {
-        &self.dest_socket_addr
+    pub fn src_ip_addr(&self) -> Option<&IpAddr> {
+        self.src_ip_addr.as_ref()
     }
-    pub fn dest_domain(&self) -> &Option<AddressDomain> {
-        &self.dest_domain
+    pub fn dest_socket_addr(&self) -> Option<&SocketAddr> {
+        self.dest_socket_addr.as_ref()
+    }
+    pub fn dest_domain(&self) -> Option<&AddressDomain> {
+        self.dest_domain.as_ref()
     }
     pub fn get_domain(&self) -> Option<(&String, &u16)> {
         match self.address() {

@@ -8,8 +8,8 @@ use std::{
 
 use self::connection::UdpConnection;
 use crate::util::LruCache;
-use futures::{ready, Future, Sink, SinkExt, Stream, StreamExt};
-use rd_interface::{Address, Bytes, Net};
+use futures::{ready, Future};
+use rd_interface::{constant::UDP_BUFFER_SIZE, Address, Net, ReadBuf};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 mod connection;
@@ -17,30 +17,38 @@ mod send_back;
 
 const TIME_TO_LIVE: Duration = Duration::from_secs(30);
 
+pub struct UdpEndpoint {
+    pub from: SocketAddr,
+    pub to: SocketAddr,
+}
+
 #[derive(Debug)]
 pub struct UdpPacket {
     pub from: SocketAddr,
     pub to: SocketAddr,
-    pub data: Bytes,
+    pub data: Vec<u8>,
 }
 
 impl UdpPacket {
-    pub fn new(data: Bytes, from: SocketAddr, to: SocketAddr) -> Self {
+    pub fn new(data: Vec<u8>, from: SocketAddr, to: SocketAddr) -> Self {
         UdpPacket { from, to, data }
     }
 }
 
 // Stream: (data, from, to)
 // Sink: (data, to, from)
-pub trait RawUdpSource:
-    Stream<Item = io::Result<UdpPacket>> + Sink<UdpPacket, Error = io::Error> + Unpin + Send + Sync
-{
-}
-
-enum SendState {
-    WaitReady,
-    Recv,
-    Flush,
+pub trait RawUdpSource: Unpin + Send + Sync {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf,
+    ) -> Poll<io::Result<UdpEndpoint>>;
+    fn poll_send(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        endpoint: &UdpEndpoint,
+    ) -> Poll<io::Result<()>>;
 }
 
 struct ForwardUdp<S> {
@@ -49,9 +57,9 @@ struct ForwardUdp<S> {
     conn: LruCache<SocketAddr, UdpConnection>,
     send_back: Sender<UdpPacket>,
     recv_back: Receiver<UdpPacket>,
-    state: SendState,
-    need_flush: bool,
     channel_size: usize,
+    recv_buf: Vec<u8>,
+    send_buf: Option<UdpPacket>,
 }
 
 impl<S> ForwardUdp<S>
@@ -67,9 +75,9 @@ where
             conn: LruCache::with_expiry_duration_and_capacity(TIME_TO_LIVE, 256),
             send_back: tx,
             recv_back: rx,
-            state: SendState::WaitReady,
-            need_flush: false,
             channel_size,
+            recv_buf: vec![0; UDP_BUFFER_SIZE],
+            send_buf: None,
         }
     }
 }
@@ -91,55 +99,38 @@ where
     }
     fn poll_recv_packet(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         loop {
-            let item = match ready!(self.s.poll_next_unpin(cx)) {
-                Some(result) => result?,
-                None => return Poll::Ready(Ok(())),
-            };
+            let mut buf = ReadBuf::new(&mut self.recv_buf);
+            let item = ready!(self.s.poll_recv(cx, &mut buf))?;
+            let buf = buf.filled().to_vec();
 
-            let UdpPacket { data, from, to } = item;
+            let UdpEndpoint { from, to } = item;
             let udp = self.get(from);
-            if let Err(e) = udp.send((data, to)) {
-                tracing::warn!("udp send buffer full. {:?}", e);
+            if let Err(e) = udp.send((buf, to)) {
+                tracing::warn!("udp send buffer full. {}", e);
             }
         }
     }
     fn poll_send_back(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
         loop {
-            match self.state {
-                SendState::WaitReady => match self.s.poll_ready_unpin(cx)? {
-                    Poll::Ready(()) => self.state = SendState::Recv,
-                    Poll::Pending => {
-                        if self.need_flush {
-                            self.state = SendState::Flush;
-                            continue;
-                        } else {
-                            return Poll::Pending;
+            match &self.send_buf {
+                Some(UdpPacket { data, from, to }) => {
+                    ready!(self.s.poll_send(
+                        cx,
+                        &data,
+                        &UdpEndpoint {
+                            from: *from,
+                            to: *to
                         }
-                    }
-                },
-                SendState::Recv => {
+                    ))?;
+                    self.send_buf = None;
+                }
+                None => {
                     let packet = match self.recv_back.poll_recv(cx) {
                         Poll::Ready(Some(result)) => result,
                         Poll::Ready(None) => return Poll::Ready(Ok(())),
-                        Poll::Pending => {
-                            if self.need_flush {
-                                self.state = SendState::Flush;
-                                continue;
-                            } else {
-                                return Poll::Pending;
-                            }
-                        }
+                        Poll::Pending => return Poll::Pending,
                     };
-                    self.s.start_send_unpin(packet)?;
-                    self.need_flush = true;
-
-                    self.state = SendState::WaitReady;
-                }
-                SendState::Flush => {
-                    ready!(self.s.poll_flush_unpin(cx)?);
-                    self.need_flush = false;
-
-                    self.state = SendState::WaitReady;
+                    self.send_buf = Some(packet);
                 }
             }
         }

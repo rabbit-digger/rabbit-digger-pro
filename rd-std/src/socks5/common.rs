@@ -1,4 +1,4 @@
-use rd_interface::{Address as RDAddr, Bytes};
+use rd_interface::{Address as RDAddr, ReadBuf};
 use socks5_protocol::{sync::FromIO, Address, Error};
 use std::io::{self, ErrorKind, Read, Result, Write};
 
@@ -9,8 +9,9 @@ pub fn map_err(e: Error) -> rd_interface::Error {
     }
 }
 
-pub fn parse_udp(buf: Bytes) -> Result<(RDAddr, Bytes)> {
-    let mut cursor = std::io::Cursor::new(buf);
+pub fn parse_udp(buf: &mut ReadBuf) -> Result<RDAddr> {
+    let filled = buf.filled_mut();
+    let mut cursor = std::io::Cursor::new(filled);
     let mut header = [0u8; 3];
     cursor.read_exact(&mut header)?;
     let addr = match header[0..3] {
@@ -28,19 +29,21 @@ pub fn parse_udp(buf: Bytes) -> Result<(RDAddr, Bytes)> {
     };
 
     let pos = cursor.position() as usize;
+    cursor.get_mut().copy_within(pos.., 0);
 
-    Ok((sa2ra(addr), cursor.into_inner().slice(pos..)))
+    buf.set_filled(buf.filled().len() - pos);
+
+    Ok(sa2ra(addr))
 }
 
-pub fn pack_udp(addr: RDAddr, buf: &[u8]) -> Result<Vec<u8>> {
-    let mut cursor = std::io::Cursor::new(Vec::new());
+pub fn pack_udp(addr: RDAddr, buf: &[u8], vec: &mut Vec<u8>) -> Result<()> {
+    vec.clear();
+    let mut cursor = std::io::Cursor::new(vec);
     cursor.write_all(&[0x00, 0x00, 0x00])?;
     ra2sa(addr).write_to(&mut cursor).map_err(map_err)?;
     cursor.write_all(buf)?;
 
-    let bytes = cursor.into_inner();
-
-    Ok(bytes)
+    Ok(())
 }
 
 pub fn sa2ra(addr: socks5_protocol::Address) -> rd_interface::Address {

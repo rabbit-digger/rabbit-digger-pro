@@ -1,6 +1,6 @@
 [package]
 name = "rd-derive"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
 edition = "2021"
 description = "Derive for easier create rabbit-digger config."

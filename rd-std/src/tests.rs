@@ -1,7 +1,6 @@
 pub use self::net::TestNet;
 use crate::builtin;
-use futures::{SinkExt, StreamExt};
-use rd_interface::{Bytes, Context, IntoAddress, Net, Registry};
+use rd_interface::{Context, IntoAddress, Net, ReadBuf, Registry};
 use std::time::Duration;
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -25,9 +24,11 @@ pub async fn spawn_echo_server_udp(net: &Net, addr: impl IntoAddress) {
         .await
         .unwrap();
     tokio::spawn(async move {
+        let vec = &mut vec![0; 4096];
         loop {
-            let (buf, addr) = udp.next().await.unwrap().unwrap();
-            udp.send((buf.freeze(), addr.into())).await.unwrap();
+            let mut buf = ReadBuf::new(vec);
+            let addr = udp.recv_from(&mut buf).await.unwrap();
+            udp.send_to(&buf.filled(), &addr.into()).await.unwrap();
         }
     });
 }
@@ -39,17 +40,15 @@ pub async fn assert_echo_udp(net: &Net, addr: impl IntoAddress) {
         .await
         .unwrap();
 
-    socket
-        .send((Bytes::from_static(b"hello"), target_addr.clone()))
+    socket.send_to(b"hello", &target_addr).await.unwrap();
+    let buf = &mut vec![0; 4096];
+    let mut buf = ReadBuf::new(buf);
+    timeout(DEFAULT_TIMEOUT, socket.recv_from(&mut buf))
         .await
-        .unwrap();
-    let (buf, _) = timeout(DEFAULT_TIMEOUT, socket.next())
-        .await
-        .unwrap()
         .unwrap()
         .unwrap();
 
-    assert_eq!(&buf[..], b"hello");
+    assert_eq!(buf.filled(), b"hello");
 }
 
 pub async fn spawn_echo_server(net: &Net, addr: impl IntoAddress) {

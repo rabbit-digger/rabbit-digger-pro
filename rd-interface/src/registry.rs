@@ -5,7 +5,7 @@ use std::{
 
 pub use crate::config::NetRef;
 use crate::{
-    config::{Config, Visitor, VisitorContext},
+    config::{resolve_net, Config, Visitor, VisitorContext},
     IntoDyn, Net, Result, Server,
 };
 pub use schemars::JsonSchema;
@@ -80,7 +80,7 @@ impl<ItemType> Resolver<ItemType> {
                 serde_json::from_value(cfg)
                     .map_err(Into::<crate::Error>::into)
                     .and_then(|mut cfg: N::Config| {
-                        cfg.resolve_net(getter)?;
+                        resolve_net(&mut cfg, getter)?;
                         Ok(cfg)
                     })
                     .and_then(N::build)

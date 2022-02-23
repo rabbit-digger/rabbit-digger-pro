@@ -2,15 +2,14 @@ use std::{
     future::pending,
     io,
     net::SocketAddr,
-    pin::Pin,
     task::{self, Poll},
 };
 
 use crate::util::{connect_tcp, connect_udp};
-use futures::{ready, Sink, SinkExt, Stream, StreamExt};
+use futures::ready;
 use rd_interface::{
-    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Bytes, BytesMut, Context,
-    IServer, IUdpChannel, IntoDyn, Net, Result, Server, TcpListener, TcpStream, UdpSocket,
+    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, IServer,
+    IUdpChannel, IntoDyn, Net, Result, Server, TcpListener, TcpStream, UdpSocket,
 };
 use tokio::select;
 use tracing::instrument;
@@ -135,57 +134,30 @@ struct ListenUdpChannel {
     target: Address,
 }
 
-impl Stream for ListenUdpChannel {
-    type Item = io::Result<(Bytes, Address)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
-        let item = ready!(self.udp.poll_next_unpin(cx));
-        Poll::Ready(item.map(|r| {
-            r.map(|(bytes, addr)| {
-                self.client = Some(addr);
-                return (bytes.freeze(), self.target.clone());
-            })
-        }))
-    }
-}
-
-impl Sink<(BytesMut, SocketAddr)> for ListenUdpChannel {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
+impl IUdpChannel for ListenUdpChannel {
+    fn poll_send_to(
+        &mut self,
         cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.udp.poll_ready_unpin(cx)
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<io::Result<Address>> {
+        let addr = ready!(self.udp.poll_recv_from(cx, buf))?;
+        self.client = Some(addr);
+        Poll::Ready(Ok(self.target.clone()))
     }
 
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        (bytes, _): (BytesMut, SocketAddr),
-    ) -> Result<(), Self::Error> {
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        _: &SocketAddr,
+    ) -> Poll<io::Result<usize>> {
         if let Some(client) = self.client {
-            self.udp.start_send_unpin((bytes.freeze(), client.into()))
+            self.udp.poll_send_to(cx, buf, &client.into())
         } else {
-            Ok(())
+            Poll::Ready(Ok(0))
         }
     }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.udp.poll_flush_unpin(cx)
-    }
-
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        self.udp.poll_close_unpin(cx)
-    }
 }
-
-impl IUdpChannel for ListenUdpChannel {}
 
 #[cfg(test)]
 mod tests {

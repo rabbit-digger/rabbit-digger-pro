@@ -1,28 +1,203 @@
-use futures::{SinkExt, StreamExt};
-use rd_interface::{Context, UdpChannel, UdpSocket};
-use std::io::Result;
-use tokio::select;
+use std::{collections::VecDeque, fmt, future::Future, io, pin::Pin, task::Context, task::Poll};
+
+use rd_interface::{Address, ReadBuf, UdpChannel, UdpSocket};
 use tracing::instrument;
 
 use super::DropAbort;
 
-#[instrument(err, skip(udp_channel, udp), fields(ctx = ?_ctx))]
+pub const UDP_BUFFER_SIZE: usize = 4 * 1024;
+
+#[derive(Clone)]
+#[must_use = "Don't waste memory by not using this"]
+struct PacketBuffer {
+    buf: Vec<u8>,
+    filled: Option<(usize, Address)>,
+}
+
+impl fmt::Debug for PacketBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PacketBuffer")
+            .field(
+                "buf",
+                &self.filled.as_ref().map(|(len, _)| &self.buf[..*len]),
+            )
+            .field("filled", &self.filled)
+            .finish()
+    }
+}
+
+impl PacketBuffer {
+    fn new() -> Self {
+        Self {
+            buf: vec![0; UDP_BUFFER_SIZE],
+            filled: None,
+        }
+    }
+    fn borrow(&self) -> Option<(&[u8], &Address)> {
+        self.filled
+            .as_ref()
+            .map(|(len, addr)| (&self.buf[..*len], addr))
+    }
+}
+
+struct CopyBuffer {
+    pool: Vec<PacketBuffer>,
+    queue: VecDeque<PacketBuffer>,
+}
+
+impl CopyBuffer {
+    fn new(buffer_size: usize) -> Self {
+        Self {
+            pool: vec![PacketBuffer::new(); buffer_size],
+            queue: VecDeque::with_capacity(buffer_size),
+        }
+    }
+    fn borrow_front(&mut self) -> Option<&mut PacketBuffer> {
+        self.queue.front_mut()
+    }
+    fn pop_front(&mut self) {
+        if let Some(mut p) = self.queue.pop_front() {
+            p.filled = None;
+            self.pool.push(p);
+        }
+    }
+    fn borrow_back(&mut self) -> Option<&mut PacketBuffer> {
+        match self.queue.back().map(|i| i.filled.is_some()) {
+            Some(true) | None => {
+                self.queue.push_back(self.pool.pop()?);
+            }
+            Some(false) => {}
+        };
+        self.queue.back_mut()
+    }
+}
+
+struct CopyBidirectional {
+    a: UdpChannel,
+    b: UdpSocket,
+
+    send_queue: CopyBuffer,
+    recv_queue: CopyBuffer,
+}
+
+impl CopyBidirectional {
+    fn poll_send_to(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let CopyBidirectional {
+            a, b, send_queue, ..
+        } = self;
+        let mut registered = false;
+
+        loop {
+            while let Some(packet) = send_queue.borrow_back() {
+                let mut buf = ReadBuf::new(&mut packet.buf);
+                match a.poll_send_to(cx, &mut buf) {
+                    Poll::Ready(addr) => {
+                        packet.filled = Some((buf.filled().len(), addr?));
+                    }
+                    Poll::Pending => {
+                        registered = true;
+                        break;
+                    }
+                }
+            }
+            while let Some(packet) = send_queue.borrow_front() {
+                let result = packet
+                    .borrow()
+                    .map(|(data, addr)| b.poll_send_to(cx, data, addr));
+                match result {
+                    Some(Poll::Ready(r)) => {
+                        r?;
+                        send_queue.pop_front();
+                    }
+                    Some(Poll::Pending) => {
+                        registered = true;
+                        break;
+                    }
+                    None => break,
+                }
+            }
+            if registered {
+                return Poll::Pending;
+            }
+        }
+    }
+    fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let CopyBidirectional {
+            a, b, recv_queue, ..
+        } = self;
+        let mut registered = false;
+
+        loop {
+            while let Some(packet) = recv_queue.borrow_back() {
+                let mut buf = ReadBuf::new(&mut packet.buf);
+                match b.poll_recv_from(cx, &mut buf) {
+                    Poll::Ready(addr) => {
+                        packet.filled = Some((buf.filled().len(), addr?.into()));
+                    }
+                    Poll::Pending => {
+                        registered = true;
+                        break;
+                    }
+                }
+            }
+            while let Some(packet) = recv_queue.borrow_front() {
+                let result = packet.borrow().map(|(data, addr)| {
+                    a.poll_recv_from(
+                        cx,
+                        data,
+                        match addr {
+                            Address::SocketAddr(s) => s,
+                            _ => unreachable!(),
+                        },
+                    )
+                });
+                match result {
+                    Some(Poll::Ready(r)) => {
+                        r?;
+                        recv_queue.pop_front();
+                    }
+                    Some(Poll::Pending) => {
+                        registered = true;
+                        break;
+                    }
+                    None => break,
+                }
+            }
+            if registered {
+                return Poll::Pending;
+            }
+        }
+    }
+}
+
+impl Future for CopyBidirectional {
+    type Output = io::Result<()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let a_to_b = self.poll_send_to(cx)?;
+        let b_to_a = self.poll_recv_from(cx)?;
+
+        match (a_to_b, b_to_a) {
+            (Poll::Pending, Poll::Pending) => Poll::Pending,
+            _ => Poll::Ready(Ok(())),
+        }
+    }
+}
+
+/// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
+#[instrument(err, skip(a, b), fields(ctx = ?_ctx))]
 pub async fn connect_udp(
-    _ctx: &mut Context,
-    udp_channel: UdpChannel,
-    udp: UdpSocket,
-) -> Result<()> {
-    let (tx1, rx1) = udp_channel.split();
-    let (tx2, rx2) = udp.split();
-
-    let mut send = DropAbort::new(tokio::spawn(rx1.forward(tx2.buffer(128))));
-    let mut recv = DropAbort::new(tokio::spawn(rx2.forward(tx1.buffer(128))));
-
-    let result = select! {
-        r = &mut send => r,
-        r = &mut recv => r,
-    };
-    result??;
+    _ctx: &mut rd_interface::Context,
+    a: UdpChannel,
+    b: UdpSocket,
+) -> io::Result<()> {
+    DropAbort::new(tokio::spawn(CopyBidirectional {
+        a,
+        b,
+        send_queue: CopyBuffer::new(16),
+        recv_queue: CopyBuffer::new(16),
+    }))
+    .await??;
 
     Ok(())
 }

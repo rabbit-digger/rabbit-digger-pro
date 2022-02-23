@@ -1,89 +1,85 @@
-use std::{io, net::SocketAddr, pin::Pin, task};
+use std::{
+    io,
+    net::SocketAddr,
+    task::{self, Poll},
+};
 
 use super::UdpPacket;
-use futures::{ready, Sink, SinkExt, Stream};
-use rd_interface::{Address, Bytes, BytesMut, IUdpChannel};
+use futures::{ready, SinkExt};
+use rd_interface::{Address, IUdpChannel};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::PollSender;
 
 pub(super) struct BackChannel {
     to: SocketAddr,
     sender: PollSender<UdpPacket>,
-    receiver: Receiver<(Bytes, SocketAddr)>,
+    receiver: Receiver<(Vec<u8>, SocketAddr)>,
+    flushing: bool,
 }
 
 impl BackChannel {
     pub(super) fn new(
         to: SocketAddr,
         sender: Sender<UdpPacket>,
-        receiver: Receiver<(Bytes, SocketAddr)>,
+        receiver: Receiver<(Vec<u8>, SocketAddr)>,
     ) -> BackChannel {
         BackChannel {
             to,
             sender: PollSender::new(sender),
             receiver,
+            flushing: false,
         }
     }
 }
 
-impl IUdpChannel for BackChannel {}
-
-impl Stream for BackChannel {
-    type Item = io::Result<(Bytes, Address)>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
+impl IUdpChannel for BackChannel {
+    fn poll_send_to(
+        &mut self,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<Option<Self::Item>> {
-        let item = ready!(self.receiver.poll_recv(cx));
-        task::Poll::Ready(item.map(|(buf, addr)| Ok((buf, addr.into()))))
-    }
-}
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<io::Result<Address>> {
+        let (item, addr) = match ready!(self.receiver.poll_recv(cx)) {
+            Some(item) => item,
+            None => {
+                return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "channel closed")))
+            }
+        };
 
-impl Sink<(BytesMut, SocketAddr)> for BackChannel {
-    type Error = io::Error;
+        let to_copy = item.len().min(buf.remaining());
+        buf.initialize_unfilled_to(to_copy)
+            .copy_from_slice(&item[..to_copy]);
+        buf.advance(to_copy);
 
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        let result = ready!(self.sender.poll_ready_unpin(cx));
-        result
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-            .into()
+        Poll::Ready(Ok(addr.into()))
     }
 
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        (data, from): (BytesMut, SocketAddr),
-    ) -> Result<(), Self::Error> {
-        let to = self.to;
-        self.sender
-            .start_send_unpin(UdpPacket {
-                from,
-                to,
-                data: data.freeze(),
-            })
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
+    fn poll_recv_from(
+        &mut self,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        let result = ready!(self.sender.poll_flush_unpin(cx));
-        result
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-            .into()
-    }
+        buf: &[u8],
+        target: &SocketAddr,
+    ) -> Poll<io::Result<usize>> {
+        loop {
+            if self.flushing {
+                ready!(self.sender.poll_flush_unpin(cx))
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                self.flushing = false;
+                return Poll::Ready(Ok(buf.len()));
+            }
 
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        let result = ready!(self.sender.poll_close_unpin(cx));
-        result
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-            .into()
+            ready!(self.sender.poll_ready_unpin(cx))
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let to = self.to;
+
+            self.sender
+                .start_send_unpin(UdpPacket {
+                    from: *target,
+                    to,
+                    data: buf.to_vec(),
+                })
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            self.flushing = true;
+        }
     }
 }

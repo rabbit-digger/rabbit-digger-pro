@@ -6,6 +6,7 @@ use std::{
 };
 
 use futures::ready;
+use rd_interface::TcpStream;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tracing::instrument;
 
@@ -33,16 +34,12 @@ impl CopyBuffer {
         }
     }
 
-    pub(super) fn poll_copy<R, W>(
+    pub(super) fn poll_copy(
         &mut self,
         cx: &mut Context<'_>,
-        mut reader: Pin<&mut R>,
-        mut writer: Pin<&mut W>,
-    ) -> Poll<io::Result<u64>>
-    where
-        R: AsyncRead + ?Sized,
-        W: AsyncWrite + ?Sized,
-    {
+        mut reader: Pin<&mut TcpStream>,
+        mut writer: Pin<&mut TcpStream>,
+    ) -> Poll<io::Result<u64>> {
         loop {
             // If our buffer is empty, then we need to read some data to
             // continue.
@@ -106,23 +103,19 @@ enum TransferState {
     Done(u64),
 }
 
-struct CopyBidirectional<A, B> {
-    a: A,
-    b: B,
+struct CopyBidirectional {
+    a: TcpStream,
+    b: TcpStream,
     a_to_b: TransferState,
     b_to_a: TransferState,
 }
 
-fn transfer_one_direction<A, B>(
+fn transfer_one_direction(
     cx: &mut Context<'_>,
     state: &mut TransferState,
-    r: &mut A,
-    w: &mut B,
-) -> Poll<io::Result<u64>>
-where
-    A: AsyncRead + AsyncWrite + Unpin + ?Sized,
-    B: AsyncRead + AsyncWrite + Unpin + ?Sized,
-{
+    r: &mut TcpStream,
+    w: &mut TcpStream,
+) -> Poll<io::Result<u64>> {
     let mut r = Pin::new(r);
     let mut w = Pin::new(w);
 
@@ -142,11 +135,7 @@ where
     }
 }
 
-impl<A, B> Future for CopyBidirectional<A, B>
-where
-    A: AsyncRead + AsyncWrite + Unpin,
-    B: AsyncRead + AsyncWrite + Unpin,
-{
+impl Future for CopyBidirectional {
     type Output = io::Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -170,15 +159,11 @@ where
 
 /// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
 #[instrument(err, skip(a, b), fields(ctx = ?_ctx))]
-pub async fn connect_tcp<A, B>(
+pub async fn connect_tcp(
     _ctx: &mut rd_interface::Context,
-    a: A,
-    b: B,
-) -> Result<(), std::io::Error>
-where
-    A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    B: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-{
+    a: TcpStream,
+    b: TcpStream,
+) -> Result<(), std::io::Error> {
     DropAbort::new(tokio::spawn(CopyBidirectional {
         a,
         b,

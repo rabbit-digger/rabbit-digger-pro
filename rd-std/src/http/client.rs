@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 use hyper::{client::conn as client_conn, Body, Error, Request};
 
 use rd_interface::{
-    async_trait, impl_async_read_write, Address, INet, ITcpStream, IntoDyn, Net, Result, TcpStream,
-    NOT_IMPLEMENTED,
+    async_trait, impl_async_read_write, Address, Fd, INet, ITcpStream, IntoDyn, Net, Result,
+    TcpStream, NOT_IMPLEMENTED,
 };
 
 fn map_err(e: Error) -> rd_interface::Error {
@@ -18,8 +18,6 @@ pub struct HttpClient {
 
 pub struct HttpTcpStream(TcpStream);
 
-impl_async_read_write!(HttpTcpStream, 0);
-
 #[async_trait]
 impl ITcpStream for HttpTcpStream {
     async fn peer_addr(&self) -> Result<SocketAddr> {
@@ -29,6 +27,15 @@ impl ITcpStream for HttpTcpStream {
     async fn local_addr(&self) -> Result<SocketAddr> {
         Err(NOT_IMPLEMENTED)
     }
+
+    fn read_passthrough(&self) -> Option<Fd> {
+        self.0.read_passthrough()
+    }
+    fn write_passthrough(&self) -> Option<Fd> {
+        self.0.write_passthrough()
+    }
+
+    impl_async_read_write!(0);
 }
 
 #[async_trait]

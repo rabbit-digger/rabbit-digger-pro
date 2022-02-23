@@ -1,21 +1,26 @@
 // UDP: https://github.com/shadowsocks/shadowsocks-rust/blob/0433b3ec09bcaa26f7460a50287b56c67b687a34/crates/shadowsocks-service/src/local/redir/udprelay/sys/unix/linux.rs#L56
 
-use std::{io, net::SocketAddr, pin::Pin, task, time::Duration};
+use std::{
+    io,
+    net::SocketAddr,
+    task::{self, Poll},
+    time::Duration,
+};
 
 use super::socket::{create_tcp_listener, TransparentUdp};
 use crate::{
     builtin::local::CompatTcp,
     util::{
         connect_tcp,
-        forward_udp::{forward_udp, RawUdpSource, UdpPacket},
+        forward_udp::{forward_udp, RawUdpSource, UdpEndpoint},
         is_reserved, LruCache,
     },
 };
-use futures::{ready, Sink, Stream};
+use futures::ready;
 use rd_derive::rd_config;
 use rd_interface::{
-    async_trait, config::NetRef, constant::UDP_BUFFER_SIZE, error::ErrorContext, registry::Builder,
-    schemars, Address, Bytes, Context, IServer, IntoAddress, IntoDyn, Net, Result, Server,
+    async_trait, config::NetRef, error::ErrorContext, registry::Builder, schemars, Address,
+    Context, IServer, IntoAddress, IntoDyn, Net, Result, Server,
 };
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -107,139 +112,80 @@ impl Builder<Server> for TProxyServer {
     }
 }
 
-#[derive(Debug)]
-enum SendState {
-    Idle,
-    Sending(UdpPacket),
-}
-
 struct UdpSource {
-    recv_buf: Box<[u8]>,
     tudp: TransparentUdp,
 
     mark: Option<u32>,
     cache: LruCache<SocketAddr, TransparentUdp>,
-    send_state: SendState,
 }
 
 impl UdpSource {
     fn new(tudp: TransparentUdp, mark: Option<u32>) -> Self {
         UdpSource {
-            recv_buf: Box::new([0; UDP_BUFFER_SIZE]),
             tudp,
             mark,
             cache: LruCache::with_expiry_duration_and_capacity(Duration::from_secs(30), 128),
-            send_state: SendState::Idle,
         }
     }
-    fn poll_send_to(&mut self, cx: &mut task::Context<'_>) -> task::Poll<io::Result<()>> {
-        let UdpSource {
-            cache, send_state, ..
-        } = self;
+}
 
-        match send_state {
-            SendState::Idle => {}
-            SendState::Sending(UdpPacket { from, to, data }) => {
-                let udp = match cache.get(&from) {
-                    Some(udp) => udp,
-                    None => {
-                        let result = TransparentUdp::bind_any(*from, self.mark);
-                        let udp = match result {
-                            Ok(udp) => udp,
-                            Err(e) => {
-                                tracing::error!(
-                                    "Failed to bind any addr: {}. Reason: {:?}",
-                                    from,
-                                    e
-                                );
+impl RawUdpSource for UdpSource {
+    fn poll_recv(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut rd_interface::ReadBuf,
+    ) -> Poll<io::Result<UdpEndpoint>> {
+        let UdpSource { tudp, cache, .. } = self;
+        cache.poll_clear_expired(cx);
 
-                                *send_state = SendState::Idle;
+        let (size, from, to) = ready!(tudp.poll_recv(cx, buf.initialize_unfilled()))?;
+        buf.advance(size);
 
-                                return Ok(()).into();
-                            }
-                        };
-                        cache.insert(*from, udp);
-                        cache
-                            .get(&from)
-                            .expect("impossible: failed to get by from_addr")
+        Poll::Ready(Ok(UdpEndpoint { from, to }))
+    }
+
+    fn poll_send(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &[u8],
+        endpoint: &UdpEndpoint,
+    ) -> Poll<io::Result<()>> {
+        let UdpSource { cache, .. } = self;
+        let UdpEndpoint { from, to } = endpoint;
+
+        let udp = match cache.get(&from) {
+            Some(udp) => udp,
+            None => {
+                let result = TransparentUdp::bind_any(*from, self.mark);
+                let udp = match result {
+                    Ok(udp) => udp,
+                    Err(e) => {
+                        tracing::error!("Failed to bind any addr: {}. Reason: {:?}", from, e);
+
+                        return Poll::Ready(Ok(()));
                     }
                 };
-
-                if let Err(e) = ready!(udp.poll_send_to(cx, data, *to)) {
-                    tracing::error!(
-                        "Failed to send from {} to addr: {}. Reason: {:?}",
-                        from,
-                        to,
-                        e
-                    );
-                }
-
-                // Don't cache reserved address
-                if is_reserved(from.ip()) {
-                    cache.remove(&from);
-                }
+                cache.insert(*from, udp);
+                cache
+                    .get(&from)
+                    .expect("impossible: failed to get by from_addr")
             }
+        };
+
+        if let Err(e) = ready!(udp.poll_send_to(cx, buf, *to)) {
+            tracing::error!(
+                "Failed to send from {} to addr: {}. Reason: {:?}",
+                from,
+                to,
+                e
+            );
         }
 
-        *send_state = SendState::Idle;
+        // Don't cache reserved address
+        if is_reserved(from.ip()) {
+            cache.remove(&from);
+        }
 
-        Ok(()).into()
+        Poll::Ready(Ok(()))
     }
 }
-
-impl Stream for UdpSource {
-    type Item = io::Result<UdpPacket>;
-
-    fn poll_next(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Option<Self::Item>> {
-        let UdpSource {
-            recv_buf,
-            tudp,
-            cache,
-            ..
-        } = self.get_mut();
-        cache.poll_clear_expired(cx);
-        let (size, from, to) = ready!(tudp.poll_recv(cx, &mut recv_buf[..]))?;
-
-        Some(Ok(UdpPacket::new(
-            Bytes::copy_from_slice(&recv_buf[..size]),
-            from,
-            to,
-        )))
-        .into()
-    }
-}
-
-impl Sink<UdpPacket> for UdpSource {
-    type Error = io::Error;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.poll_send_to(cx)
-    }
-
-    fn start_send(mut self: Pin<&mut Self>, item: UdpPacket) -> Result<(), Self::Error> {
-        self.send_state = SendState::Sending(item);
-        Ok(())
-    }
-
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.poll_ready(cx)
-    }
-
-    fn poll_close(
-        self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.poll_flush(cx)
-    }
-}
-
-impl RawUdpSource for UdpSource {}
