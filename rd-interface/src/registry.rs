@@ -153,3 +153,14 @@ impl<ItemType> Resolver<ItemType> {
         &self.schema
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_debug() {
+        let reg = Registry::default();
+        assert_eq!(format!("{:?}", reg), "Registry { net: [], server: [] }");
+    }
+}
