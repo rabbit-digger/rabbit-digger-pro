@@ -5,7 +5,7 @@ use smoltcp::wire::IpAddress;
 impl IpCidrMatcher {
     fn test(&self, address: impl Into<IpAddress>) -> bool {
         let address: IpAddress = address.into();
-        self.ipcidr.0.contains_addr(&address)
+        self.ipcidr.iter().any(|i| i.0.contains_addr(&address))
     }
 }
 
@@ -22,7 +22,7 @@ impl Matcher for IpCidrMatcher {
 impl SrcIpCidrMatcher {
     fn test(&self, address: impl Into<IpAddress>) -> bool {
         let address: IpAddress = address.into();
-        self.ipcidr.0.contains_addr(&address)
+        self.ipcidr.iter().any(|i| i.0.contains_addr(&address))
     }
 }
 
@@ -46,7 +46,10 @@ mod tests {
         use smoltcp::wire::{IpAddress, IpCidr};
 
         let matcher = IpCidrMatcher {
-            ipcidr: config::IpCidr(IpCidr::new(IpAddress::v4(192, 168, 1, 1), 24)),
+            ipcidr: vec![config::IpCidr(IpCidr::new(
+                IpAddress::v4(192, 168, 1, 1),
+                24,
+            ))],
         };
 
         assert_eq!(

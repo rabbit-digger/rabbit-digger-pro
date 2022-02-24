@@ -20,22 +20,20 @@ impl TryFrom<String> for Method {
 impl DomainMatcher {
     fn test(&self, domain: &str) -> bool {
         match self.method {
-            Method::Keyword => domain.contains(&self.domain),
-            Method::Match => domain == self.domain,
-            Method::Suffix => {
-                if domain.starts_with("+.") {
-                    self.domain
-                        .strip_prefix('+')
-                        .map(|d| domain.ends_with(d))
+            Method::Keyword => self.domain.iter().any(|d| domain.contains(d)),
+            Method::Match => self.domain.iter().any(|d| d == domain),
+            Method::Suffix => self.domain.iter().any(|d| {
+                if d.starts_with("+.") {
+                    d.strip_prefix('+')
+                        .map(|i| domain.ends_with(i))
                         .unwrap_or(false)
-                        || domain
-                            .strip_prefix("+.")
+                        || d.strip_prefix("+.")
                             .map(|d| domain.ends_with(d))
                             .unwrap_or(false)
                 } else {
-                    domain.ends_with(&self.domain)
+                    domain.ends_with(d)
                 }
-            }
+            }),
         }
     }
 }
@@ -61,7 +59,7 @@ mod tests {
     async fn test_domain_matcher() {
         // test keyword
         let matcher = DomainMatcher {
-            domain: "example".to_string(),
+            domain: vec!["example".to_string()],
             method: Method::Keyword,
         };
         let mut match_context = MatchContext::from_context_address(
@@ -80,7 +78,7 @@ mod tests {
 
         // test match
         let matcher = DomainMatcher {
-            domain: "example.com".to_string(),
+            domain: vec!["example.com".to_string()],
             method: Method::Match,
         };
         let mut match_context = MatchContext::from_context_address(
@@ -99,7 +97,7 @@ mod tests {
 
         // test suffix
         let matcher = DomainMatcher {
-            domain: ".com".to_string(),
+            domain: vec![".com".to_string()],
             method: Method::Suffix,
         };
         let mut match_context = MatchContext::from_context_address(

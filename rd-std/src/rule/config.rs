@@ -10,7 +10,7 @@ use rd_interface::{
         JsonSchema,
     },
 };
-use serde_with::rust::display_fromstr;
+use serde_with::{serde_as, DeserializeFromStr, OneOrMany, SerializeDisplay};
 use smoltcp::wire;
 
 #[rd_config]
@@ -22,14 +22,16 @@ pub enum DomainMatcherMethod {
     Match,
 }
 
+#[serde_as]
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct DomainMatcher {
     pub method: DomainMatcherMethod,
-    pub domain: String,
+    #[serde_as(deserialize_as = "OneOrMany<_>")]
+    pub domain: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, SerializeDisplay, DeserializeFromStr)]
 pub struct IpCidr(pub wire::IpCidr);
 
 impl fmt::Display for IpCidr {
@@ -59,24 +61,20 @@ impl FromStr for IpCidr {
 
 impl_empty_config! { IpCidr }
 
+#[serde_as]
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct IpCidrMatcher {
-    #[serde(
-        serialize_with = "display_fromstr::serialize",
-        deserialize_with = "display_fromstr::deserialize"
-    )]
-    pub ipcidr: IpCidr,
+    #[serde_as(deserialize_as = "OneOrMany<_>")]
+    pub ipcidr: Vec<IpCidr>,
 }
 
+#[serde_as]
 #[rd_config]
 #[derive(Debug, Clone)]
 pub struct SrcIpCidrMatcher {
-    #[serde(
-        serialize_with = "display_fromstr::serialize",
-        deserialize_with = "display_fromstr::deserialize"
-    )]
-    pub ipcidr: IpCidr,
+    #[serde_as(deserialize_as = "OneOrMany<_>")]
+    pub ipcidr: Vec<IpCidr>,
 }
 
 #[rd_config]
@@ -110,6 +108,7 @@ pub struct AnyMatcher {}
 pub enum Matcher {
     Domain(DomainMatcher),
     IpCidr(IpCidrMatcher),
+    #[serde(rename = "src_ipcidr")]
     SrcIpCidr(SrcIpCidrMatcher),
     GeoIp(GeoIpMatcher),
     Any(AnyMatcher),
