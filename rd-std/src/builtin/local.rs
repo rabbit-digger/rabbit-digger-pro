@@ -11,8 +11,8 @@ use std::{
 use futures::{ready, Future, FutureExt};
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, impl_async_read_write, prelude::*, registry::Builder, Address, Fd, INet, IntoDyn,
-    Net, ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, impl_async_read_write, prelude::*, registry::Builder, Address, INet, IntoDyn, Net,
+    ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
@@ -184,11 +184,11 @@ impl rd_interface::ITcpStream for CompatTcp {
         self.0.local_addr().map_err(Into::into)
     }
     #[cfg(unix)]
-    fn read_passthrough(&self) -> Option<Fd> {
+    fn read_passthrough(&self) -> Option<rd_interface::Fd> {
         Some(self.0.as_raw_fd().into())
     }
     #[cfg(unix)]
-    fn write_passthrough(&self) -> Option<Fd> {
+    fn write_passthrough(&self) -> Option<rd_interface::Fd> {
         Some(self.0.as_raw_fd().into())
     }
 
