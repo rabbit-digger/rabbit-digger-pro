@@ -10,7 +10,7 @@ use crate::{
 };
 pub use schemars::JsonSchema;
 use schemars::{schema::RootSchema, schema_for};
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 
 pub type NetGetter<'a> = &'a dyn Fn(&str) -> Option<Net>;
@@ -53,7 +53,7 @@ impl Registry {
 
 pub trait Builder<ItemType> {
     const NAME: &'static str;
-    type Config: DeserializeOwned + JsonSchema + Config + 'static;
+    type Config: Serialize + DeserializeOwned + JsonSchema + Config + 'static;
     type Item: IntoDyn<ItemType> + Sized + 'static;
 
     fn build(config: Self::Config) -> Result<Self::Item>;
@@ -61,6 +61,12 @@ pub trait Builder<ItemType> {
 
 pub struct Resolver<ItemType> {
     parse_config: fn(cfg: Value) -> Result<Box<dyn Config>>,
+    unfold_net_ref: fn(
+        cfg: &mut Value,
+        prefix: &[&str],
+        delimiter: &str,
+        add_net: &mut HashMap<Vec<String>, Value>,
+    ) -> Result<()>,
     build: fn(getter: NetGetter, cfg: Value) -> Result<ItemType>,
     schema: RootSchema,
 }
@@ -76,6 +82,51 @@ impl<ItemType> Resolver<ItemType> {
                     serde_json::from_value::<N::Config>(cfg).map_err(Into::<crate::Error>::into)?;
                 Ok(Box::new(cfg))
             },
+            unfold_net_ref: |cfg_value, prefix, delimiter, to_add| {
+                let mut cfg = serde_json::from_value::<N::Config>(cfg_value.clone())
+                    .map_err(Into::<crate::Error>::into)?;
+                struct ResolveNetRefVisitor<'a> {
+                    prefix: &'a [&'a str],
+                    delimiter: &'a str,
+                    to_add: &'a mut HashMap<Vec<String>, Value>,
+                }
+
+                impl<'a> Visitor for ResolveNetRefVisitor<'a> {
+                    fn visit_net_ref(
+                        &mut self,
+                        ctx: &mut VisitorContext,
+                        net_ref: &mut NetRef,
+                    ) -> Result<()> {
+                        match net_ref.represent() {
+                            Value::String(_) => {}
+                            opt => {
+                                let opt = opt.clone();
+                                let mut key = self
+                                    .prefix
+                                    .iter()
+                                    .map(|s| s.to_string())
+                                    .collect::<Vec<_>>();
+                                key.extend(ctx.path().to_owned());
+                                *net_ref.represent_mut() = Value::String(key.join(self.delimiter));
+                                self.to_add.insert(key, opt);
+                            }
+                        }
+                        Ok(())
+                    }
+                }
+
+                cfg.visit(
+                    &mut VisitorContext::new(),
+                    &mut ResolveNetRefVisitor {
+                        prefix,
+                        delimiter,
+                        to_add,
+                    },
+                )?;
+                *cfg_value = serde_json::to_value(cfg)?;
+
+                Ok(())
+            },
             build: |getter, cfg| {
                 serde_json::from_value(cfg)
                     .map_err(Into::<crate::Error>::into)
@@ -89,36 +140,14 @@ impl<ItemType> Resolver<ItemType> {
             schema,
         }
     }
-    pub fn collect_net_ref(&self, prefix: &str, cfg: Value) -> Result<HashMap<Vec<String>, Value>> {
-        let mut to_add = HashMap::new();
-
-        let mut cfg = (self.parse_config)(cfg)?;
-        struct ResolveNetRefVisitor<'a>(&'a str, &'a mut HashMap<Vec<String>, Value>);
-
-        impl<'a> Visitor for ResolveNetRefVisitor<'a> {
-            fn visit_net_ref(
-                &mut self,
-                ctx: &mut VisitorContext,
-                net_ref: &mut NetRef,
-            ) -> Result<()> {
-                match net_ref.represent() {
-                    Value::String(_) => {}
-                    opt => {
-                        let mut key = vec![self.0.to_string()];
-                        key.extend(ctx.path().to_owned());
-                        self.1.insert(key, opt.clone());
-                    }
-                }
-                Ok(())
-            }
-        }
-
-        cfg.visit(
-            &mut VisitorContext::new(),
-            &mut ResolveNetRefVisitor(prefix, &mut to_add),
-        )?;
-
-        Ok(to_add)
+    pub fn unfold_net_ref(
+        &self,
+        cfg: &mut Value,
+        prefix: &[&str],
+        delimiter: &str,
+        add_net: &mut HashMap<Vec<String>, Value>,
+    ) -> Result<()> {
+        (self.unfold_net_ref)(cfg, prefix, delimiter, add_net)
     }
     pub fn build(&self, getter: NetGetter, cfg: Value) -> Result<ItemType> {
         (self.build)(getter, cfg)
