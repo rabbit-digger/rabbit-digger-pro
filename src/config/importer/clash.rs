@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, path::PathBuf, str::FromStr};
 
 use anyhow::{anyhow, Result};
+use futures::{stream, StreamExt};
 use rabbit_digger::{
     config::{Config, Net},
     rd_std::rule::config::{
@@ -215,11 +216,10 @@ impl Clash {
 
     async fn rule_to_rule(
         &self,
-        rules: &mut Vec<rule_config::RuleItem>,
-        r: &str,
+        r: String,
         cache: &dyn Storage,
         rule_providers: &BTreeMap<String, RuleProvider>,
-    ) -> Result<()> {
+    ) -> Result<rule_config::RuleItem> {
         let bad_rule = || anyhow!("Bad rule.");
         let mut ps = r.split(',');
         let mut ps_next = || ps.next().ok_or_else(bad_rule);
@@ -236,7 +236,10 @@ impl Clash {
                 };
                 rule_config::RuleItem {
                     target,
-                    matcher: Matcher::Domain(DomainMatcher { method, domain }),
+                    matcher: Matcher::Domain(DomainMatcher {
+                        method,
+                        domain: vec![domain],
+                    }),
                 }
             }
             "IP-CIDR" | "IP-CIDR6" => {
@@ -245,7 +248,7 @@ impl Clash {
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::IpCidr(IpCidrMatcher {
-                        ipcidr: IpCidr::from_str(&ip_cidr)?,
+                        ipcidr: vec![IpCidr::from_str(&ip_cidr)?],
                     }),
                 }
             }
@@ -255,7 +258,7 @@ impl Clash {
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::SrcIpCidr(SrcIpCidrMatcher {
-                        ipcidr: IpCidr::from_str(&ip_cidr)?,
+                        ipcidr: vec![IpCidr::from_str(&ip_cidr)?],
                     }),
                 }
             }
@@ -289,46 +292,31 @@ impl Clash {
                 };
 
                 let RuleSet { payload } = serde_yaml::from_str(&source.get_content(cache).await?)?;
-                let items: Vec<rule_config::RuleItem>;
                 match rule_provider.behavior.as_ref() {
-                    "domain" => {
-                        items = payload
-                            .into_iter()
-                            .map(|i| rule_config::RuleItem {
-                                target: target.clone(),
-                                matcher: Matcher::Domain(DomainMatcher {
-                                    method: DomainMatcherMethod::Suffix,
-                                    domain: i,
-                                }),
-                            })
-                            .collect();
-                    }
-                    "ipcidr" => {
-                        items = payload
-                            .into_iter()
-                            .map(|i| IpCidr::from_str(&i))
-                            .map(|r| {
-                                r.map(|ipcidr| rule_config::RuleItem {
-                                    target: target.clone(),
-                                    matcher: Matcher::IpCidr(IpCidrMatcher { ipcidr }),
-                                })
-                            })
-                            .collect::<rd_interface::Result<_>>()?;
-                    }
+                    "domain" => rule_config::RuleItem {
+                        target: target.clone(),
+                        matcher: Matcher::Domain(DomainMatcher {
+                            method: DomainMatcherMethod::Suffix,
+                            domain: payload,
+                        }),
+                    },
+                    "ipcidr" => rule_config::RuleItem {
+                        target: target.clone(),
+                        matcher: Matcher::IpCidr(IpCidrMatcher {
+                            ipcidr: payload
+                                .into_iter()
+                                .map(|i| IpCidr::from_str(&i))
+                                .collect::<rd_interface::Result<_>>()?,
+                        }),
+                    },
                     // TODO: support classical behavior
                     _ => return Err(bad_rule()),
-                };
-
-                rules.extend(items);
-
-                return Ok(());
+                }
             }
             _ => return Err(anyhow!("Rule prefix {} is not supported", rule_type)),
         };
 
-        rules.extend([item]);
-
-        Ok(())
+        Ok(item)
     }
 
     fn proxy_group_name(&self, pg: impl AsRef<str>) -> String {
@@ -396,16 +384,13 @@ impl Importer for Clash {
         }
 
         if let Some(rule_name) = &self.rule_name {
-            let mut rule = Vec::new();
-            for r in clash_config.rules {
-                match self
-                    .rule_to_rule(&mut rule, &r, cache, &clash_config.rule_providers)
-                    .await
-                {
-                    Ok(_) => {}
-                    Err(e) => tracing::warn!("rule '{}' not translated: {:?}", r, e),
-                }
-            }
+            let rule = stream::iter(clash_config.rules)
+                .map(|r| self.rule_to_rule(r, cache, &clash_config.rule_providers))
+                .buffered(10)
+                .flat_map(|r| stream::iter(r))
+                .collect::<Vec<_>>()
+                .await;
+
             config
                 .net
                 .insert(rule_name.clone(), Net::new("rule", json!({ "rule": rule })));

@@ -1,6 +1,6 @@
 pub use self::{importer::get_importer_registry, manager::ConfigManager, select_map::SelectMap};
-use anyhow::{anyhow, Result};
-use futures::StreamExt;
+use anyhow::{anyhow, Context, Result};
+use futures::{Future, StreamExt};
 use notify_stream::{notify::RecursiveMode, notify_stream};
 use rabbit_digger::Config;
 use rd_interface::{
@@ -49,6 +49,38 @@ pub enum ImportSource {
     Storage(ImportStorage),
 }
 
+async fn fetch(url: &str) -> Result<String> {
+    let content = reqwest::get(url)
+        .await
+        .context("reqwest::get")?
+        .text()
+        .await
+        .context("text")?;
+
+    Ok(content)
+}
+
+async fn retry<F, Fut, E, R>(times: usize, f: F) -> Result<R, E>
+where
+    Fut: Future<Output = Result<R, E>>,
+    F: Fn() -> Fut,
+    E: std::fmt::Debug,
+{
+    let mut last_err = match f().await {
+        Ok(r) => return Ok(r),
+        Err(e) => e,
+    };
+    for i in 1..times {
+        tracing::debug!("retry {}: {:?}", i, last_err);
+        last_err = match f().await {
+            Ok(r) => return Ok(r),
+            Err(e) => e,
+        }
+    }
+
+    Err(last_err)
+}
+
 impl ImportSource {
     pub fn new_path(path: PathBuf) -> Self {
         ImportSource::Path(path)
@@ -83,7 +115,7 @@ impl ImportSource {
             ImportSource::Path(path) => read_to_string(path).await?,
             ImportSource::Poll(ImportUrl { url, .. }) => {
                 tracing::info!("Fetching {}", url);
-                let content = reqwest::get(url).await?.text().await?;
+                let content = retry(3, || fetch(&url)).await?;
                 tracing::info!("Done");
                 cache.set(&key, &content).await?;
                 content
