@@ -133,7 +133,9 @@ mod tests {
         assert_eq!(&buf, b"1234");
 
         let mut tcp = tcp.into_dyn();
+        #[cfg(target_os = "linux")]
         assert!(tcp.read_passthrough().is_none());
+        #[cfg(target_os = "linux")]
         assert!(tcp.write_passthrough().is_some());
 
         let mut buf = [0u8; 8];
@@ -166,7 +168,9 @@ mod tests {
         tcp.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, b"5678");
 
+        #[cfg(target_os = "linux")]
         assert!(tcp.read_passthrough().is_some());
+        #[cfg(target_os = "linux")]
         assert!(tcp.write_passthrough().is_some());
     }
 }
