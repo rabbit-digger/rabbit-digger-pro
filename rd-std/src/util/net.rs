@@ -35,3 +35,43 @@ impl INet for CombineNet {
         self.lookup_host.lookup_host(addr).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::IntoDyn;
+    use tokio::task::yield_now;
+
+    use crate::tests::{
+        assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_combine_net() {
+        let tcp_connect = TestNet::new().into_dyn();
+        let tcp_bind = TestNet::new().into_dyn();
+        let udp_bind = TestNet::new().into_dyn();
+        let lookup_host = TestNet::new().into_dyn();
+        let tcp_bind2 = tcp_bind.clone();
+        spawn_echo_server(&tcp_connect, "127.0.0.1:12345").await;
+        spawn_echo_server_udp(&udp_bind, "127.0.0.1:12346").await;
+
+        yield_now().await;
+
+        let net = CombineNet {
+            tcp_connect,
+            tcp_bind,
+            udp_bind,
+            lookup_host,
+        }
+        .into_dyn();
+
+        assert_echo(&net, "127.0.0.1:12345").await;
+        assert_echo_udp(&net, "127.0.0.1:12346").await;
+
+        spawn_echo_server(&net, "127.0.0.1:12346").await;
+        yield_now().await;
+        assert_echo(&tcp_bind2, "127.0.0.1:12346").await;
+    }
+}
