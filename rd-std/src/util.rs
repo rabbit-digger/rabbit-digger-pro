@@ -63,3 +63,52 @@ pub fn is_reserved(addr: IpAddr) -> bool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_mapped_socket_addr() {
+        assert_eq!(
+            resolve_mapped_socket_addr(SocketAddr::from(([127, 0, 0, 1], 1))),
+            SocketAddr::from(([127, 0, 0, 1], 1))
+        );
+        assert_eq!(
+            resolve_mapped_socket_addr(SocketAddr::from((
+                [0, 0, 0, 0, 0, 0xffff, 0x1122, 0x3344],
+                1
+            ))),
+            SocketAddr::from(([0x11, 0x22, 0x33, 0x44], 1))
+        );
+        assert_eq!(
+            resolve_mapped_socket_addr(SocketAddr::from((
+                [0, 0, 0, 0, 0, 0xfffc, 0x1122, 0x3344],
+                1
+            ))),
+            SocketAddr::from(SocketAddr::from((
+                [0, 0, 0, 0, 0, 0xfffc, 0x1122, 0x3344],
+                1
+            )))
+        );
+    }
+
+    #[test]
+    fn test_is_reserved() {
+        assert!(is_reserved(IpAddr::from([0, 0, 0, 0])));
+        assert!(is_reserved(IpAddr::from([0, 0, 0, 255])));
+        assert!(!is_reserved(IpAddr::from([1, 0, 0, 0])));
+        assert!(is_reserved(IpAddr::from([127, 0, 0, 1])));
+        assert!(is_reserved(IpAddr::from([10, 0, 0, 1])));
+        assert!(is_reserved(IpAddr::from([169, 254, 0, 1])));
+        assert!(is_reserved(IpAddr::from([192, 168, 0, 1])));
+        assert!(is_reserved(IpAddr::from([172, 16, 0, 1])));
+        assert!(is_reserved(IpAddr::from([224, 0, 0, 1])));
+        assert!(is_reserved(IpAddr::from([240, 0, 0, 1])));
+
+        // ::1
+        assert!(is_reserved(IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1])));
+        assert!(is_reserved(IpAddr::from([0xfc00, 0, 0, 0, 0, 0, 0, 1])));
+        assert!(is_reserved(IpAddr::from([0xfc80, 0, 0, 0, 0, 0, 0, 1])));
+    }
+}

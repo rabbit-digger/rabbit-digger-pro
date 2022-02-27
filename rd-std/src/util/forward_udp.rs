@@ -22,7 +22,7 @@ pub struct UdpEndpoint {
     pub to: SocketAddr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct UdpPacket {
     pub from: SocketAddr,
     pub to: SocketAddr,
@@ -160,4 +160,101 @@ where
     S: RawUdpSource,
 {
     ForwardUdp::new(s, net, channel_size.unwrap_or(128)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::{spawn_echo_server_udp, TestNet};
+
+    use super::*;
+    use rd_interface::IntoDyn;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn test_forward_udp() {
+        let net = TestNet::new().into_dyn();
+        let (source, tx, mut rx) = TestSource::new();
+
+        spawn_echo_server_udp(&net, "127.0.0.1:12345").await;
+        tokio::spawn(forward_udp(source, net.clone(), Some(128)));
+
+        // send a packet with error, don't expect it to be received
+        tx.send(UdpPacket {
+            from: "127.0.0.1:54321".parse().unwrap(),
+            to: "127.0.0.1:11111".parse().unwrap(),
+            data: b"hello".to_vec(),
+        })
+        .unwrap();
+        tx.send(UdpPacket {
+            from: "127.0.0.1:54321".parse().unwrap(),
+            to: "127.0.0.1:12345".parse().unwrap(),
+            data: b"hello".to_vec(),
+        })
+        .unwrap();
+
+        let packet = rx.recv().await.unwrap();
+        assert_eq!(
+            packet,
+            UdpPacket {
+                from: "127.0.0.1:12345".parse().unwrap(),
+                to: "127.0.0.1:54321".parse().unwrap(),
+                data: b"hello".to_vec(),
+            }
+        );
+    }
+
+    struct TestSource {
+        tx: mpsc::UnboundedSender<UdpPacket>,
+        rx: mpsc::UnboundedReceiver<UdpPacket>,
+    }
+
+    impl TestSource {
+        fn new() -> (
+            TestSource,
+            mpsc::UnboundedSender<UdpPacket>,
+            mpsc::UnboundedReceiver<UdpPacket>,
+        ) {
+            let (tx, rx2) = mpsc::unbounded_channel();
+            let (tx2, rx) = mpsc::unbounded_channel();
+            (TestSource { tx, rx }, tx2, rx2)
+        }
+    }
+
+    impl RawUdpSource for TestSource {
+        fn poll_recv(
+            &mut self,
+            cx: &mut task::Context<'_>,
+            buf: &mut ReadBuf,
+        ) -> Poll<io::Result<UdpEndpoint>> {
+            let UdpPacket { from, to, data } = match ready!(self.rx.poll_recv(cx)) {
+                Some(r) => r,
+                None => {
+                    return Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "test source closed",
+                    )))
+                }
+            };
+            let to_copy = data.len().min(buf.remaining());
+            buf.initialize_unfilled_to(to_copy)
+                .copy_from_slice(&data[..to_copy]);
+            buf.advance(to_copy);
+            Poll::Ready(Ok(UdpEndpoint { from, to }))
+        }
+
+        fn poll_send(
+            &mut self,
+            _cx: &mut task::Context<'_>,
+            buf: &[u8],
+            endpoint: &UdpEndpoint,
+        ) -> Poll<io::Result<()>> {
+            let packet = UdpPacket {
+                from: endpoint.from,
+                to: endpoint.to,
+                data: buf.to_vec(),
+            };
+            self.tx.send(packet).unwrap();
+            Poll::Ready(Ok(()))
+        }
+    }
 }

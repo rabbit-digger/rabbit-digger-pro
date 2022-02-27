@@ -63,3 +63,82 @@ where
             .collect(),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_topological_sort() {
+        let mut map = HashMap::new();
+        map.insert("a", 1);
+        map.insert("b", 2);
+        map.insert("c", 3);
+        map.insert("d", 4);
+
+        let res = topological_sort(
+            RootType::All,
+            map.into_iter(),
+            |k: &&str, _: &u8| -> Result<Vec<_>, ()> {
+                match k.as_ref() {
+                    "a" => Ok(vec!["b", "c"]),
+                    "b" => Ok(vec!["c"]),
+                    "c" => Ok(vec!["d"]),
+                    "d" => Ok(vec![]),
+                    _ => unreachable!(),
+                }
+            },
+        );
+
+        assert_eq!(
+            res.unwrap().unwrap(),
+            vec![("d", 4), ("c", 3), ("b", 2), ("a", 1)]
+        );
+    }
+
+    #[test]
+    fn test_topological_sort_conflict() {
+        let mut map = HashMap::new();
+        map.insert("a", 1);
+        map.insert("b", 2);
+
+        let res = topological_sort(
+            RootType::All,
+            map.into_iter(),
+            |k: &&str, _: &u8| -> Result<Vec<_>, ()> {
+                match k.as_ref() {
+                    "a" => Ok(vec!["b"]),
+                    "b" => Ok(vec!["a"]),
+                    _ => unreachable!(),
+                }
+            },
+        );
+
+        assert!(res.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_topological_sort_root() {
+        let mut map = HashMap::new();
+        map.insert("a", 1);
+        map.insert("b", 2);
+        map.insert("c", 3);
+        map.insert("d", 4);
+
+        let res = topological_sort(
+            RootType::Key(vec!["b"]),
+            map.into_iter(),
+            |k: &&str, _: &u8| -> Result<Vec<_>, ()> {
+                match k.as_ref() {
+                    "a" => Ok(vec![]),
+                    "b" => Ok(vec!["a"]),
+                    "c" => Ok(vec![]),
+                    "d" => Ok(vec![]),
+                    _ => unreachable!(),
+                }
+            },
+        );
+
+        assert_eq!(res.unwrap().unwrap(), vec![("a", 1), ("b", 2)]);
+    }
+}

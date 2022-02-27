@@ -69,3 +69,67 @@ impl<Key, Value> DerefMut for LruCache<Key, Value> {
         &mut self.cache
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use futures::future::poll_fn;
+    use rd_interface::Arc;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_lru_cache() {
+        let mut cache = LruCache::with_expiry_duration(Duration::from_millis(100));
+        cache.insert("key1", "value1");
+        cache.insert("key2", "value2");
+
+        assert_eq!(cache.get("key1"), Some(&"value1"));
+        assert_eq!(cache.get("key2"), Some(&"value2"));
+
+        sleep(Duration::from_millis(200)).await;
+
+        assert_eq!(cache.get("key1"), None);
+        assert_eq!(cache.get("key2"), None);
+    }
+
+    #[tokio::test]
+    async fn test_lru_cache_with_capacity() {
+        let mut cache = LruCache::with_expiry_duration_and_capacity(Duration::from_millis(100), 2);
+        cache.insert("key1", "value1");
+        cache.insert("key2", "value2");
+        cache.insert("key3", "value3");
+
+        assert_eq!(cache.get("key1"), None);
+        assert_eq!(cache.get("key2"), Some(&"value2"));
+        assert_eq!(cache.get("key3"), Some(&"value3"));
+    }
+
+    #[tokio::test]
+    async fn test_lru_cache_with_expiry_duration() {
+        let mut cache = LruCache::with_expiry_duration_and_capacity(Duration::from_millis(100), 2);
+
+        struct Value(Arc<AtomicBool>);
+        impl Drop for Value {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Relaxed);
+            }
+        }
+
+        let dropped = Arc::new(AtomicBool::new(false));
+
+        cache.insert("key1", Value(dropped.clone()));
+
+        assert_eq!(dropped.load(Ordering::Relaxed), false);
+
+        sleep(Duration::from_millis(200)).await;
+        poll_fn(|cx| {
+            cache.poll_clear_expired(cx);
+            Poll::Ready(())
+        })
+        .await;
+
+        assert_eq!(dropped.load(Ordering::Relaxed), true);
+    }
+}

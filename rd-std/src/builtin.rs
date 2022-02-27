@@ -22,3 +22,14 @@ pub fn init(registry: &mut Registry) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init() {
+        let mut registry = Registry::new();
+        init(&mut registry).unwrap();
+    }
+}

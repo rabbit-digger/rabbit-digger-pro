@@ -55,6 +55,13 @@ mod tests {
 
     use super::*;
 
+    async fn match_addr(address: &str, matcher: &DomainMatcher) -> bool {
+        let mut match_context =
+            MatchContext::from_context_address(&Context::new(), &address.into_address().unwrap())
+                .unwrap();
+        matcher.match_rule(&mut match_context).await
+    }
+
     #[tokio::test]
     async fn test_domain_matcher() {
         // test keyword
@@ -62,56 +69,32 @@ mod tests {
             domain: vec!["example".to_string()],
             method: Method::Keyword,
         };
-        let mut match_context = MatchContext::from_context_address(
-            &Context::new(),
-            &"example.com:26666".into_address().unwrap(),
-        )
-        .unwrap();
-        assert!(matcher.match_rule(&mut match_context).await);
-
-        let mut match_context = MatchContext::from_context_address(
-            &Context::new(),
-            &"exampl.com:26666".into_address().unwrap(),
-        )
-        .unwrap();
-        assert!(!matcher.match_rule(&mut match_context).await);
+        assert!(match_addr("example.com:26666", &matcher).await);
+        assert!(!match_addr("exampl.com:26666", &matcher).await);
 
         // test match
         let matcher = DomainMatcher {
             domain: vec!["example.com".to_string()],
             method: Method::Match,
         };
-        let mut match_context = MatchContext::from_context_address(
-            &Context::new(),
-            &"example.com:26666".into_address().unwrap(),
-        )
-        .unwrap();
-        assert!(matcher.match_rule(&mut match_context).await);
-
-        let mut match_context = MatchContext::from_context_address(
-            &Context::new(),
-            &"sub.example.com:26666".into_address().unwrap(),
-        )
-        .unwrap();
-        assert!(!matcher.match_rule(&mut match_context).await);
+        assert!(match_addr("example.com:26666", &matcher).await);
+        assert!(!match_addr("sub.example.com:26666", &matcher).await);
 
         // test suffix
         let matcher = DomainMatcher {
             domain: vec![".com".to_string()],
             method: Method::Suffix,
         };
-        let mut match_context = MatchContext::from_context_address(
-            &Context::new(),
-            &"example.com:26666".into_address().unwrap(),
-        )
-        .unwrap();
-        assert!(matcher.match_rule(&mut match_context).await);
+        assert!(match_addr("example.com:26666", &matcher).await);
+        assert!(!match_addr("example.cn:26666", &matcher).await);
 
-        let mut match_context = MatchContext::from_context_address(
-            &Context::new(),
-            &"example.cn:26666".into_address().unwrap(),
-        )
-        .unwrap();
-        assert!(!matcher.match_rule(&mut match_context).await);
+        // test suffix with +
+        let matcher = DomainMatcher {
+            domain: vec!["+.com".to_string()],
+            method: Method::Suffix,
+        };
+        assert!(match_addr("example.com:26666", &matcher).await);
+        assert!(match_addr("sub.example.com:26666", &matcher).await);
+        assert!(!match_addr("example.cn:26666", &matcher).await);
     }
 }

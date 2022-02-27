@@ -246,6 +246,16 @@ impl ITcpStream for MyTcpStream {
         ready!(self.channel.poll_close_unpin(cx)).map_err(map_err)?;
         Poll::Ready(Ok(()))
     }
+
+    #[cfg(target_os = "linux")]
+    fn read_passthrough(&self) -> Option<rd_interface::Fd> {
+        Some(0.into())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn write_passthrough(&self) -> Option<rd_interface::Fd> {
+        Some(0.into())
+    }
 }
 
 #[async_trait]

@@ -82,3 +82,95 @@ impl PeekableTcpStream {
         (self.tcp, self.buf)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use rd_interface::{Context, IntoAddress, IntoDyn, Net};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        time::sleep,
+    };
+
+    use super::*;
+    use crate::tests::TestNet;
+
+    async fn spawn_listener(net: &Net) {
+        let net = net.clone();
+        tokio::spawn(async move {
+            let listener = net
+                .tcp_bind(
+                    &mut Context::new(),
+                    &"127.0.0.1:1234".into_address().unwrap(),
+                )
+                .await
+                .unwrap();
+            let (mut tcp, _) = listener.accept().await.unwrap();
+
+            tcp.write_all(b"12345678").await.unwrap();
+        });
+
+        sleep(Duration::from_millis(10)).await;
+    }
+
+    #[tokio::test]
+    async fn test_peekable_tcp_stream() {
+        let net = TestNet::new().into_dyn();
+        spawn_listener(&net).await;
+
+        let mut tcp = net
+            .tcp_connect(
+                &mut Context::new(),
+                &"127.0.0.1:1234".into_address().unwrap(),
+            )
+            .await
+            .map(PeekableTcpStream::new)
+            .unwrap();
+
+        let mut buf = [0u8; 4];
+        tcp.peek_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"1234");
+
+        let mut tcp = tcp.into_dyn();
+        #[cfg(target_os = "linux")]
+        assert!(tcp.read_passthrough().is_none());
+        #[cfg(target_os = "linux")]
+        assert!(tcp.write_passthrough().is_some());
+
+        let mut buf = [0u8; 8];
+        tcp.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"12345678");
+        assert!(tcp.local_addr().await.is_ok());
+        assert!(tcp.peer_addr().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_peekable_tcp_stream_into_inner() {
+        let net = TestNet::new().into_dyn();
+        spawn_listener(&net).await;
+
+        let mut tcp = net
+            .tcp_connect(
+                &mut Context::new(),
+                &"127.0.0.1:1234".into_address().unwrap(),
+            )
+            .await
+            .map(PeekableTcpStream::new)
+            .unwrap();
+
+        let mut buf = [0u8; 4];
+        tcp.peek_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"1234");
+
+        let (mut tcp, rest) = tcp.into_inner();
+        assert_eq!(&rest, b"1234");
+        tcp.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"5678");
+
+        #[cfg(target_os = "linux")]
+        assert!(tcp.read_passthrough().is_some());
+        #[cfg(target_os = "linux")]
+        assert!(tcp.write_passthrough().is_some());
+    }
+}

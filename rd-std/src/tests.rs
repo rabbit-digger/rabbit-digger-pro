@@ -4,6 +4,7 @@ use rd_interface::{Context, IntoAddress, Net, ReadBuf, Registry};
 use std::time::Duration;
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
+    task::yield_now,
     time::timeout,
 };
 
@@ -31,6 +32,7 @@ pub async fn spawn_echo_server_udp(net: &Net, addr: impl IntoAddress) {
             udp.send_to(&buf.filled(), &addr.into()).await.unwrap();
         }
     });
+    yield_now().await;
 }
 
 pub async fn assert_echo_udp(net: &Net, addr: impl IntoAddress) {
@@ -65,6 +67,7 @@ pub async fn spawn_echo_server(net: &Net, addr: impl IntoAddress) {
             });
         }
     });
+    yield_now().await;
 }
 
 pub async fn assert_echo(net: &Net, addr: impl IntoAddress) {
