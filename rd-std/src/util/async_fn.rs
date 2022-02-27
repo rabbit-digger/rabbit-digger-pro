@@ -59,10 +59,7 @@ pin_project! {
     }
 }
 
-impl<T> AsyncFnIO<T>
-where
-    T: AsyncFnRead + AsyncFnWrite + Clone + Unpin + Send + Sync + 'static,
-{
+impl<T> AsyncFnIO<T> {
     pub fn new(inner: T) -> Self {
         Self {
             inner,
@@ -151,5 +148,74 @@ where
         read_buf.advance(buf.len());
 
         return Poll::Ready(Ok(()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use rd_interface::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_async_fn_io() {
+        let inner = Inner::new();
+        let mut io = AsyncFnIO::new(inner.clone());
+
+        let mut buf = [0; 3];
+
+        io.read_exact(&mut buf).await.unwrap();
+
+        assert_eq!(buf, [1, 2, 3]);
+        assert_eq!(inner.read_times.load(Ordering::SeqCst), 1);
+
+        io.write_all(&[4, 5, 6]).await.unwrap();
+        io.flush().await.unwrap();
+        io.shutdown().await.unwrap();
+
+        assert_eq!(inner.write_times.load(Ordering::SeqCst), 1);
+
+        let _ = io.get_ref();
+        let _ = io.get_mut();
+    }
+
+    #[tokio::test]
+    async fn test_poll_async_fn() {}
+
+    #[derive(Clone)]
+    struct Inner {
+        read_times: Arc<AtomicUsize>,
+        write_times: Arc<AtomicUsize>,
+    }
+    #[async_trait]
+    impl AsyncFnRead for Inner {
+        async fn read(&mut self, _: usize) -> io::Result<Vec<u8>> {
+            self.read_times.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![1, 2, 3])
+        }
+    }
+    #[async_trait]
+    impl AsyncFnWrite for Inner {
+        async fn write(&mut self, buf: Vec<u8>) -> io::Result<usize> {
+            self.write_times.fetch_add(1, Ordering::SeqCst);
+            Ok(buf.len())
+        }
+        async fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+        async fn shutdown(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    impl Inner {
+        fn new() -> Self {
+            Inner {
+                read_times: Arc::new(AtomicUsize::new(0)),
+                write_times: Arc::new(AtomicUsize::new(0)),
+            }
+        }
     }
 }

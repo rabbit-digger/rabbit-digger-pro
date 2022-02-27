@@ -170,5 +170,13 @@ mod tests {
                 .reverse_lookup(Ipv4Addr::new(220, 181, 38, 148).into()),
             Some("baidu.com".to_string()),
         );
+
+        assert_eq!(
+            net.reverse_lookup(
+                &mut Context::new(),
+                &"220.181.38.251:443".into_address().unwrap()
+            ),
+            "baidu.com:443".into_address().unwrap()
+        )
     }
 }
