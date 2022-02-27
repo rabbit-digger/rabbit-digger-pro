@@ -438,3 +438,169 @@ impl RunningServer {
         };
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::{context::common_field, IServer, IntoAddress};
+    use rd_std::{
+        tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet},
+        util::NotImplementedNet,
+    };
+    use tokio::sync::mpsc;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_running_net_update() {
+        let test_net = TestNet::new().into_dyn();
+        spawn_echo_server(&test_net, "127.0.0.1:12345").await;
+
+        let running_net = RunningNet::new("test".to_string(), NotImplementedNet.into_dyn());
+        let _ = format!("{:?}", running_net);
+        let net = running_net.as_net();
+        running_net.update_net(test_net.clone());
+
+        assert_eq!(running_net.net().as_ptr(), test_net.as_ptr());
+        assert_eq!(
+            running_net.get_inner().map(|n| n.as_ptr()),
+            Some(test_net.as_ptr())
+        );
+        assert_echo(&net, "127.0.0.1:12345").await;
+    }
+
+    #[tokio::test]
+    async fn test_running_net_append() {
+        let test_net = TestNet::new().into_dyn();
+        let running_net = RunningNet::new("test".to_string(), test_net);
+
+        let addr = "127.0.0.1:12345".into_address().unwrap();
+        let expected_list = vec!["test".to_string()];
+
+        let mut ctx = Context::new();
+        assert!(running_net.tcp_connect(&mut ctx, &addr).await.is_err());
+        assert_eq!(ctx.net_list(), &expected_list);
+
+        let mut ctx = Context::new();
+        assert!(running_net.tcp_bind(&mut ctx, &addr).await.is_ok());
+        assert_eq!(ctx.net_list(), &expected_list);
+
+        let mut ctx = Context::new();
+        assert!(running_net.udp_bind(&mut ctx, &addr).await.is_ok());
+        assert_eq!(ctx.net_list(), &expected_list);
+
+        assert_eq!(
+            running_net.lookup_host(&addr).await.unwrap(),
+            vec!["127.0.0.1:12345".parse().unwrap()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_running_server_net() {
+        let test_net = TestNet::new().into_dyn();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let config = ConnectionConfig::new(tx);
+        let server_net = RunningServerNet::new("server_name".to_string(), test_net.clone(), config);
+        let _ = format!("{:?}", server_net);
+        let server_net = server_net.into_dyn();
+
+        let expected_list = vec!["server_name".to_string()];
+        let mut ctx = Context::new();
+        assert!(server_net
+            .tcp_connect(&mut ctx, &"127.0.0.1:12345".into_address().unwrap())
+            .await
+            .is_err());
+        assert_eq!(ctx.net_list(), &expected_list);
+        assert_eq!(
+            ctx.get_common::<common_field::DestSocketAddr>()
+                .unwrap()
+                .unwrap()
+                .0,
+            SocketAddr::from(([127, 0, 0, 1], 12345))
+        );
+
+        let addr = "localhost:12345".into_address().unwrap();
+        let mut ctx = Context::new();
+        assert!(server_net.tcp_connect(&mut ctx, &addr).await.is_err());
+        assert_eq!(ctx.net_list(), &expected_list);
+        assert_eq!(
+            ctx.get_common::<common_field::DestDomain>()
+                .unwrap()
+                .unwrap()
+                .0,
+            AddressDomain {
+                domain: "localhost".to_string(),
+                port: 12345,
+            },
+        );
+
+        spawn_echo_server(&test_net, "127.0.0.1:12345").await;
+        assert_echo(&server_net, "127.0.0.1:12345").await;
+
+        assert!(matches!(
+            rx.recv().await.unwrap().event_type,
+            EventType::NewTcp(addr, _, _) if addr == addr
+        ));
+        assert!(matches!(
+            rx.recv().await.unwrap().event_type,
+            EventType::Outbound(26)
+        ));
+        assert!(matches!(
+            rx.recv().await.unwrap().event_type,
+            EventType::Inbound(26)
+        ));
+        assert!(matches!(
+            rx.recv().await.unwrap().event_type,
+            EventType::CloseConnection
+        ));
+
+        spawn_echo_server_udp(&test_net, "127.0.0.1:12345").await;
+        assert_echo_udp(&server_net, "127.0.0.1:12345").await;
+
+        assert!(matches!(
+            rx.recv().await.unwrap().event_type,
+            EventType::NewUdp(_, _, _)
+        ));
+        assert!(matches!(
+            rx.recv().await.unwrap().event_type,
+            EventType::UdpOutbound(addr, 5) if addr == addr
+        ));
+        assert!(matches!(
+            rx.recv().await.unwrap().event_type,
+            EventType::UdpInbound(addr, 5) if addr == addr
+        ));
+        assert!(matches!(
+            rx.recv().await.unwrap().event_type,
+            EventType::CloseConnection
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_running_server() {
+        struct ForeverServer;
+
+        #[async_trait]
+        impl IServer for ForeverServer {
+            async fn start(&self) -> Result<()> {
+                std::future::pending::<()>().await;
+                Ok(())
+            }
+        }
+
+        let server = RunningServer::new("server".to_string(), "forever".to_string());
+        assert_eq!(server.server_type(), "forever");
+        assert!(matches!(*server.state.read().await, State::WaitConfig));
+        assert!(server.take_result().await.is_none());
+
+        server
+            .start(ForeverServer.into_dyn(), &Value::Null)
+            .await
+            .unwrap();
+        assert!(matches!(*server.state.read().await, State::Running { .. }));
+
+        server.stop().await.unwrap();
+        assert!(matches!(*server.state.read().await, State::Finished { .. }));
+
+        let result = server.take_result().await.unwrap();
+        assert_eq!(format!("{:?}", result), "Err(cancelled)");
+    }
+}
