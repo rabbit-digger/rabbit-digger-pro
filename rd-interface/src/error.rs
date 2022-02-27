@@ -114,3 +114,31 @@ where
         self.map_err(|error| Error::WithContext(ErrorWithContext::new(f(), error)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_context() {
+        let error = Result::<()>::Err(Error::AbortedByUser);
+        let error = error.context("A context");
+        assert_eq!(error.unwrap_err().to_string(), "A context: AbortedByUser");
+
+        let error = Result::<()>::Err(Error::AbortedByUser);
+        let error = error.with_context(|| "A context");
+        assert_eq!(error.unwrap_err().to_string(), "A context: AbortedByUser");
+    }
+
+    #[test]
+    fn test_error_methods() {
+        let error = Error::AbortedByUser;
+        assert!(error.is_aborted());
+
+        let error = Error::from(io::Error::new(io::ErrorKind::AddrInUse, ""));
+        assert!(error.is_addr_in_use());
+
+        let error = Error::other("Other error");
+        assert_eq!(error.to_string(), "\"Other error\"");
+    }
+}
