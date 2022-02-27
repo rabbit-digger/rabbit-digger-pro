@@ -66,7 +66,7 @@ impl Context {
         Ok(())
     }
     /// Removes a key from the context
-    pub fn remove<T: DeserializeOwned>(&mut self, key: &str) -> Result<()> {
+    pub fn remove(&mut self, key: &str) -> Result<()> {
         self.data.remove(key).ok_or(Error::NonExist)?;
         Ok(())
     }
@@ -175,5 +175,104 @@ pub mod common_field {
 
     impl CommonField for SrcSocketAddr {
         const KEY: &'static str = "src_socket_addr";
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_context_new() {
+        let ctx = Context::new();
+        assert_eq!(ctx.data.len(), 0);
+        assert_eq!(ctx.net_list.len(), 0);
+    }
+
+    #[test]
+    fn test_context_from_socketaddr() {
+        let addr = SocketAddr::from(([127, 0, 0, 1], 80));
+        let ctx = Context::from_socketaddr(addr);
+        assert_eq!(ctx.data.len(), 1);
+        assert_eq!(ctx.net_list.len(), 0);
+    }
+
+    #[test]
+    fn test_context_insert() {
+        let mut ctx = Context::new();
+        ctx.insert("key".to_string(), "value").unwrap();
+        assert_eq!(ctx.data.len(), 1);
+        assert_eq!(ctx.net_list.len(), 0);
+
+        ctx.insert("key2".to_string(), "value2").unwrap();
+        assert_eq!(ctx.data.len(), 2);
+        assert_eq!(ctx.net_list.len(), 0);
+    }
+
+    #[test]
+    fn test_context_remove() {
+        let mut ctx = Context::new();
+        ctx.insert("key".to_string(), "value").unwrap();
+        ctx.insert("key2".to_string(), "value2").unwrap();
+        assert_eq!(ctx.data.len(), 2);
+        assert_eq!(ctx.net_list.len(), 0);
+
+        ctx.remove("key").unwrap();
+        assert_eq!(ctx.data.len(), 1);
+        assert_eq!(ctx.net_list.len(), 0);
+
+        ctx.remove("key2").unwrap();
+        assert_eq!(ctx.data.len(), 0);
+        assert_eq!(ctx.net_list.len(), 0);
+    }
+
+    #[test]
+    fn test_context_get() {
+        let mut ctx = Context::new();
+        ctx.insert("key".to_string(), "value").unwrap();
+        ctx.insert("key2".to_string(), "value2").unwrap();
+        assert_eq!(ctx.data.len(), 2);
+        assert_eq!(ctx.net_list.len(), 0);
+
+        assert_eq!(ctx.get::<String>("key").unwrap().unwrap(), "value");
+        assert_eq!(ctx.get::<String>("key2").unwrap().unwrap(), "value2");
+        assert_eq!(ctx.data.len(), 2);
+        assert_eq!(ctx.net_list.len(), 0);
+    }
+
+    #[test]
+    fn test_context_get_non_exist() {
+        let mut ctx = Context::new();
+        ctx.insert("key".to_string(), "value").unwrap();
+
+        assert_eq!(ctx.get::<String>("key2").unwrap(), None);
+        assert_eq!(ctx.data.len(), 1);
+        assert_eq!(ctx.net_list.len(), 0);
+    }
+
+    #[test]
+    fn test_context_common() {
+        let mut ctx = Context::new();
+        ctx.insert_common::<common_field::SrcSocketAddr>(common_field::SrcSocketAddr(
+            SocketAddr::from(([127, 0, 0, 1], 80)),
+        ))
+        .unwrap();
+
+        assert_eq!(
+            ctx.get_common::<common_field::SrcSocketAddr>()
+                .unwrap()
+                .unwrap()
+                .0,
+            SocketAddr::from(([127, 0, 0, 1], 80),)
+        );
+    }
+
+    #[test]
+    fn test_context_append_net() {
+        let mut ctx = Context::new();
+        ctx.append_net("net1");
+        ctx.append_net("net2");
+        ctx.append_net("net3");
+        assert_eq!(ctx.net_list.len(), 3);
     }
 }
