@@ -20,3 +20,14 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     socks5::init(registry)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod init_tests {
+    use super::*;
+
+    #[test]
+    fn test_std_init() {
+        let mut registry = Registry::new();
+        init(&mut registry).unwrap();
+    }
+}
