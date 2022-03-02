@@ -213,7 +213,7 @@ impl IUdpSocket for WrapUdpSocket {
             conn,
             stopped,
         } = &mut *self;
-        if let Poll::Ready(_) = stopped.lock().poll_unpin(cx) {
+        if let Poll::Ready(_) = stopped.get_mut().poll_unpin(cx) {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::ConnectionAborted,
                 "Aborted by user",

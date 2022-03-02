@@ -81,13 +81,13 @@ impl IUdpSocket for UdpConnector {
                     result = Some(ready!(udp.poll_send_to(cx, buf, target)));
                 }
                 State::Binding { fut, .. } => {
-                    let udp = ready!(fut.lock().poll_unpin(cx));
+                    let udp = ready!(fut.get_mut().poll_unpin(cx));
                     self.semaphore.add_permits(1);
                     self.state = State::Binded(udp?)
                 }
                 State::Idle { connector } => {
                     let connector = connector
-                        .lock()
+                        .get_mut()
                         .take()
                         .expect("connector shouldn't be None");
                     let fut = connector(&buf, &target);

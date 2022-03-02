@@ -234,7 +234,7 @@ impl Udp {
             match state {
                 UdpState::Idle => return Poll::Ready(Ok(())),
                 UdpState::LookupHost(fut) => {
-                    let addr = *ready!(fut.lock().poll_unpin(cx))?
+                    let addr = *ready!(fut.get_mut().poll_unpin(cx))?
                         .first()
                         .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
                     *state = UdpState::Sending(addr)
