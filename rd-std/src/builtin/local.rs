@@ -41,6 +41,11 @@ pub struct LocalNetConfig {
 
     /// timeout of TCP connect, in seconds.
     pub connect_timeout: Option<u64>,
+
+    /// enable keepalive on TCP socket, in seconds.
+    /// default is 600s.
+    #[serde(default)]
+    pub tcp_keepalive: Option<f64>,
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
@@ -75,6 +80,10 @@ impl LocalNet {
 
         if is_tcp {
             socket.set_nodelay(self.0.nodelay.unwrap_or(true))?;
+            let keepalive = socket2::TcpKeepalive::new().with_time(Duration::from_secs_f64(
+                self.0.tcp_keepalive.unwrap_or(600.0),
+            ));
+            socket.set_tcp_keepalive(&keepalive)?;
         }
 
         #[cfg(target_os = "linux")]
