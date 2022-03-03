@@ -238,7 +238,7 @@ impl Clash {
                     target,
                     matcher: Matcher::Domain(DomainMatcher {
                         method,
-                        domain: vec![domain],
+                        domain: domain.into(),
                     }),
                 }
             }
@@ -248,7 +248,7 @@ impl Clash {
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::IpCidr(IpCidrMatcher {
-                        ipcidr: vec![IpCidr::from_str(&ip_cidr)?],
+                        ipcidr: IpCidr::from_str(&ip_cidr)?.into(),
                     }),
                 }
             }
@@ -258,7 +258,7 @@ impl Clash {
                 rule_config::RuleItem {
                     target,
                     matcher: Matcher::SrcIpCidr(SrcIpCidrMatcher {
-                        ipcidr: vec![IpCidr::from_str(&ip_cidr)?],
+                        ipcidr: IpCidr::from_str(&ip_cidr)?.into(),
                     }),
                 }
             }
@@ -297,7 +297,7 @@ impl Clash {
                         target: target.clone(),
                         matcher: Matcher::Domain(DomainMatcher {
                             method: DomainMatcherMethod::Suffix,
-                            domain: payload,
+                            domain: payload.into(),
                         }),
                     },
                     "ipcidr" => rule_config::RuleItem {
@@ -306,7 +306,8 @@ impl Clash {
                             ipcidr: payload
                                 .into_iter()
                                 .map(|i| IpCidr::from_str(&i))
-                                .collect::<rd_interface::Result<_>>()?,
+                                .collect::<rd_interface::Result<Vec<_>>>()?
+                                .into(),
                         }),
                     },
                     // TODO: support classical behavior
