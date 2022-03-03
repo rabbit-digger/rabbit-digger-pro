@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::Result;
+pub use single_or_vec::SingleOrVec;
 
 mod resolvable;
+mod single_or_vec;
 
 #[derive(Clone)]
 pub struct NetSchema;
