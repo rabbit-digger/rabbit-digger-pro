@@ -2,10 +2,12 @@
 
 use tokio_smoltcp::smoltcp::wire::EthernetAddress;
 
+#[derive(Debug)]
 pub struct InterfaceInfo {
     pub ethernet_address: EthernetAddress,
     pub name: String,
     pub description: Option<String>,
+    pub friendly_name: Option<String>,
 }
 
 impl Default for InterfaceInfo {
@@ -14,6 +16,7 @@ impl Default for InterfaceInfo {
             ethernet_address: EthernetAddress::BROADCAST,
             name: "".to_string(),
             description: None,
+            friendly_name: None,
         }
     }
 }
@@ -55,9 +58,17 @@ mod windows {
     use smoltcp::wire::EthernetAddress;
     use std::{io, mem, ptr};
     use tokio_smoltcp::smoltcp;
-
-    const NO_ERROR: u32 = 0;
-    const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
+    use windows_sys::Win32::{
+        Foundation::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR},
+        Globalization::{WideCharToMultiByte, CP_UTF8},
+        NetworkManagement::{
+            IpHelper::{
+                ConvertInterfaceIndexToLuid, ConvertInterfaceLuidToAlias, GetIfTable, MIB_IFROW,
+                MIB_IFTABLE, NET_LUID_LH,
+            },
+            Ndis::NDIS_IF_MAX_STRING_SIZE,
+        },
+    };
 
     fn get_guid(s: &str) -> Option<&str> {
         if let Some(pos) = s.find('{') {
@@ -67,6 +78,50 @@ mod windows {
             }
         }
         return None;
+    }
+
+    fn get_friendly_name(index: u32) -> io::Result<String> {
+        unsafe {
+            let mut luid: NET_LUID_LH = mem::zeroed();
+            if ConvertInterfaceIndexToLuid(index, &mut luid as *mut _) == 0 {
+                // WCHAR
+                let mut name: Vec<u16> = vec![0; NDIS_IF_MAX_STRING_SIZE as usize + 1];
+                if ConvertInterfaceLuidToAlias(&luid as *const _, name.as_mut_ptr(), name.len())
+                    == 0
+                {
+                    let size = WideCharToMultiByte(
+                        CP_UTF8,
+                        0,
+                        name.as_ptr(),
+                        -1,
+                        ptr::null(),
+                        0,
+                        ptr::null(),
+                        ptr::null_mut(),
+                    );
+                    if size != 0 {
+                        let mut utf_name = vec![0u8; size as usize];
+                        let size = WideCharToMultiByte(
+                            CP_UTF8,
+                            0,
+                            name.as_ptr() as *const _,
+                            -1,
+                            utf_name.as_mut_ptr(),
+                            size,
+                            ptr::null(),
+                            ptr::null_mut(),
+                        );
+                        if size != 0 {
+                            let mut name = String::from_utf8_unchecked(utf_name);
+                            name.pop(); // remove tailing 0
+                            return Ok(name);
+                        }
+                        /* Failed, clean up the allocation */
+                    }
+                }
+            };
+            Err(io::ErrorKind::NotFound.into())
+        }
     }
 
     fn from_u16(s: &[u16]) -> Option<String> {
@@ -81,7 +136,7 @@ mod windows {
     pub fn get_interface_info(name: &str) -> io::Result<InterfaceInfo> {
         if let Some(intf_guid) = get_guid(name) {
             let mut size = 0u32;
-            let table: *mut MibIftable;
+            let table: *mut MIB_IFTABLE;
 
             let mut info = InterfaceInfo {
                 name: name.to_string(),
@@ -90,9 +145,9 @@ mod windows {
 
             unsafe {
                 if GetIfTable(
-                    ptr::null_mut::<MibIftable>(),
+                    ptr::null_mut::<MIB_IFTABLE>(),
                     &mut size as *mut libc::c_ulong,
-                    false,
+                    0,
                 ) == ERROR_INSUFFICIENT_BUFFER
                 {
                     table = mem::transmute(libc::malloc(size as libc::size_t));
@@ -100,27 +155,30 @@ mod windows {
                     return Err(io::ErrorKind::NotFound.into());
                 }
 
-                if GetIfTable(table, &mut size as *mut libc::c_ulong, false) == NO_ERROR {
-                    let ptr: *const MibIfrow = (&(*table).table) as *const _;
-                    let table = std::slice::from_raw_parts(ptr, (*table).dw_num_entries as usize);
+                if GetIfTable(table, &mut size as *mut libc::c_ulong, 0) == NO_ERROR {
+                    let ptr: *const MIB_IFROW = (&(*table).table) as *const _;
+                    let table = std::slice::from_raw_parts(ptr, (*table).dwNumEntries as usize);
                     for i in table {
                         let row = &*i;
 
-                        if let Some(name) = from_u16(&row.wsz_name) {
+                        if let Some(name) = from_u16(&row.wszName) {
                             if let Some(guid) = get_guid(&name) {
                                 if guid == intf_guid {
-                                    if row.dw_phys_addr_len == 6 {
+                                    if row.dwPhysAddrLen == 6 {
                                         info.ethernet_address =
-                                            EthernetAddress::from_bytes(&row.b_phys_addr[0..6]);
+                                            EthernetAddress::from_bytes(&row.bPhysAddr[0..6]);
                                     } else {
                                         continue;
                                     }
-                                    if row.dw_descr_len > 0 {
+                                    if row.dwDescrLen > 0 {
                                         if let Ok(desc) = String::from_utf8(
-                                            row.b_descr[..(row.dw_descr_len - 1) as usize].to_vec(),
+                                            row.bDescr[..(row.dwDescrLen - 1) as usize].to_vec(),
                                         ) {
                                             info.description = Some(desc);
                                         }
+                                    }
+                                    if let Ok(friendly_name) = get_friendly_name(row.dwIndex) {
+                                        info.friendly_name = Some(friendly_name);
                                     }
                                     return Ok(info);
                                 }
@@ -132,39 +190,5 @@ mod windows {
             }
         }
         Err(io::ErrorKind::NotFound.into())
-    }
-
-    pub const MAX_INTERFACE_NAME_LEN: usize = 256;
-    pub const MAXLEN_PHYSADDR: usize = 8;
-    pub const MAXLEN_IFDESCR: usize = 256;
-
-    #[repr(C)]
-    pub(crate) struct MibIfrow {
-        pub wsz_name: [u16; MAX_INTERFACE_NAME_LEN],
-        pub dw_index: u32,
-        pub dw_type: u32,
-        pub dw_mtu: u32,
-        pub dw_speed: u32,
-        pub dw_phys_addr_len: u32,
-        pub b_phys_addr: [u8; MAXLEN_PHYSADDR],
-        _padding1: [u8; 15 * 4],
-        pub dw_descr_len: u32,
-        pub b_descr: [u8; MAXLEN_IFDESCR],
-    }
-
-    #[repr(C)]
-    pub(crate) struct MibIftable {
-        pub dw_num_entries: u32,
-        pub table: MibIfrow,
-    }
-
-    #[link(name = "iphlpapi")]
-    #[allow(non_snake_case)]
-    extern "system" {
-        pub(crate) fn GetIfTable(
-            table: *mut MibIftable,
-            size: *mut libc::c_ulong,
-            order: bool,
-        ) -> u32;
     }
 }

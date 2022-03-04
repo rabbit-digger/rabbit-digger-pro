@@ -31,17 +31,34 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
 
     let (ethernet_address, device) = match &config.device {
         DeviceConfig::String(dev) => {
-            let ethernet_address = crate::device::get_interface_info(dev)
-                .context("Failed to get interface info")?
-                .ethernet_address;
+            let interface_info = match crate::device::get_interface_info(dev) {
+                Ok(info) => info,
+                Err(e) => {
+                    tracing::debug!(
+                        "Failed to get interface info: {:?}, try to find by friendly name",
+                        e
+                    );
+                    // find by friendly name
+                    let interface = Device::list()
+                        .context("Failed to get device list")?
+                        .into_iter()
+                        .map(|d| crate::device::get_interface_info(&d.name))
+                        .flat_map(Result::ok)
+                        .find(|i| i.friendly_name.as_ref() == Some(dev));
+
+                    interface.ok_or_else(|| {
+                        Error::Other(format!("Failed to find the interface: {}", dev).into())
+                    })?
+                }
+            };
 
             let device = Box::new(get_by_device(
-                pcap_device_by_name(dev)?,
+                pcap_device_by_name(&interface_info.name)?,
                 get_filter(&destination_addr),
                 config,
             )?);
 
-            (ethernet_address, BoxedAsyncDevice(device))
+            (interface_info.ethernet_address, BoxedAsyncDevice(device))
         }
         DeviceConfig::Other(cfg) => {
             let host_addr = Ipv4Addr::from_str(&cfg.host_addr)
@@ -88,15 +105,7 @@ fn pcap_device_by_name(name: &str) -> Result<Device> {
         Ok(devices.remove(id))
     } else {
         Err(Error::Other(
-            format!(
-                "Failed to find device {} from {:?}",
-                name,
-                devices
-                    .into_iter()
-                    .map(|i| format!("[{}] {}", i.name, i.desc.unwrap_or_default()))
-                    .collect::<Vec<String>>()
-            )
-            .into(),
+            format!("Failed to find device: {}", name,).into(),
         ))
     }
 }
