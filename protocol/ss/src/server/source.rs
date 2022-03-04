@@ -39,7 +39,13 @@ impl RawUdpSource for UdpSource {
     ) -> Poll<io::Result<UdpEndpoint>> {
         let packet = loop {
             let from = ready!(self.udp.poll_recv_from(cx, buf))?;
-            let (n, addr) = decrypt_payload(self.method, &self.key, buf.filled_mut())?;
+            let (n, addr) = match decrypt_payload(self.method, &self.key, buf.filled_mut()) {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!("Failed to decode udp packet: {:?}", e);
+                    continue;
+                }
+            };
             buf.set_filled(n);
             // drop the packet if it's sent to domain silently
             let to = match addr {
