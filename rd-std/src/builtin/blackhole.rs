@@ -25,23 +25,23 @@ impl ITcpStream for BlackItem {
         _cx: &mut std::task::Context<'_>,
         _buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        Poll::Pending
+        Poll::Ready(Ok(()))
     }
 
     fn poll_write(
         &mut self,
         _cx: &mut std::task::Context<'_>,
-        _buf: &[u8],
+        buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        Poll::Pending
+        Poll::Ready(Ok(buf.len()))
     }
 
     fn poll_flush(&mut self, _cx: &mut std::task::Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Pending
+        Poll::Ready(Ok(()))
     }
 
     fn poll_shutdown(&mut self, _cx: &mut std::task::Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Pending
+        Poll::Ready(Ok(()))
     }
 
     async fn peer_addr(&self) -> Result<std::net::SocketAddr> {
