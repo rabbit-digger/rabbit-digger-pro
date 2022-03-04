@@ -60,7 +60,6 @@ mod windows {
     use tokio_smoltcp::smoltcp;
     use windows_sys::Win32::{
         Foundation::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR},
-        Globalization::{WideCharToMultiByte, CP_UTF8},
         NetworkManagement::{
             IpHelper::{
                 ConvertInterfaceIndexToLuid, ConvertInterfaceLuidToAlias, GetIfTable, MIB_IFROW,
@@ -89,48 +88,19 @@ mod windows {
                 if ConvertInterfaceLuidToAlias(&luid as *const _, name.as_mut_ptr(), name.len())
                     == 0
                 {
-                    let size = WideCharToMultiByte(
-                        CP_UTF8,
-                        0,
-                        name.as_ptr(),
-                        -1,
-                        ptr::null(),
-                        0,
-                        ptr::null(),
-                        ptr::null_mut(),
-                    );
-                    if size != 0 {
-                        let mut utf_name = vec![0u8; size as usize];
-                        let size = WideCharToMultiByte(
-                            CP_UTF8,
-                            0,
-                            name.as_ptr() as *const _,
-                            -1,
-                            utf_name.as_mut_ptr(),
-                            size,
-                            ptr::null(),
-                            ptr::null_mut(),
-                        );
-                        if size != 0 {
-                            let mut name = String::from_utf8_unchecked(utf_name);
-                            name.pop(); // remove tailing 0
-                            return Ok(name);
-                        }
-                        /* Failed, clean up the allocation */
-                    }
+                    return Ok(from_u16(&name)?);
                 }
             };
             Err(io::ErrorKind::NotFound.into())
         }
     }
 
-    fn from_u16(s: &[u16]) -> Option<String> {
-        if let Some(pos) = s.iter().position(|c| *c == 0) {
-            if let Ok(string) = String::from_utf16(&s[0..pos]) {
-                return Some(string);
-            }
-        }
-        return None;
+    fn from_u16(s: &[u16]) -> io::Result<String> {
+        s.iter()
+            .position(|c| *c == 0)
+            .map(|pos| String::from_utf16(&s[0..pos]).ok())
+            .flatten()
+            .ok_or(io::ErrorKind::InvalidData.into())
     }
 
     pub fn get_interface_info(name: &str) -> io::Result<InterfaceInfo> {
@@ -161,7 +131,7 @@ mod windows {
                     for i in table {
                         let row = &*i;
 
-                        if let Some(name) = from_u16(&row.wszName) {
+                        if let Ok(name) = from_u16(&row.wszName) {
                             if let Some(guid) = get_guid(&name) {
                                 if guid == intf_guid {
                                     if row.dwPhysAddrLen == 6 {
