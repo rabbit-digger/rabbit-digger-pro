@@ -19,7 +19,7 @@ use tokio::{
     sync::{oneshot, RwLock, Semaphore},
     task::JoinHandle,
 };
-use tracing::{instrument, Instrument};
+use tracing::instrument;
 
 use super::{
     connection::{Connection, ConnectionConfig},
@@ -342,6 +342,15 @@ pub struct RunningServer {
     state: Arc<RwLock<State>>,
 }
 
+#[instrument(err, skip(server))]
+async fn server_start(name: String, server: &Server) -> anyhow::Result<()> {
+    server
+        .start()
+        .inspect_err(move |e| tracing::error!("Server {} error: {:?}", name, e))
+        .await?;
+    Ok(())
+}
+
 impl RunningServer {
     pub fn new(name: String, server_type: String) -> Self {
         RunningServer {
@@ -372,14 +381,12 @@ impl RunningServer {
         let semaphore = Arc::new(Semaphore::new(0));
         let s2 = semaphore.clone();
         let task = async move {
-            let r = server.start().await.map_err(Into::into);
+            let r = server_start(name, &server).await;
+            // TODO: is it safe to drop?
             s2.close();
             r
         };
-        let handle = tokio::spawn(
-            task.inspect_err(move |e| tracing::error!("Server {} error: {:?}", name, e))
-                .instrument(tracing::info_span!("server_start")),
-        );
+        let handle = tokio::spawn(task);
 
         *self.state.write().await = State::Running {
             opt: opt.clone(),
