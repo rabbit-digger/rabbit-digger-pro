@@ -37,8 +37,12 @@ fs2 = "0.4.3"
 async-stream = "0.3.0"
 once_cell = "1.7.2"
 
-warp = { version = "0.3.1", default-features = false, features = [
-    "websocket",
+axum = { version = "0.4.8", features = ["ws"], optional = true }
+serde_urlencoded = { version = "0.7.1", optional = true }
+tower-http = { version = "0.2.3", features = [
+    "fs",
+    "cors",
+    "trace",
 ], optional = true }
 dirs = { version = "4.0.0" }
 json-patch = { version = "0.2.6", optional = true }
@@ -70,7 +74,16 @@ rusty-hook = "0.11.0"
 
 [features]
 default = ["ss", "trojan", "rpc", "obfs", "api_server"]
-api_server = ["warp", "json-patch", "url", "hyper", "percent-encoding", "bytes"]
+api_server = [
+    "axum",
+    "serde_urlencoded",
+    "tower-http",
+    "json-patch",
+    "url",
+    "hyper",
+    "percent-encoding",
+    "bytes",
+]
 console = ["console-subscriber", "tokio/tracing"]
 telemetry = ["tracing-opentelemetry", "opentelemetry", "opentelemetry-jaeger"]
 jemalloc = ["jemallocator"]

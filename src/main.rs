@@ -29,7 +29,7 @@ impl App {
     async fn run_api_server(&self, api_server: &ApiServer) -> Result<()> {
         if let Some(_bind) = &api_server.bind {
             #[cfg(feature = "api_server")]
-            api_server::Server {
+            api_server::ApiServer {
                 rabbit_digger: self.rd.clone(),
                 config_manager: self.cfg_mgr.clone(),
                 access_token: api_server._access_token.to_owned(),
@@ -136,7 +136,7 @@ async fn main(args: Args) -> Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug,ss=debug",
+            "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug,ss=debug,tower_http=info",
         )
     }
     let tr = tracing_subscriber::registry();
