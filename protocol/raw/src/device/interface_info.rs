@@ -44,6 +44,7 @@ mod unix {
                     ethernet_address: EthernetAddress(link.addr()),
                     name: name.into(),
                     description: None,
+                    friendly_name: None,
                 });
             }
         }
