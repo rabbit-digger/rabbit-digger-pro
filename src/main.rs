@@ -3,59 +3,23 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use cfg_if::cfg_if;
 use futures::{pin_mut, stream::TryStreamExt};
-use rabbit_digger::RabbitDigger;
-#[cfg(feature = "api_server")]
-use rabbit_digger_pro::api_server;
-use rabbit_digger_pro::{
-    config::{ConfigManager, ImportSource},
-    get_registry, schema,
-};
+use rabbit_digger_pro::{config::ImportSource, schema, ApiServer, App};
 use structopt::StructOpt;
 use tracing_subscriber::filter::dynamic_filter_fn;
 
-struct App {
-    rd: RabbitDigger,
-    cfg_mgr: ConfigManager,
-}
-
-impl App {
-    async fn new() -> Result<Self> {
-        let rd = RabbitDigger::new(get_registry()?).await?;
-
-        let cfg_mgr = ConfigManager::new(get_registry()?).await?;
-
-        Ok(Self { rd, cfg_mgr })
-    }
-    async fn run_api_server(&self, api_server: &ApiServer) -> Result<()> {
-        if let Some(_bind) = &api_server.bind {
-            #[cfg(feature = "api_server")]
-            api_server::ApiServer {
-                rabbit_digger: self.rd.clone(),
-                config_manager: self.cfg_mgr.clone(),
-                access_token: api_server._access_token.to_owned(),
-                web_ui: api_server._web_ui.to_owned(),
-            }
-            .run(_bind)
-            .await
-            .context("Failed to run api server.")?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(StructOpt)]
-struct ApiServer {
+struct ApiServerArgs {
     /// HTTP endpoint bind address.
     #[structopt(short, long, env = "RD_BIND")]
     bind: Option<String>,
 
     /// Access token.
     #[structopt(long, env = "RD_ACCESS_TOKEN")]
-    _access_token: Option<String>,
+    access_token: Option<String>,
 
     /// Web UI. Folder path.
     #[structopt(long, env = "RD_WEB_UI")]
-    _web_ui: Option<String>,
+    web_ui: Option<String>,
 }
 
 #[derive(StructOpt)]
@@ -71,7 +35,7 @@ struct Args {
     config: PathBuf,
 
     #[structopt(flatten)]
-    api_server: ApiServer,
+    api_server: ApiServerArgs,
 
     /// Write generated config to path
     #[structopt(long, parse(from_os_str))]
@@ -91,8 +55,18 @@ enum Command {
     /// Run in server mode
     Server {
         #[structopt(flatten)]
-        api_server: ApiServer,
+        api_server: ApiServerArgs,
     },
+}
+
+impl ApiServerArgs {
+    fn to_api_server(&self) -> ApiServer {
+        ApiServer {
+            bind: self.bind.clone(),
+            access_token: self.access_token.clone(),
+            web_ui: self.web_ui.clone(),
+        }
+    }
 }
 
 async fn write_config(path: impl AsRef<Path>, cfg: &rabbit_digger::Config) -> Result<()> {
@@ -104,7 +78,7 @@ async fn write_config(path: impl AsRef<Path>, cfg: &rabbit_digger::Config) -> Re
 async fn real_main(args: Args) -> Result<()> {
     let app = App::new().await?;
 
-    app.run_api_server(&args.api_server).await?;
+    app.run_api_server(args.api_server.to_api_server()).await?;
 
     let config_path = args.config.clone();
     let write_config_path = args.write_config;
@@ -201,7 +175,7 @@ async fn main(args: Args) -> Result<()> {
         Some(Command::Server { api_server }) => {
             let app = App::new().await?;
 
-            app.run_api_server(api_server).await?;
+            app.run_api_server(api_server.to_api_server()).await?;
 
             tokio::signal::ctrl_c().await?;
 

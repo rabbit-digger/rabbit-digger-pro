@@ -95,6 +95,7 @@ members = [
     "protocol/rpc",
     "protocol/raw",
     "protocol/obfs",
+    "ffi",
 ]
 exclude = ["rabbit-digger"]
 

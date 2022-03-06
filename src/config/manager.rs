@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use async_stream::stream;
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use rabbit_digger::{Config, Registry};
+use tokio::select;
 
 const CFG_MGR_PREFIX: &str = "cfg_mgr";
 const SELECT_PREFIX: &str = "select";
@@ -54,6 +55,36 @@ impl ConfigManager {
                 let (config, import) = inner.unfold_import(config).await?;
                 yield inner.unfold_config(config).await;
                 inner.wait_source(&source, &import).await?;
+            }
+        })
+    }
+    pub async fn config_stream_from_sources(
+        &self,
+        sources: impl Stream<Item = ImportSource>,
+    ) -> Result<impl Stream<Item = Result<Config>>> {
+        let inner = self.inner.clone();
+        let mut sources = Box::pin(sources);
+        let mut source = match sources.next().await {
+            Some(s) => s,
+            None => return Err(anyhow::anyhow!("no source")),
+        };
+
+        Ok(stream! {
+            loop {
+                let config = inner.deserialize_config(&source).await?;
+                let (config, import) = inner.unfold_import(config).await?;
+                yield inner.unfold_config(config).await;
+                let r = select! {
+                    r = inner.wait_source(&source, &import) => r,
+                    r = sources.next() => {
+                        source = match r {
+                            Some(s) => s,
+                            None => break,
+                        };
+                        Ok(())
+                    }
+                };
+                r?;
             }
         })
     }
