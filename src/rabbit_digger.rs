@@ -18,21 +18,11 @@ use rd_interface::{
 };
 use rd_std::builtin::local::LocalNetConfig;
 use serde::{Deserialize, Serialize};
-use tokio::{
-    pin,
-    sync::{mpsc, RwLock},
-    task::unconstrained,
-    time::{sleep, timeout},
-};
+use tokio::{pin, sync::RwLock, time::timeout};
 use uuid::Uuid;
 
-use self::{
-    connection::ConnectionConfig,
-    connection_manager::{ConnectionManager, ConnectionState},
-    event::Event,
-};
+use self::connection_manager::{ConnectionManager, ConnectionState};
 
-mod connection;
 mod connection_manager;
 mod event;
 mod running;
@@ -64,12 +54,17 @@ impl State {
 
 struct Inner {
     state: RwLock<State>,
-    conn_cfg: ConnectionConfig,
+    conn_mgr: ConnectionManager,
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        self.conn_mgr.stop()
+    }
 }
 
 #[derive(Clone)]
 pub struct RabbitDigger {
-    manager: ConnectionManager,
     inner: Arc<Inner>,
     registry: Arc<Registry>,
 }
@@ -81,44 +76,17 @@ impl fmt::Debug for RabbitDigger {
 }
 
 impl RabbitDigger {
-    async fn recv_event(mut rx: mpsc::UnboundedReceiver<Event>, conn_mgr: ConnectionManager) {
-        loop {
-            let e = match rx.try_recv() {
-                Ok(e) => e,
-                Err(mpsc::error::TryRecvError::Disconnected) => break,
-                Err(mpsc::error::TryRecvError::Empty) => {
-                    sleep(Duration::from_millis(500)).await;
-                    continue;
-                }
-            };
-
-            let mut events = Vec::with_capacity(32);
-            events.push(e);
-            while let Ok(e) = rx.try_recv() {
-                events.push(e);
-            }
-            conn_mgr.input_events(events.into_iter());
-        }
-        tracing::warn!("recv_event task exited");
-    }
     pub async fn new(registry: Registry) -> Result<RabbitDigger> {
-        let (event_sender, event_receiver) = mpsc::unbounded_channel();
         let manager = ConnectionManager::new();
-
-        tokio::spawn(unconstrained(Self::recv_event(
-            event_receiver,
-            manager.clone(),
-        )));
 
         let inner = Inner {
             state: RwLock::new(State::WaitConfig),
-            conn_cfg: ConnectionConfig::new(event_sender),
+            conn_mgr: manager,
         };
 
         Ok(RabbitDigger {
             inner: Arc::new(inner),
             registry: Arc::new(registry),
-            manager,
         })
     }
     pub async fn stop(&self) -> Result<()> {
@@ -191,7 +159,7 @@ impl RabbitDigger {
     where
         F: FnOnce(&ConnectionState) -> R,
     {
-        self.manager.borrow_state(f)
+        self.inner.conn_mgr.borrow_state(f)
     }
 
     // get state
@@ -261,7 +229,7 @@ impl RabbitDigger {
                     nets.get(key).map(|i| {
                         let net = i.as_net();
 
-                        RunningServerNet::new(name.clone(), net.clone(), inner.conn_cfg.clone())
+                        RunningServerNet::new(name.clone(), net.clone(), inner.conn_mgr.clone())
                             .into_dyn()
                     })
                 },
@@ -388,7 +356,7 @@ impl RabbitDigger {
 
     // Stop the connection by uuid
     pub async fn stop_connection(&self, uuid: Uuid) -> Result<bool> {
-        Ok(self.manager.stop_connection(uuid))
+        Ok(self.inner.conn_mgr.stop_connection(uuid))
     }
 }
 

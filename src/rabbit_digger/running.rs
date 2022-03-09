@@ -7,7 +7,7 @@ use std::{
     task::{self, Poll},
 };
 
-use futures::{ready, FutureExt, TryFutureExt};
+use futures::{ready, TryFutureExt};
 use parking_lot::RwLock as SyncRwLock;
 use rd_interface::{
     async_trait,
@@ -16,15 +16,12 @@ use rd_interface::{
     Net, ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
-    sync::{oneshot, RwLock, Semaphore},
+    sync::{RwLock, Semaphore},
     task::JoinHandle,
 };
 use tracing::instrument;
 
-use super::{
-    connection::{Connection, ConnectionConfig},
-    event::EventType,
-};
+use super::connection_manager::{Connection, ConnectionManager, Tcp, Udp};
 
 pub struct RunningNet {
     name: String,
@@ -90,15 +87,15 @@ impl INet for RunningNet {
 pub struct RunningServerNet {
     server_name: String,
     net: Net,
-    config: ConnectionConfig,
+    manager: ConnectionManager,
 }
 
 impl RunningServerNet {
-    pub fn new(server_name: String, net: Net, config: ConnectionConfig) -> RunningServerNet {
+    pub fn new(server_name: String, net: Net, manager: ConnectionManager) -> RunningServerNet {
         RunningServerNet {
             server_name,
             net,
-            config,
+            manager,
         }
     }
 }
@@ -132,7 +129,7 @@ impl INet for RunningServerNet {
         let tcp = self.net.tcp_connect(ctx, &addr).await?;
 
         tracing::info!(target: "rabbit_digger", ?ctx, "Connected");
-        let tcp = WrapTcpStream::new(tcp, self.config.clone(), addr.clone(), ctx);
+        let tcp = WrapTcpStream::new(tcp, &self.manager, addr.clone(), ctx);
         Ok(tcp.into_dyn())
     }
 
@@ -158,7 +155,7 @@ impl INet for RunningServerNet {
 
         let udp = WrapUdpSocket::new(
             self.net.udp_bind(ctx, addr).await?,
-            self.config.clone(),
+            self.manager.clone(),
             addr.clone(),
             ctx,
         );
@@ -177,22 +174,19 @@ impl INet for RunningServerNet {
 
 pub struct WrapUdpSocket {
     inner: UdpSocket,
-    conn: Connection,
-    stopped: parking_lot::Mutex<oneshot::Receiver<()>>,
+    conn: Connection<Udp>,
 }
 
 impl WrapUdpSocket {
     pub fn new(
         inner: UdpSocket,
-        config: ConnectionConfig,
+        conn_mgr: ConnectionManager,
         addr: Address,
         ctx: &Context,
     ) -> WrapUdpSocket {
-        let (sender, stopped) = oneshot::channel();
         WrapUdpSocket {
             inner,
-            conn: Connection::new(config, EventType::NewUdp(addr, ctx.to_value(), sender)),
-            stopped: parking_lot::Mutex::new(stopped),
+            conn: conn_mgr.new_connection(addr, &ctx),
         }
     }
 }
@@ -208,23 +202,10 @@ impl IUdpSocket for WrapUdpSocket {
         cx: &mut task::Context<'_>,
         buf: &mut ReadBuf,
     ) -> Poll<io::Result<SocketAddr>> {
-        let WrapUdpSocket {
-            inner,
-            conn,
-            stopped,
-        } = &mut *self;
-        if let Poll::Ready(_) = stopped.get_mut().poll_unpin(cx) {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::ConnectionAborted,
-                "Aborted by user",
-            )
-            .into()));
-        }
+        let WrapUdpSocket { inner, conn } = &mut *self;
+        conn.poll(cx)?;
         let addr = ready!(inner.poll_recv_from(cx, buf)?);
-        conn.send(EventType::UdpInbound(
-            addr.into(),
-            buf.filled().len() as u64,
-        ));
+        conn.recv_from(addr.into(), buf.filled().len() as u64);
         Poll::Ready(Ok(addr))
     }
 
@@ -236,30 +217,26 @@ impl IUdpSocket for WrapUdpSocket {
     ) -> Poll<io::Result<usize>> {
         let r = ready!(self.inner.poll_send_to(cx, buf, target))?;
 
-        self.conn
-            .send(EventType::UdpOutbound(target.clone(), buf.len() as u64));
+        self.conn.send_to(target.clone(), buf.len() as u64);
         Poll::Ready(Ok(r))
     }
 }
 
 pub struct WrapTcpStream {
     inner: TcpStream,
-    conn: Connection,
-    stopped: oneshot::Receiver<()>,
+    conn: Connection<Tcp>,
 }
 
 impl WrapTcpStream {
     pub fn new(
         inner: TcpStream,
-        config: ConnectionConfig,
+        conn_mgr: &ConnectionManager,
         addr: Address,
         ctx: &Context,
     ) -> WrapTcpStream {
-        let (sender, stopped) = oneshot::channel();
         WrapTcpStream {
             inner,
-            conn: Connection::new(config, EventType::NewTcp(addr, ctx.to_value(), sender)),
-            stopped,
+            conn: conn_mgr.new_connection(addr, &ctx),
         }
     }
 }
@@ -286,17 +263,12 @@ impl rd_interface::ITcpStream for WrapTcpStream {
         cx: &mut task::Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        if let Poll::Ready(_) = self.stopped.poll_unpin(cx) {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::ConnectionAborted,
-                "Aborted by user",
-            )));
-        }
+        self.conn.poll(cx)?;
         let before = buf.filled().len();
         match Pin::new(&mut self.inner).poll_read(cx, buf) {
             Poll::Ready(Ok(())) => {
                 let s = buf.filled().len() - before;
-                self.conn.send(EventType::Inbound(s as u64));
+                self.conn.read(s as u64);
                 Ok(()).into()
             }
             r => r,
@@ -306,7 +278,7 @@ impl rd_interface::ITcpStream for WrapTcpStream {
     fn poll_write(&mut self, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         match Pin::new(&mut self.inner).poll_write(cx, buf) {
             Poll::Ready(Ok(s)) => {
-                self.conn.send(EventType::Outbound(s as u64));
+                self.conn.write(s as u64);
                 Ok(s).into()
             }
             r => r,
@@ -453,7 +425,8 @@ mod tests {
         tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet},
         util::NotImplementedNet,
     };
-    use tokio::sync::mpsc;
+
+    use crate::rabbit_digger::event::EventType;
 
     use super::*;
 
@@ -504,9 +477,9 @@ mod tests {
     #[tokio::test]
     async fn test_running_server_net() {
         let test_net = TestNet::new().into_dyn();
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        let config = ConnectionConfig::new(tx);
-        let server_net = RunningServerNet::new("server_name".to_string(), test_net.clone(), config);
+        let (manager, mut rx) = ConnectionManager::new_for_test();
+        let server_net =
+            RunningServerNet::new("server_name".to_string(), test_net.clone(), manager);
         let _ = format!("{:?}", server_net);
         let server_net = server_net.into_dyn();
 
@@ -543,40 +516,39 @@ mod tests {
         spawn_echo_server(&test_net, "127.0.0.1:12345").await;
         assert_echo(&server_net, "127.0.0.1:12345").await;
 
+        let first = rx.recv().await.unwrap().events;
         assert!(matches!(
-            rx.recv().await.unwrap().event_type,
-            EventType::NewTcp(addr, _, _) if addr == addr
+            (&first[0], &first[1]),
+            (EventType::NewTcp(addr, _), EventType::SetStopper(_)) if addr == addr
         ));
-        assert!(matches!(
-            rx.recv().await.unwrap().event_type,
-            EventType::Outbound(26)
-        ));
-        assert!(matches!(
-            rx.recv().await.unwrap().event_type,
-            EventType::Inbound(26)
-        ));
-        assert!(matches!(
-            rx.recv().await.unwrap().event_type,
-            EventType::CloseConnection
-        ));
+        assert_eq!(
+            rx.recv().await.unwrap().events,
+            vec![EventType::Read(26), EventType::Write(26)]
+        );
+        assert_eq!(
+            rx.recv().await.unwrap().events,
+            vec![EventType::CloseConnection]
+        );
 
         spawn_echo_server_udp(&test_net, "127.0.0.1:12345").await;
         assert_echo_udp(&server_net, "127.0.0.1:12345").await;
 
+        let recv_addr = "127.0.0.1:12345".into_address().unwrap();
+
+        let first = rx.recv().await.unwrap().events;
         assert!(matches!(
-            rx.recv().await.unwrap().event_type,
-            EventType::NewUdp(_, _, _)
+            (&first[0], &first[1]),
+            (EventType::NewUdp(_, _), EventType::SetStopper(_))
         ));
+        assert_eq!(
+            rx.recv().await.unwrap().events,
+            vec![
+                EventType::RecvFrom(recv_addr.clone(), 5),
+                EventType::SendTo(recv_addr, 5)
+            ]
+        );
         assert!(matches!(
-            rx.recv().await.unwrap().event_type,
-            EventType::UdpOutbound(addr, 5) if addr == addr
-        ));
-        assert!(matches!(
-            rx.recv().await.unwrap().event_type,
-            EventType::UdpInbound(addr, 5) if addr == addr
-        ));
-        assert!(matches!(
-            rx.recv().await.unwrap().event_type,
+            rx.recv().await.unwrap().events[0],
             EventType::CloseConnection
         ));
     }
