@@ -43,9 +43,16 @@ pub struct LocalNetConfig {
     pub connect_timeout: Option<u64>,
 
     /// enable keepalive on TCP socket, in seconds.
-    /// default is 600s.
+    /// default is 600s. 0 means disable.
     #[serde(default)]
     pub tcp_keepalive: Option<f64>,
+
+    /// change the system receive buffer size of the socket.
+    /// by default it remains unchanged.
+    pub recv_buffer_size: Option<usize>,
+    /// change the system send buffer size of the socket.
+    /// by default it remains unchanged.
+    pub send_buffer_size: Option<usize>,
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
@@ -70,6 +77,13 @@ impl LocalNet {
     fn set_socket(&self, socket: &Socket, _addr: SocketAddr, is_tcp: bool) -> Result<()> {
         socket.set_nonblocking(true)?;
 
+        if let Some(size) = self.0.recv_buffer_size {
+            socket.set_recv_buffer_size(size)?;
+        }
+        if let Some(size) = self.0.send_buffer_size {
+            socket.set_send_buffer_size(size)?;
+        }
+
         if let Some(local_addr) = self.0.bind_addr {
             socket.bind(&SocketAddr::new(local_addr, 0).into())?;
         }
@@ -80,10 +94,13 @@ impl LocalNet {
 
         if is_tcp {
             socket.set_nodelay(self.0.nodelay.unwrap_or(true))?;
-            let keepalive = socket2::TcpKeepalive::new().with_time(Duration::from_secs_f64(
-                self.0.tcp_keepalive.unwrap_or(600.0),
-            ));
-            socket.set_tcp_keepalive(&keepalive)?;
+
+            let keepalive_duration = self.0.tcp_keepalive.unwrap_or(600.0);
+            if keepalive_duration > 0.0 {
+                let keepalive = socket2::TcpKeepalive::new()
+                    .with_time(Duration::from_secs_f64(keepalive_duration));
+                socket.set_tcp_keepalive(&keepalive)?;
+            }
         }
 
         #[cfg(target_os = "linux")]
