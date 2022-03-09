@@ -16,10 +16,12 @@ use serde::{Serialize, Serializer};
 use tokio::{
     sync::{broadcast, mpsc, oneshot},
     task::{unconstrained, JoinHandle},
-    time::{interval, sleep},
+    time::interval,
 };
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
+
+const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(500);
 
 fn ts(time: &SystemTime) -> u64 {
     time.duration_since(SystemTime::UNIX_EPOCH)
@@ -34,7 +36,7 @@ where
     serializer.serialize_u64(a.load(Ordering::Relaxed))
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Protocol {
     Tcp,
@@ -74,10 +76,11 @@ impl ConnectionState {
     }
     fn input_event(&self, event: Event) {
         let Event { uuid, events, time } = event;
+        let mut conn = self.connections.get(&uuid);
 
         for event in events {
-            match event {
-                EventType::NewTcp(addr, ctx) => {
+            match (&conn, event) {
+                (_, EventType::NewTcp(addr, ctx)) => {
                     self.connections.insert(
                         uuid,
                         ConnectionInfo {
@@ -90,8 +93,9 @@ impl ConnectionState {
                             stop_sender: Mutex::new(None),
                         },
                     );
+                    conn = self.connections.get(&uuid);
                 }
-                EventType::NewUdp(addr, ctx) => {
+                (_, EventType::NewUdp(addr, ctx)) => {
                     self.connections.insert(
                         uuid,
                         ConnectionInfo {
@@ -104,46 +108,33 @@ impl ConnectionState {
                             stop_sender: Mutex::new(None),
                         },
                     );
+                    conn = self.connections.get(&uuid);
                 }
-                EventType::SetStopper(sender) => {
-                    if let Some(conn) = self.connections.get(&uuid) {
-                        let mut stop_sender = conn.stop_sender.lock();
-                        *stop_sender = Some(sender);
-                    }
+                (Some(conn), EventType::SetStopper(sender)) => {
+                    let mut stop_sender = conn.stop_sender.lock();
+                    *stop_sender = Some(sender);
                 }
-                EventType::Read(download) => {
-                    if let Some(conn) = self.connections.get(&uuid) {
-                        conn.download.fetch_add(download, Ordering::Relaxed);
-                        self.total_download.fetch_add(download, Ordering::Relaxed);
-                    }
+                (Some(conn), EventType::Read(download)) => {
+                    conn.download.fetch_add(download, Ordering::Relaxed);
+                    self.total_download.fetch_add(download, Ordering::Relaxed);
                 }
-                EventType::Write(upload) => {
-                    if let Some(conn) = self.connections.get(&uuid) {
-                        conn.upload.fetch_add(upload, Ordering::Relaxed);
-                        self.total_upload.fetch_add(upload, Ordering::Relaxed);
-                    }
+                (Some(conn), EventType::Write(upload)) => {
+                    conn.upload.fetch_add(upload, Ordering::Relaxed);
+                    self.total_upload.fetch_add(upload, Ordering::Relaxed);
                 }
-                EventType::RecvFrom(_, download) => {
-                    if let Some(conn) = self.connections.get(&uuid) {
-                        conn.download.fetch_add(download, Ordering::Relaxed);
-                        self.total_download.fetch_add(download, Ordering::Relaxed);
-                    }
+                (Some(conn), EventType::RecvFrom(_, download)) => {
+                    conn.download.fetch_add(download, Ordering::Relaxed);
+                    self.total_download.fetch_add(download, Ordering::Relaxed);
                 }
-                EventType::SendTo(_, upload) => {
-                    if let Some(conn) = self.connections.get(&uuid) {
-                        conn.upload.fetch_add(upload, Ordering::Relaxed);
-                        self.total_upload.fetch_add(upload, Ordering::Relaxed);
-                    }
+                (Some(conn), EventType::SendTo(_, upload)) => {
+                    conn.upload.fetch_add(upload, Ordering::Relaxed);
+                    self.total_upload.fetch_add(upload, Ordering::Relaxed);
                 }
-                EventType::CloseConnection => {
+                (_, EventType::CloseConnection) => {
                     self.connections.remove(&uuid);
                 }
+                _ => {}
             };
-        }
-    }
-    fn input_events<'a>(&self, events: impl Iterator<Item = Event>) {
-        for event in events {
-            self.input_event(event);
         }
     }
 }
@@ -156,24 +147,41 @@ struct ManagerInner {
 }
 
 impl ManagerInner {
-    fn new(sender: mpsc::UnboundedSender<Event>) -> Self {
+    fn new() -> Arc<Self> {
+        let (this, rx) = Self::new2();
+
+        tokio::spawn(unconstrained(Self::recv_event(rx, this.clone())));
+
+        this
+    }
+    fn new2() -> (Arc<Self>, mpsc::UnboundedReceiver<Event>) {
+        let (sender, rx) = mpsc::unbounded_channel();
         let (heartbeat_interval, _) = broadcast::channel(1);
         let tx = heartbeat_interval.clone();
 
         let heartbeat_handle = tokio::spawn(async move {
-            let mut interval = interval(Duration::from_secs(1));
+            let mut interval = interval(HEARTBEAT_INTERVAL);
             loop {
                 let _ = tx.send(());
                 interval.tick().await;
             }
         });
 
-        Self {
-            state: ConnectionState::new(),
-            heartbeat_interval,
-            sender,
-            heartbeat_handle,
+        (
+            Arc::new(Self {
+                state: ConnectionState::new(),
+                heartbeat_interval,
+                sender,
+                heartbeat_handle,
+            }),
+            rx,
+        )
+    }
+    async fn recv_event(mut rx: mpsc::UnboundedReceiver<Event>, inner: Arc<ManagerInner>) {
+        while let Some(event) = rx.recv().await {
+            inner.state.input_event(event);
         }
+        tracing::warn!("recv_event task exited");
     }
 }
 
@@ -184,17 +192,13 @@ pub struct ConnectionManager {
 
 impl ConnectionManager {
     pub fn new() -> Self {
-        let (sender, rx) = mpsc::unbounded_channel();
-        let inner = Arc::new(ManagerInner::new(sender));
-
-        tokio::spawn(unconstrained(Self::recv_event(rx, inner.clone())));
-
-        Self { inner }
+        Self {
+            inner: ManagerInner::new(),
+        }
     }
     #[cfg(test)]
     pub fn new_for_test() -> (Self, mpsc::UnboundedReceiver<Event>) {
-        let (sender, rx) = mpsc::unbounded_channel();
-        let inner = Arc::new(ManagerInner::new(sender));
+        let (inner, rx) = ManagerInner::new2();
 
         (Self { inner }, rx)
     }
@@ -216,26 +220,6 @@ impl ConnectionManager {
             .and_then(|conn| conn.stop_sender.lock().take())
             .map(|sender| sender.send(()).is_ok())
             .unwrap_or_default()
-    }
-    async fn recv_event(mut rx: mpsc::UnboundedReceiver<Event>, inner: Arc<ManagerInner>) {
-        loop {
-            let e = match rx.try_recv() {
-                Ok(e) => e,
-                Err(mpsc::error::TryRecvError::Disconnected) => break,
-                Err(mpsc::error::TryRecvError::Empty) => {
-                    sleep(Duration::from_millis(500)).await;
-                    continue;
-                }
-            };
-
-            let mut events = Vec::with_capacity(32);
-            events.push(e);
-            while let Ok(e) = rx.try_recv() {
-                events.push(e);
-            }
-            inner.state.input_events(events.into_iter());
-        }
-        tracing::warn!("recv_event task exited");
     }
     pub fn new_connection<T: ConnType>(
         &self,
@@ -338,9 +322,11 @@ where
     }
     pub fn poll(&mut self, cx: &mut Context<'_>) -> io::Result<()> {
         if let Poll::Ready(_) = self.heartbeat_interval.poll_next_unpin(cx) {
-            self.state = T::default();
+            let events = self.state.get_events();
+            self.send(events);
         }
-        if let Poll::Ready(_) = self.stopped.poll_unpin(cx) {
+        if let Poll::Ready(r) = self.stopped.poll_unpin(cx) {
+            eprintln!("err {:?}", r);
             return Err(io::Error::new(
                 io::ErrorKind::ConnectionAborted,
                 "Aborted by user",
@@ -386,5 +372,67 @@ impl<T: ConnType> Drop for Connection<T> {
         let events = self.state.get_events();
         self.send(events);
         self.send(vec![EventType::CloseConnection])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::future::poll_fn;
+    use rd_interface::IntoAddress;
+    use tokio::{task::yield_now, time::sleep};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_connection_manager() {
+        let conn_mgr = ConnectionManager::new();
+        let addr = "localhost:1234".into_address().unwrap();
+
+        let mut tcp = conn_mgr.new_connection::<Tcp>(addr.clone(), &rd_interface::Context::new());
+        yield_now().await;
+        conn_mgr.borrow_state(|s| {
+            let entry = s.connections.iter().next().unwrap();
+            let conn = entry.value();
+
+            assert_eq!(conn.protocol, Protocol::Tcp);
+            assert_eq!(conn.addr, addr);
+            assert_eq!(conn.upload.load(Ordering::Relaxed), 0);
+            assert_eq!(conn.download.load(Ordering::Relaxed), 0);
+        });
+        tcp.read(1);
+        tcp.write(1);
+        tcp.read(1);
+        poll_fn(|cx| {
+            tcp.poll(cx)?;
+            Poll::Ready(Result::<(), io::Error>::Ok(()))
+        })
+        .await
+        .unwrap();
+        conn_mgr.borrow_state(|s| {
+            let entry = s.connections.iter().next().unwrap();
+            let conn = entry.value();
+
+            assert_eq!(conn.protocol, Protocol::Tcp);
+            assert_eq!(conn.addr, addr);
+            assert_eq!(conn.upload.load(Ordering::Relaxed), 0);
+            assert_eq!(conn.download.load(Ordering::Relaxed), 0);
+        });
+        sleep(Duration::from_millis(1500)).await;
+        poll_fn(|cx| {
+            tcp.poll(cx)?;
+            Poll::Ready(Result::<(), io::Error>::Ok(()))
+        })
+        .await
+        .unwrap();
+
+        conn_mgr.borrow_state(|s| {
+            let entry = s.connections.iter().next().unwrap();
+            let conn = entry.value();
+
+            assert_eq!(conn.protocol, Protocol::Tcp);
+            assert_eq!(conn.addr, addr);
+            assert_eq!(conn.upload.load(Ordering::Relaxed), 1);
+            assert_eq!(conn.download.load(Ordering::Relaxed), 2);
+        });
     }
 }
