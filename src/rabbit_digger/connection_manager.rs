@@ -15,7 +15,7 @@ use rd_interface::{Address, Value};
 use serde::{Serialize, Serializer};
 use tokio::{
     sync::{broadcast, mpsc, oneshot},
-    task::{unconstrained, JoinHandle},
+    task::JoinHandle,
     time::interval,
 };
 use tokio_stream::wrappers::BroadcastStream;
@@ -76,11 +76,10 @@ impl ConnectionState {
     }
     fn input_event(&self, event: Event) {
         let Event { uuid, events, time } = event;
-        let mut conn = self.connections.get(&uuid);
 
         for event in events {
-            match (&conn, event) {
-                (_, EventType::NewTcp(addr, ctx)) => {
+            match event {
+                EventType::NewTcp(addr, ctx) => {
                     self.connections.insert(
                         uuid,
                         ConnectionInfo {
@@ -93,9 +92,8 @@ impl ConnectionState {
                             stop_sender: Mutex::new(None),
                         },
                     );
-                    conn = self.connections.get(&uuid);
                 }
-                (_, EventType::NewUdp(addr, ctx)) => {
+                EventType::NewUdp(addr, ctx) => {
                     self.connections.insert(
                         uuid,
                         ConnectionInfo {
@@ -108,32 +106,40 @@ impl ConnectionState {
                             stop_sender: Mutex::new(None),
                         },
                     );
-                    conn = self.connections.get(&uuid);
                 }
-                (Some(conn), EventType::SetStopper(sender)) => {
-                    let mut stop_sender = conn.stop_sender.lock();
-                    *stop_sender = Some(sender);
+                EventType::SetStopper(sender) => {
+                    if let Some(conn) = self.connections.get(&uuid) {
+                        let mut stop_sender = conn.stop_sender.lock();
+                        *stop_sender = Some(sender);
+                    }
                 }
-                (Some(conn), EventType::Read(download)) => {
-                    conn.download.fetch_add(download, Ordering::Relaxed);
-                    self.total_download.fetch_add(download, Ordering::Relaxed);
+                EventType::Read(download) => {
+                    if let Some(conn) = self.connections.get(&uuid) {
+                        conn.download.fetch_add(download, Ordering::Relaxed);
+                        self.total_download.fetch_add(download, Ordering::Relaxed);
+                    }
                 }
-                (Some(conn), EventType::Write(upload)) => {
-                    conn.upload.fetch_add(upload, Ordering::Relaxed);
-                    self.total_upload.fetch_add(upload, Ordering::Relaxed);
+                EventType::Write(upload) => {
+                    if let Some(conn) = self.connections.get(&uuid) {
+                        conn.upload.fetch_add(upload, Ordering::Relaxed);
+                        self.total_upload.fetch_add(upload, Ordering::Relaxed);
+                    }
                 }
-                (Some(conn), EventType::RecvFrom(_, download)) => {
-                    conn.download.fetch_add(download, Ordering::Relaxed);
-                    self.total_download.fetch_add(download, Ordering::Relaxed);
+                EventType::RecvFrom(_, download) => {
+                    if let Some(conn) = self.connections.get(&uuid) {
+                        conn.download.fetch_add(download, Ordering::Relaxed);
+                        self.total_download.fetch_add(download, Ordering::Relaxed);
+                    }
                 }
-                (Some(conn), EventType::SendTo(_, upload)) => {
-                    conn.upload.fetch_add(upload, Ordering::Relaxed);
-                    self.total_upload.fetch_add(upload, Ordering::Relaxed);
+                EventType::SendTo(_, upload) => {
+                    if let Some(conn) = self.connections.get(&uuid) {
+                        conn.upload.fetch_add(upload, Ordering::Relaxed);
+                        self.total_upload.fetch_add(upload, Ordering::Relaxed);
+                    }
                 }
-                (_, EventType::CloseConnection) => {
+                EventType::CloseConnection => {
                     self.connections.remove(&uuid);
                 }
-                _ => {}
             };
         }
     }
@@ -150,7 +156,7 @@ impl ManagerInner {
     fn new() -> Arc<Self> {
         let (this, rx) = Self::new2();
 
-        tokio::spawn(unconstrained(Self::recv_event(rx, this.clone())));
+        tokio::spawn(Self::recv_event(rx, this.clone()));
 
         this
     }
@@ -334,6 +340,14 @@ where
         }
         Ok(())
     }
+    #[cfg(test)]
+    pub async fn poll_async(&mut self) -> io::Result<()> {
+        futures::future::poll_fn(|cx| {
+            self.poll(cx)?;
+            Poll::Ready(Ok(()))
+        })
+        .await
+    }
     fn send(&self, events: Vec<EventType>) {
         if !events.is_empty() && self.sender.send(Event::new(self.uuid, events)).is_err() {
             tracing::warn!("Failed to send event");
@@ -377,62 +391,123 @@ impl<T: ConnType> Drop for Connection<T> {
 
 #[cfg(test)]
 mod tests {
-    use futures::future::poll_fn;
     use rd_interface::IntoAddress;
     use tokio::{task::yield_now, time::sleep};
 
     use super::*;
 
+    struct WantedConn {
+        protocol: Protocol,
+        addr: Address,
+        upload: u64,
+        download: u64,
+    }
+
+    fn assert_conn(conn_mgr: &ConnectionManager, wanted: WantedConn) {
+        conn_mgr.borrow_state(|s| {
+            let entry = s.connections.iter().next().unwrap();
+            let conn = entry.value();
+
+            assert_eq!(conn.protocol, wanted.protocol);
+            assert_eq!(conn.addr, wanted.addr);
+            assert_eq!(conn.upload.load(Ordering::Relaxed), wanted.upload);
+            assert_eq!(conn.download.load(Ordering::Relaxed), wanted.download);
+        });
+    }
+
     #[tokio::test]
-    async fn test_connection_manager() {
+    async fn test_connection_manager_tcp() {
         let conn_mgr = ConnectionManager::new();
         let addr = "localhost:1234".into_address().unwrap();
 
         let mut tcp = conn_mgr.new_connection::<Tcp>(addr.clone(), &rd_interface::Context::new());
         yield_now().await;
-        conn_mgr.borrow_state(|s| {
-            let entry = s.connections.iter().next().unwrap();
-            let conn = entry.value();
-
-            assert_eq!(conn.protocol, Protocol::Tcp);
-            assert_eq!(conn.addr, addr);
-            assert_eq!(conn.upload.load(Ordering::Relaxed), 0);
-            assert_eq!(conn.download.load(Ordering::Relaxed), 0);
-        });
+        assert_conn(
+            &conn_mgr,
+            WantedConn {
+                protocol: Protocol::Tcp,
+                addr: addr.clone(),
+                upload: 0,
+                download: 0,
+            },
+        );
         tcp.read(1);
         tcp.write(1);
         tcp.read(1);
-        poll_fn(|cx| {
-            tcp.poll(cx)?;
-            Poll::Ready(Result::<(), io::Error>::Ok(()))
-        })
-        .await
-        .unwrap();
-        conn_mgr.borrow_state(|s| {
-            let entry = s.connections.iter().next().unwrap();
-            let conn = entry.value();
+        tcp.poll_async().await.unwrap();
+        assert_conn(
+            &conn_mgr,
+            WantedConn {
+                protocol: Protocol::Tcp,
+                addr: addr.clone(),
+                upload: 0,
+                download: 0,
+            },
+        );
+        sleep(Duration::from_secs(1)).await;
+        tcp.poll_async().await.unwrap();
 
-            assert_eq!(conn.protocol, Protocol::Tcp);
-            assert_eq!(conn.addr, addr);
-            assert_eq!(conn.upload.load(Ordering::Relaxed), 0);
-            assert_eq!(conn.download.load(Ordering::Relaxed), 0);
-        });
-        sleep(Duration::from_millis(1500)).await;
-        poll_fn(|cx| {
-            tcp.poll(cx)?;
-            Poll::Ready(Result::<(), io::Error>::Ok(()))
-        })
-        .await
-        .unwrap();
+        assert_conn(
+            &conn_mgr,
+            WantedConn {
+                protocol: Protocol::Tcp,
+                addr,
+                upload: 1,
+                download: 2,
+            },
+        );
 
-        conn_mgr.borrow_state(|s| {
-            let entry = s.connections.iter().next().unwrap();
-            let conn = entry.value();
+        drop(tcp);
+        yield_now().await;
 
-            assert_eq!(conn.protocol, Protocol::Tcp);
-            assert_eq!(conn.addr, addr);
-            assert_eq!(conn.upload.load(Ordering::Relaxed), 1);
-            assert_eq!(conn.download.load(Ordering::Relaxed), 2);
-        });
+        assert!(conn_mgr.inner.state.connections.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_connection_manager_udp() {
+        let conn_mgr = ConnectionManager::new();
+        let addr = "localhost:1234".into_address().unwrap();
+
+        let mut udp = conn_mgr.new_connection::<Udp>(addr.clone(), &rd_interface::Context::new());
+        yield_now().await;
+        assert_conn(
+            &conn_mgr,
+            WantedConn {
+                protocol: Protocol::Udp,
+                addr: addr.clone(),
+                upload: 0,
+                download: 0,
+            },
+        );
+        udp.recv_from(addr.clone(), 1);
+        udp.send_to(addr.clone(), 1);
+        udp.recv_from(addr.clone(), 1);
+        udp.poll_async().await.unwrap();
+        assert_conn(
+            &conn_mgr,
+            WantedConn {
+                protocol: Protocol::Udp,
+                addr: addr.clone(),
+                upload: 0,
+                download: 0,
+            },
+        );
+        sleep(Duration::from_secs(1)).await;
+        udp.poll_async().await.unwrap();
+
+        assert_conn(
+            &conn_mgr,
+            WantedConn {
+                protocol: Protocol::Udp,
+                addr,
+                upload: 1,
+                download: 2,
+            },
+        );
+
+        drop(udp);
+        yield_now().await;
+
+        assert_eq!(conn_mgr.inner.state.connections.len(), 0);
     }
 }
