@@ -35,7 +35,11 @@ socket2 = { version = "0.4.0", features = ["all"] }
 cfg-if = "1.0"
 
 # rule
-smoltcp = "0.8.0"
+smoltcp = { version = "0.8.0", default-features = false, features = [
+    "std",
+    "proto-ipv4",
+    "proto-ipv6",
+] }
 lru_time_cache = "0.11"
 serde_with = "1.8.1"
 maxminddb = "0.21.0"

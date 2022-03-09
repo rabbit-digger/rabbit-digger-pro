@@ -66,7 +66,7 @@ mod tests {
     async fn test_domain_matcher() {
         // test keyword
         let matcher = DomainMatcher {
-            domain: vec!["example".to_string()],
+            domain: vec!["example".to_string()].into(),
             method: Method::Keyword,
         };
         assert!(match_addr("example.com:26666", &matcher).await);
@@ -74,7 +74,7 @@ mod tests {
 
         // test match
         let matcher = DomainMatcher {
-            domain: vec!["example.com".to_string()],
+            domain: vec!["example.com".to_string()].into(),
             method: Method::Match,
         };
         assert!(match_addr("example.com:26666", &matcher).await);
@@ -82,7 +82,7 @@ mod tests {
 
         // test suffix
         let matcher = DomainMatcher {
-            domain: vec![".com".to_string()],
+            domain: vec![".com".to_string()].into(),
             method: Method::Suffix,
         };
         assert!(match_addr("example.com:26666", &matcher).await);
@@ -90,7 +90,7 @@ mod tests {
 
         // test suffix with +
         let matcher = DomainMatcher {
-            domain: vec!["+.com".to_string()],
+            domain: vec!["+.com".to_string()].into(),
             method: Method::Suffix,
         };
         assert!(match_addr("example.com:26666", &matcher).await);

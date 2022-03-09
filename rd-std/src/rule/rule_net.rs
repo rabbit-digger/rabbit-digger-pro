@@ -192,7 +192,7 @@ mod tests {
         let rule_net = RuleNet::new(config::RuleNetConfig {
             rule: vec![config::RuleItem {
                 matcher: config::Matcher::IpCidr(config::IpCidrMatcher {
-                    ipcidr: vec!["127.0.0.1/32".parse().unwrap()],
+                    ipcidr: vec!["127.0.0.1/32".parse().unwrap()].into(),
                 }),
                 target: NetRef::new_with_value("net".into(), net.clone()),
             }],
@@ -206,7 +206,7 @@ mod tests {
         let rule_net = RuleNet::new(config::RuleNetConfig {
             rule: vec![config::RuleItem {
                 matcher: config::Matcher::SrcIpCidr(config::SrcIpCidrMatcher {
-                    ipcidr: vec!["127.0.0.1/32".parse().unwrap()],
+                    ipcidr: vec!["127.0.0.1/32".parse().unwrap()].into(),
                 }),
                 target: NetRef::new_with_value("net".into(), net.clone()),
             }],
@@ -234,7 +234,7 @@ mod tests {
             rule: vec![config::RuleItem {
                 matcher: config::Matcher::Domain(config::DomainMatcher {
                     method: config::DomainMatcherMethod::Match,
-                    domain: vec!["localhost".to_string()],
+                    domain: vec!["localhost".to_string()].into(),
                 }),
                 target: NetRef::new_with_value("net".into(), net.clone()),
             }],

@@ -49,7 +49,8 @@ mod tests {
             ipcidr: vec![config::IpCidr(IpCidr::new(
                 IpAddress::v4(192, 168, 1, 1),
                 24,
-            ))],
+            ))]
+            .into(),
         };
 
         assert_eq!(
