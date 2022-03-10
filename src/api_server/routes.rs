@@ -67,8 +67,8 @@ impl ApiServer {
             )
             .route("/get", get(handlers::get_registry))
             .route("/state", get(handlers::get_state))
-            .route("/connections", get(handlers::get_connections))
             .route("/connection/:uuid", delete(handlers::delete_conn))
+            .route("/connection", get(handlers::get_connections))
             .route("/net/:net_name", post(handlers::post_select))
             .route("/net/:net_name/delay", get(handlers::get_delay))
             .route(
@@ -78,8 +78,8 @@ impl ApiServer {
                     .delete(handlers::delete_userdata),
             )
             .route("/userdata", get(handlers::list_userdata))
-            .route("/connection", get(handlers::get_connection))
-            .route("/log", get(handlers::ws_log))
+            .route("/stream/connection", get(handlers::get_connection))
+            .route("/stream/logs", get(handlers::ws_log))
             .layer(Extension(ctx));
 
         if let Some(token) = &self.access_token {
