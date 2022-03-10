@@ -477,7 +477,7 @@ mod tests {
     #[tokio::test]
     async fn test_running_server_net() {
         let test_net = TestNet::new().into_dyn();
-        let (manager, mut rx) = ConnectionManager::new_for_test();
+        let manager = ConnectionManager::new();
         let server_net =
             RunningServerNet::new("server_name".to_string(), test_net.clone(), manager);
         let _ = format!("{:?}", server_net);
@@ -512,6 +512,16 @@ mod tests {
                 port: 12345,
             },
         );
+    }
+
+    #[tokio::test]
+    async fn test_event() {
+        let test_net = TestNet::new().into_dyn();
+        let (manager, mut rx) = ConnectionManager::new_for_test();
+        manager.stop();
+        let server_net =
+            RunningServerNet::new("server_name".to_string(), test_net.clone(), manager);
+        let server_net = server_net.into_dyn();
 
         spawn_echo_server(&test_net, "127.0.0.1:12345").await;
         assert_echo(&server_net, "127.0.0.1:12345").await;
