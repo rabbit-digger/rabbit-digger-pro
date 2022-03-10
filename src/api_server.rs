@@ -2,30 +2,26 @@ use std::net::SocketAddr;
 
 use anyhow::Result;
 use rabbit_digger::RabbitDigger;
-use tokio::net::TcpListener;
-use tokio_stream::wrappers::TcpListenerStream;
 
 use crate::config::ConfigManager;
 
-mod filters;
 mod handlers;
-mod reject;
+mod routes;
 
-pub struct Server {
+pub struct ApiServer {
     pub rabbit_digger: RabbitDigger,
     pub config_manager: ConfigManager,
     pub access_token: Option<String>,
     pub web_ui: Option<String>,
 }
 
-impl Server {
+impl ApiServer {
     pub async fn run(self, bind: &str) -> Result<SocketAddr> {
-        let routes = filters::routes(self).await?;
-        let listener = TcpListener::bind(bind).await?;
-        let local_addr = listener.local_addr()?;
-        let listener = TcpListenerStream::new(listener);
+        let app = self.routes().await?;
 
-        tokio::spawn(warp::serve(routes).run_incoming(listener));
+        let server = axum::Server::bind(&bind.parse()?).serve(app.into_make_service());
+        let local_addr = server.local_addr();
+        tokio::spawn(server);
 
         Ok(local_addr)
     }

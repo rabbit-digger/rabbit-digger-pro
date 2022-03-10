@@ -1,5 +1,4 @@
 use std::{
-    convert::Infallible,
     error::Error,
     future::ready,
     str::from_utf8,
@@ -7,19 +6,22 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::reject::{custom_reject, ApiError};
-use bytes::Bytes;
-use futures::{SinkExt, Stream, StreamExt, TryStreamExt};
+use axum::{
+    extract::{
+        ws::{Message, WebSocket},
+        Extension, Path, Query, RawBody, WebSocketUpgrade,
+    },
+    response::{IntoResponse, Response},
+    BoxError, Json,
+};
+use futures::{Stream, StreamExt, TryStreamExt};
+use hyper::StatusCode;
 use rabbit_digger::{RabbitDigger, Uuid};
 use rd_interface::{IntoAddress, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{pin, time::interval};
 use tokio_stream::wrappers::IntervalStream;
-use warp::{
-    path::Tail,
-    ws::{Message, WebSocket},
-};
 
 use crate::{
     config::{ConfigManager, ImportSource, SelectMap},
@@ -33,42 +35,80 @@ pub(super) struct Ctx {
     pub(super) userdata: Arc<FileStorage>,
 }
 
-pub(super) async fn get_config(Ctx { rd, .. }: Ctx) -> Result<impl warp::Reply, warp::Rejection> {
-    Ok(warp::reply::json(
-        &rd.config()
-            .await
-            .map_err(|_| warp::reject::custom(ApiError::NotFound))?,
-    ))
+pub(super) enum ApiError {
+    NotFound,
+    Anyhow(anyhow::Error),
+    Other(BoxError),
+}
+
+impl ApiError {
+    fn other<E: std::error::Error + Send + Sync + 'static>(err: E) -> Self {
+        ApiError::Other(Box::new(err))
+    }
+}
+
+impl From<anyhow::Error> for ApiError {
+    fn from(inner: anyhow::Error) -> Self {
+        ApiError::Anyhow(inner)
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let body = Json(json!({
+            "error": match self {
+                ApiError::Anyhow(e) => e.to_string(),
+                ApiError::NotFound => "Not found".to_string(),
+                ApiError::Other(e) => e.to_string(),
+            },
+        }));
+
+        (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
+    }
+}
+
+pub(super) async fn get_config(
+    Extension(Ctx { rd, .. }): Extension<Ctx>,
+) -> Result<impl IntoResponse, ApiError> {
+    Ok(Json(rd.config().await?))
 }
 
 pub(super) async fn post_config(
-    Ctx { rd, cfg_mgr, .. }: Ctx,
-    source: ImportSource,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let stream = cfg_mgr.config_stream(source).await.map_err(custom_reject)?;
+    Extension(Ctx { rd, cfg_mgr, .. }): Extension<Ctx>,
+    Json(source): Json<ImportSource>,
+) -> Result<impl IntoResponse, ApiError> {
+    let stream = cfg_mgr.config_stream(source).await?;
 
-    let reply = warp::reply::json(&Value::Null);
-
-    rd.stop().await.map_err(custom_reject)?;
+    rd.stop().await?;
     tokio::spawn(rd.start_stream(stream));
 
-    Ok(reply)
+    Ok(Json(Value::Null))
 }
 
-pub(super) async fn get_registry(Ctx { rd, .. }: Ctx) -> Result<impl warp::Reply, Infallible> {
-    Ok(rd.registry(|r| warp::reply::json(&r)).await)
+pub(super) async fn get_registry(
+    Extension(Ctx { rd, .. }): Extension<Ctx>,
+) -> Result<impl IntoResponse, ApiError> {
+    Ok(rd.registry(|r| Json(&r).into_response()).await)
 }
 
-pub(super) async fn get_connection(Ctx { rd, .. }: Ctx) -> Result<impl warp::Reply, Infallible> {
-    Ok(rd.connection(|c| warp::reply::json(&c)).await)
+#[derive(Deserialize)]
+pub struct ConnectionQuery {
+    #[serde(default)]
+    pub patch: bool,
+    #[serde(default)]
+    pub without_connections: bool,
 }
 
-pub(super) async fn get_state(Ctx { rd, .. }: Ctx) -> Result<impl warp::Reply, warp::Rejection> {
-    Ok(warp::reply::json(
-        &rd.state_str()
-            .await
-            .map_err(|_| warp::reject::custom(ApiError::NotFound))?,
-    ))
+pub(super) async fn get_connections(
+    Extension(Ctx { rd, .. }): Extension<Ctx>,
+) -> Result<Response, ApiError> {
+    Ok(rd.connection(|c| Json(&c).into_response()).await)
+}
+
+pub(super) async fn get_state(
+    Extension(Ctx { rd, .. }): Extension<Ctx>,
+) -> Result<impl IntoResponse, ApiError> {
+    Ok(Json(&rd.state_str().await?).into_response())
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,13 +116,10 @@ pub struct PostSelect {
     selected: String,
 }
 pub(super) async fn post_select(
-    Ctx { rd, cfg_mgr, .. }: Ctx,
-    net_name: String,
-    PostSelect { selected }: PostSelect,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let net_name = percent_encoding::percent_decode(net_name.as_bytes())
-        .decode_utf8()
-        .map_err(custom_reject)?;
+    Extension(Ctx { rd, cfg_mgr, .. }): Extension<Ctx>,
+    Path(net_name): Path<String>,
+    Json(PostSelect { selected }): Json<PostSelect>,
+) -> Result<impl IntoResponse, ApiError> {
     rd.update_net(&net_name, |o| {
         if o.net_type == "select" {
             if let Some(o) = o.opt.as_object_mut() {
@@ -92,31 +129,27 @@ pub(super) async fn post_select(
             tracing::warn!("net_type is not select");
         }
     })
-    .await
-    .map_err(custom_reject)?;
+    .await?;
 
     if let Some(id) = rd.get_config(|c| c.map(|c| c.id.clone())).await {
-        let mut select_map = SelectMap::from_cache(&id, cfg_mgr.select_storage())
-            .await
-            .map_err(custom_reject)?;
+        let mut select_map = SelectMap::from_cache(&id, cfg_mgr.select_storage()).await?;
 
         select_map.insert(net_name.to_string(), selected);
 
         select_map
             .write_cache(&id, cfg_mgr.select_storage())
-            .await
-            .map_err(custom_reject)?;
+            .await?;
     }
 
-    Ok(warp::reply::json(&Value::Null))
+    Ok(Json(Value::Null))
 }
 
 pub(super) async fn delete_conn(
-    Ctx { rd, .. }: Ctx,
-    uuid: Uuid,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let ok = rd.stop_connection(uuid).await.map_err(custom_reject)?;
-    Ok(warp::reply::json(&ok))
+    Extension(Ctx { rd, .. }): Extension<Ctx>,
+    Path(uuid): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ok = rd.stop_connection(uuid).await?;
+    Ok(Json(ok))
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,18 +163,11 @@ pub struct DelayResponse {
     response: u64,
 }
 pub(super) async fn get_delay(
-    Ctx { rd, .. }: Ctx,
-    net_name: String,
-    DelayRequest { url, timeout }: DelayRequest,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let net_name = percent_encoding::percent_decode(net_name.as_bytes())
-        .decode_utf8()
-        .map_err(custom_reject)?;
-    let net = rd
-        .get_net(&net_name)
-        .await
-        .map_err(custom_reject)?
-        .map(|n| n.as_net());
+    Extension(Ctx { rd, .. }): Extension<Ctx>,
+    Path(net_name): Path<String>,
+    Json(DelayRequest { url, timeout }): Json<DelayRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let net = rd.get_net(&net_name).await?.map(|n| n.as_net());
     let host = url.host_str();
     let port = url.port_or_known_default();
     let timeout = timeout.unwrap_or(5000);
@@ -169,58 +195,54 @@ pub(super) async fn get_delay(
             };
             let resp = tokio::time::timeout(Duration::from_millis(timeout), fut).await;
             let resp = match resp {
-                Ok(v) => Some(v.map_err(custom_reject)?),
+                Ok(v) => Some(v?),
                 _ => None,
             };
-            warp::reply::json(&resp)
+            Json(&resp).into_response()
         }
-        _ => warp::reply::json(&Value::Null),
+        _ => Json(&Value::Null).into_response(),
     })
 }
 
 pub(super) async fn get_userdata(
-    Ctx { userdata, .. }: Ctx,
-    tail: Tail,
-) -> Result<impl warp::Reply, warp::Rejection> {
+    Extension(Ctx { userdata, .. }): Extension<Ctx>,
+    Path(tail): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
     let item = userdata
         .get(tail.as_str())
-        .await
-        .map_err(|_| warp::reject::custom(ApiError::NotFound))?
-        .ok_or_else(|| warp::reject::custom(ApiError::NotFound))?;
+        .await?
+        .ok_or(ApiError::NotFound)?;
 
-    Ok(warp::reply::json(&item))
+    Ok(Json(item))
 }
 
 pub(super) async fn put_userdata(
-    Ctx { userdata, .. }: Ctx,
-    tail: Tail,
-    body: Bytes,
-) -> Result<impl warp::Reply, warp::Rejection> {
+    Extension(Ctx { userdata, .. }): Extension<Ctx>,
+    Path(tail): Path<String>,
+    RawBody(body): RawBody,
+) -> Result<impl IntoResponse, ApiError> {
+    let body = hyper::body::to_bytes(body).await.map_err(ApiError::other)?;
     userdata
-        .set(tail.as_str(), from_utf8(&body).map_err(custom_reject)?)
-        .await
-        .map_err(custom_reject)?;
+        .set(tail.as_str(), from_utf8(&body).map_err(ApiError::other)?)
+        .await?;
 
-    Ok(warp::reply::json(&json!({ "copied": body.len() })))
+    Ok(Json(json!({ "copied": body.len() })))
 }
 
 pub(super) async fn delete_userdata(
-    Ctx { userdata, .. }: Ctx,
-    tail: Tail,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    userdata
-        .remove(tail.as_str())
-        .await
-        .map_err(custom_reject)?;
+    Extension(Ctx { userdata, .. }): Extension<Ctx>,
+    Path(tail): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    userdata.remove(tail.as_str()).await?;
 
-    Ok(warp::reply::json(&json!({ "ok": true })))
+    Ok(Json(json!({ "ok": true })))
 }
 
 pub(super) async fn list_userdata(
-    Ctx { userdata, .. }: Ctx,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let keys = userdata.keys().await.map_err(custom_reject)?;
-    Ok(warp::reply::json(&json!({ "keys": keys })))
+    Extension(Ctx { userdata, .. }): Extension<Ctx>,
+) -> Result<impl IntoResponse, ApiError> {
+    let keys = userdata.keys().await?;
+    Ok(Json(json!({ "keys": keys })))
 }
 
 async fn forward<E>(
@@ -237,12 +259,12 @@ where
     Ok(())
 }
 
-#[derive(Deserialize)]
-pub struct ConnectionQuery {
-    #[serde(default)]
-    pub patch: bool,
-    #[serde(default)]
-    pub without_connections: bool,
+pub(super) async fn get_connection(
+    Query(query): Query<ConnectionQuery>,
+    ws: WebSocketUpgrade,
+    Extension(Ctx { rd, .. }): Extension<Ctx>,
+) -> Result<Response, ApiError> {
+    ws_conn(ws, rd, query).await
 }
 
 #[derive(Serialize)]
@@ -253,10 +275,10 @@ pub enum MaybePatch {
 }
 
 pub(super) async fn ws_conn(
-    Ctx { rd, .. }: Ctx,
+    ws: WebSocketUpgrade,
+    rd: RabbitDigger,
     query: ConnectionQuery,
-    ws: warp::ws::Ws,
-) -> Result<impl warp::Reply, Infallible> {
+) -> Result<Response, ApiError> {
     let ConnectionQuery {
         patch: patch_mode,
         without_connections,
@@ -288,7 +310,7 @@ pub(super) async fn ws_conn(
                 (_, Err(e)) => Err(e),
             }))
         })
-        .map_ok(|p| Message::text(serde_json::to_string(&p).unwrap()));
+        .map_ok(|p| Message::Text(serde_json::to_string(&p).unwrap()));
     Ok(ws.on_upgrade(move |ws| async move {
         if let Err(e) = forward(stream, ws).await {
             tracing::error!("WebSocket event error: {:?}", e)
@@ -296,12 +318,12 @@ pub(super) async fn ws_conn(
     }))
 }
 
-pub(super) async fn ws_log(ws: warp::ws::Ws) -> Result<impl warp::Reply, Infallible> {
+pub(super) async fn ws_log(ws: WebSocketUpgrade) -> Result<impl IntoResponse, ApiError> {
     Ok(ws.on_upgrade(move |mut ws| async move {
         let mut recv = crate::log::get_sender().subscribe();
         while let Ok(content) = recv.recv().await {
             if let Err(e) = ws
-                .send(Message::text(String::from_utf8_lossy(&content)))
+                .send(Message::Text(String::from_utf8_lossy(&content).to_string()))
                 .await
             {
                 tracing::error!("WebSocket event error: {:?}", e);
