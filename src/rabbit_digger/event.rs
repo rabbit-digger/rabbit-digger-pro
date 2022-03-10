@@ -1,3 +1,4 @@
+use core::mem::discriminant;
 use std::time::SystemTime;
 
 use rd_interface::{Address, Value};
@@ -6,27 +7,37 @@ use uuid::Uuid;
 
 #[derive(Debug)]
 pub enum EventType {
-    NewTcp(Address, Value, oneshot::Sender<()>),
-    NewUdp(Address, Value, oneshot::Sender<()>),
+    NewTcp(Address, Value),
+    NewUdp(Address, Value),
+    SetStopper(oneshot::Sender<()>),
     CloseConnection,
-    Outbound(u64),
-    Inbound(u64),
-    UdpOutbound(Address, u64),
-    UdpInbound(Address, u64),
+    Write(u64),
+    Read(u64),
+    SendTo(Address, u64),
+    RecvFrom(Address, u64),
+}
+
+impl PartialEq for EventType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::SetStopper(_), Self::SetStopper(_)) => true,
+            _ => discriminant(self) == discriminant(other),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct Event {
     pub uuid: Uuid,
-    pub event_type: EventType,
+    pub events: Vec<EventType>,
     pub time: SystemTime,
 }
 
 impl Event {
-    pub fn new(uuid: Uuid, event_type: EventType) -> Event {
+    pub fn new(uuid: Uuid, events: Vec<EventType>) -> Event {
         Event {
             uuid,
-            event_type,
+            events,
             time: SystemTime::now(),
         }
     }

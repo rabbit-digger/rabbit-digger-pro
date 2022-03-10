@@ -113,8 +113,10 @@ mod impl_std {
         ($($x:ident),+ $(,)?) => ($(
             impl<T: Config> Config for $x<T> {
                 fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
-                    for i in self.iter_mut() {
+                    for (key, i) in self.iter_mut().enumerate() {
+                        ctx.push(key.to_string());
                         i.visit(ctx, visitor)?;
+                        ctx.pop();
                     }
                     Ok(())
                 }
@@ -123,10 +125,12 @@ mod impl_std {
     }
     macro_rules! impl_key_container_config {
         ($($x:ident),+ $(,)?) => ($(
-            impl<K, T: Config> Config for $x<K, T> {
+            impl<K: std::string::ToString, T: Config> Config for $x<K, T> {
                 fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
-                    for (_, i) in self.iter_mut() {
+                    for (key, i) in self.iter_mut() {
+                        ctx.push(key.to_string());
                         i.visit(ctx, visitor)?;
+                        ctx.pop();
                     }
                     Ok(())
                 }

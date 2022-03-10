@@ -63,7 +63,7 @@ impl ser::Serialize for AddressDomain {
 }
 
 /// Address can be IPv4, IPv6 address or a domain with port.
-#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord)]
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Hash)]
 pub enum Address {
     SocketAddr(SocketAddr),
     Domain(String, u16),
