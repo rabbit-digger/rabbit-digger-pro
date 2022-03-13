@@ -165,7 +165,7 @@ pub struct DelayResponse {
 pub(super) async fn get_delay(
     Extension(Ctx { rd, .. }): Extension<Ctx>,
     Path(net_name): Path<String>,
-    Json(DelayRequest { url, timeout }): Json<DelayRequest>,
+    Query(DelayRequest { url, timeout }): Query<DelayRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let net = rd.get_net(&net_name).await?.map(|n| n.as_net());
     let host = url.host_str();
