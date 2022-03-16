@@ -1,3 +1,5 @@
+use std::slice;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +27,16 @@ impl<T: Config> Config for SingleOrVec<T> {
     }
 }
 
+impl<'a, T> IntoIterator for &'a mut SingleOrVec<T> {
+    type Item = &'a mut T;
+
+    type IntoIter = IterMut<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
 impl<T> From<T> for SingleOrVec<T> {
     fn from(x: T) -> Self {
         SingleOrVec::Single(x)
@@ -44,37 +56,56 @@ impl<T> SingleOrVec<T> {
             SingleOrVec::Vec(v) => v,
         }
     }
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        Iter {
-            inner: self,
-            index: 0,
+    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+        match self {
+            SingleOrVec::Single(t) => Iter::Single(Some(t)),
+            SingleOrVec::Vec(v) => Iter::Vec(v.iter()),
+        }
+    }
+    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
+        match self {
+            SingleOrVec::Single(t) => IterMut::Single(Some(t)),
+            SingleOrVec::Vec(v) => IterMut::Vec(v.iter_mut()),
+        }
+    }
+    pub fn shrink_to_fit(&mut self) {
+        match self {
+            SingleOrVec::Single(_) => {}
+            SingleOrVec::Vec(x) => {
+                x.shrink_to_fit();
+            }
         }
     }
 }
 
-pub struct Iter<'a, T> {
-    inner: &'a SingleOrVec<T>,
-    index: usize,
+pub enum IterMut<'a, T> {
+    Single(Option<&'a mut T>),
+    Vec(slice::IterMut<'a, T>),
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            IterMut::Single(x) => x.take(),
+            IterMut::Vec(x) => x.next(),
+        }
+    }
+}
+
+pub enum Iter<'a, T> {
+    Single(Option<&'a T>),
+    Vec(slice::Iter<'a, T>),
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.inner {
-            SingleOrVec::Single(x) => {
-                if self.index == 0 {
-                    self.index += 1;
-                    Some(x)
-                } else {
-                    None
-                }
-            }
-            SingleOrVec::Vec(x) => {
-                let i = x.get(self.index);
-                self.index += 1;
-                i
-            }
+        match self {
+            Iter::Single(x) => x.take(),
+            Iter::Vec(x) => x.next(),
         }
     }
 }

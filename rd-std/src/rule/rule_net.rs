@@ -36,13 +36,19 @@ impl Rule {
         let mut rule = config
             .rule
             .into_iter()
-            .map(|config::RuleItem { target, matcher }| {
-                Ok(RuleItem {
-                    matcher,
-                    target: (*target).clone(),
-                    target_name: target.represent().to_string(),
-                })
-            })
+            .map(
+                |config::RuleItem {
+                     target,
+                     mut matcher,
+                 }| {
+                    matcher.shrink_to_fit();
+                    Ok(RuleItem {
+                        matcher,
+                        target: (*target).clone(),
+                        target_name: target.represent().to_string(),
+                    })
+                },
+            )
             .collect::<Result<Vec<_>>>()?;
 
         rule.shrink_to_fit();

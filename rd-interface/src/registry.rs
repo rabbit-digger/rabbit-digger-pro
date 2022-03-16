@@ -5,7 +5,7 @@ use std::{
 
 pub use crate::config::NetRef;
 use crate::{
-    config::{resolve_net, Config, Visitor, VisitorContext},
+    config::{resolve_net, CompactStringVec, Config, Visitor, VisitorContext},
     IntoDyn, Net, Result, Server,
 };
 pub use schemars::JsonSchema;
@@ -65,7 +65,7 @@ pub struct Resolver<ItemType> {
         cfg: &mut Value,
         prefix: &[&str],
         delimiter: &str,
-        add_net: &mut HashMap<Vec<String>, Value>,
+        add_net: &mut HashMap<CompactStringVec, Value>,
     ) -> Result<()>,
     build: fn(getter: NetGetter, cfg: Value) -> Result<ItemType>,
     schema: RootSchema,
@@ -88,7 +88,7 @@ impl<ItemType> Resolver<ItemType> {
                 struct ResolveNetRefVisitor<'a> {
                     prefix: &'a [&'a str],
                     delimiter: &'a str,
-                    to_add: &'a mut HashMap<Vec<String>, Value>,
+                    to_add: &'a mut HashMap<CompactStringVec, Value>,
                 }
 
                 impl<'a> Visitor for ResolveNetRefVisitor<'a> {
@@ -101,12 +101,9 @@ impl<ItemType> Resolver<ItemType> {
                             Value::String(_) => {}
                             opt => {
                                 let opt = opt.clone();
-                                let mut key = self
-                                    .prefix
-                                    .iter()
-                                    .map(|s| s.to_string())
-                                    .collect::<Vec<_>>();
-                                key.extend(ctx.path().to_owned());
+                                let mut key =
+                                    self.prefix.iter().map(|i| *i).collect::<CompactStringVec>();
+                                key.extend(ctx.path());
                                 *net_ref.represent_mut() = Value::String(key.join(self.delimiter));
                                 self.to_add.insert(key, opt);
                             }
@@ -145,7 +142,7 @@ impl<ItemType> Resolver<ItemType> {
         cfg: &mut Value,
         prefix: &[&str],
         delimiter: &str,
-        add_net: &mut HashMap<Vec<String>, Value>,
+        add_net: &mut HashMap<CompactStringVec, Value>,
     ) -> Result<()> {
         (self.unfold_net_ref)(cfg, prefix, delimiter, add_net)
     }
