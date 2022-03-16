@@ -181,13 +181,6 @@ impl<'de> Deserialize<'de> for CompactStringVec {
                 values.push(value);
                 Ok(values)
             }
-
-            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                self.visit_str(&v)
-            }
         }
 
         deserializer.deserialize_any(StringsVisitor)
