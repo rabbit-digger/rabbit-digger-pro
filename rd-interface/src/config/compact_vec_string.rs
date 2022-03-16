@@ -17,7 +17,7 @@ pub struct CompactStringVec {
 
 impl fmt::Debug for CompactStringVec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CompactDomainVec")
+        f.debug_struct("CompactStringVec")
             .field("underlying", &self.underlying)
             .field("index", &self.index)
             .finish()
@@ -181,15 +181,22 @@ impl<'de> Deserialize<'de> for CompactStringVec {
                 values.push(value);
                 Ok(values)
             }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(&v)
+            }
         }
 
-        deserializer.deserialize_seq(StringsVisitor)
+        deserializer.deserialize_any(StringsVisitor)
     }
 }
 
 impl JsonSchema for CompactStringVec {
     fn schema_name() -> String {
-        "CompactDomainVec".to_string()
+        "StringList".to_string()
     }
 
     fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
