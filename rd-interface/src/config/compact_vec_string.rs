@@ -209,3 +209,17 @@ impl From<Vec<String>> for CompactStringVec {
 }
 
 impl_empty_config!(CompactStringVec);
+
+impl<I> PartialEq<Vec<I>> for CompactStringVec
+where
+    I: AsRef<str>,
+{
+    fn eq(&self, other: &Vec<I>) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        let i1 = self.iter();
+        let i2 = other.iter().map(|s| s.as_ref());
+        i1.eq(i2)
+    }
+}
