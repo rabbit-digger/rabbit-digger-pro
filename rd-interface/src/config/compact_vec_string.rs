@@ -216,6 +216,14 @@ impl From<String> for CompactStringVec {
     }
 }
 
+impl From<&str> for CompactStringVec {
+    fn from(v: &str) -> Self {
+        let mut r = Self::with_capacity(1);
+        r.push(v);
+        return r;
+    }
+}
+
 impl_empty_config!(CompactStringVec);
 
 impl<I> PartialEq<Vec<I>> for CompactStringVec
