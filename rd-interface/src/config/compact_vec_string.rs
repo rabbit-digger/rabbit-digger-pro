@@ -37,9 +37,9 @@ impl CompactStringVec {
             index: Vec::with_capacity(capacity),
         }
     }
-    pub fn push(&mut self, s: &str) {
+    pub fn push(&mut self, s: impl AsRef<str>) {
         let len = self.underlying.len();
-        self.underlying.extend_from_slice(s.as_bytes());
+        self.underlying.extend_from_slice(s.as_ref().as_bytes());
         self.index.push(len);
     }
     pub fn pop(&mut self) {
@@ -197,13 +197,21 @@ impl JsonSchema for CompactStringVec {
     }
 }
 
-impl From<Vec<String>> for CompactStringVec {
-    fn from(v: Vec<String>) -> Self {
+impl<S: AsRef<str>> From<Vec<S>> for CompactStringVec {
+    fn from(v: Vec<S>) -> Self {
         let mut r = Self::new();
         for s in v.iter() {
-            r.push(s);
+            r.push(s.as_ref());
         }
         r.shrink_to_fit();
+        return r;
+    }
+}
+
+impl From<String> for CompactStringVec {
+    fn from(v: String) -> Self {
+        let mut r = Self::with_capacity(1);
+        r.push(&v);
         return r;
     }
 }
