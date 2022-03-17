@@ -17,10 +17,7 @@ pub struct CompactVecString {
 
 impl fmt::Debug for CompactVecString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CompactVecString")
-            .field("underlying", &self.underlying)
-            .field("index", &self.index)
-            .finish()
+        f.debug_list().entries(self.iter()).finish()
     }
 }
 
@@ -142,6 +139,11 @@ impl Serialize for CompactVecString {
     where
         S: serde::Serializer,
     {
+        if self.len() == 1 {
+            if let Some(s) = self.get(0) {
+                return serializer.serialize_str(s);
+            }
+        }
         serializer.collect_seq(self.iter())
     }
 }
@@ -261,5 +263,50 @@ mod tests {
         let v = CompactVecString::from("a".to_string());
         assert_eq!(v.len(), 1);
         assert_eq!(v.get(0).unwrap(), "a");
+    }
+
+    #[test]
+    fn test_debug() {
+        let v = CompactVecString::from_iter(vec!["a", "b", "c"]);
+        assert_eq!(format!("{:?}", v), "[\"a\", \"b\", \"c\"]");
+    }
+
+    #[test]
+    fn test_extend() {
+        let mut v = CompactVecString::new();
+        v.extend(vec!["a", "b", "c"]);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v.into_iter().collect::<Vec<_>>(), vec!["a", "b", "c"]);
+
+        let mut v = CompactVecString::new();
+        v.extend(vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v.into_iter().collect::<Vec<_>>(), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_serde() {
+        let v = CompactVecString::from_iter(vec!["a", "b", "c"]);
+        let v2 =
+            serde_json::from_str::<CompactVecString>(&serde_json::to_string(&v).unwrap()).unwrap();
+        assert_eq!(v, v2);
+        let v3 = serde_json::from_str::<CompactVecString>("[\"a\",\"b\",\"c\"]").unwrap();
+        assert_eq!(v, v3);
+
+        let v = CompactVecString::from("a");
+        let v2 =
+            serde_json::from_str::<CompactVecString>(&serde_json::to_string(&v).unwrap()).unwrap();
+        assert_eq!(v, v2);
+        let v3 = serde_json::from_str::<CompactVecString>("\"a\"").unwrap();
+        assert_eq!(v, v3);
+
+        let v = CompactVecString::from("a".to_string());
+        assert_eq!(serde_json::to_string(&v).unwrap(), "\"a\"");
+
+        let v = CompactVecString::from_iter(vec!["a", "b", "c"]);
+        assert_eq!(serde_json::to_string(&v).unwrap(), "[\"a\",\"b\",\"c\"]");
+
+        let v = CompactVecString::new();
+        assert_eq!(serde_json::to_string(&v).unwrap(), "[]");
     }
 }
