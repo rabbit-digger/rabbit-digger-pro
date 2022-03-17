@@ -1,5 +1,3 @@
-#[cfg(unix)]
-use std::os::unix::prelude::AsRawFd;
 use std::{
     io,
     net::{IpAddr, SocketAddr},
@@ -208,14 +206,6 @@ impl rd_interface::ITcpStream for CompatTcp {
     }
     async fn local_addr(&self) -> Result<SocketAddr> {
         self.0.local_addr().map_err(Into::into)
-    }
-    #[cfg(unix)]
-    fn read_passthrough(&self) -> Option<rd_interface::Fd> {
-        Some(self.0.as_raw_fd().into())
-    }
-    #[cfg(unix)]
-    fn write_passthrough(&self) -> Option<rd_interface::Fd> {
-        Some(self.0.as_raw_fd().into())
     }
 
     impl_async_read_write!(0);
