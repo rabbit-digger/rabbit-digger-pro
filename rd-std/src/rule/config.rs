@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use super::matcher::{self, MatchContext};
 use rd_interface::{
-    config::{CompactStringVec, NetRef, SingleOrVec},
+    config::{CompactVecString, NetRef, SingleOrVec},
     impl_empty_config,
     prelude::*,
     schemars::{
@@ -26,7 +26,7 @@ pub enum DomainMatcherMethod {
 #[derive(Debug)]
 pub struct DomainMatcher {
     pub method: DomainMatcherMethod,
-    pub domain: CompactStringVec,
+    pub domain: CompactVecString,
 }
 
 #[derive(Debug, Clone, SerializeDisplay, DeserializeFromStr)]

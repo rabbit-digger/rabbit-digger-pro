@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::Result;
-pub use compact_vec_string::CompactStringVec;
+pub use compact_vec_string::CompactVecString;
 pub use single_or_vec::SingleOrVec;
 
 mod compact_vec_string;
@@ -63,13 +63,13 @@ pub trait Visitor {
 }
 
 pub struct VisitorContext {
-    path: CompactStringVec,
+    path: CompactVecString,
 }
 
 impl VisitorContext {
     pub(crate) fn new() -> VisitorContext {
         VisitorContext {
-            path: CompactStringVec::new(),
+            path: CompactVecString::new(),
         }
     }
     pub fn push(&mut self, field: impl AsRef<str>) -> &mut Self {
@@ -79,7 +79,7 @@ impl VisitorContext {
     pub fn pop(&mut self) {
         self.path.pop();
     }
-    pub fn path(&self) -> &CompactStringVec {
+    pub fn path(&self) -> &CompactVecString {
         &self.path
     }
 }

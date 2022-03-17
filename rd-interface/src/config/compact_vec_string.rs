@@ -10,21 +10,21 @@ use serde::{
 use crate::impl_empty_config;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct CompactStringVec {
+pub struct CompactVecString {
     underlying: Vec<u8>,
     index: Vec<usize>,
 }
 
-impl fmt::Debug for CompactStringVec {
+impl fmt::Debug for CompactVecString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CompactStringVec")
+        f.debug_struct("CompactVecString")
             .field("underlying", &self.underlying)
             .field("index", &self.index)
             .finish()
     }
 }
 
-impl CompactStringVec {
+impl CompactVecString {
     pub fn new() -> Self {
         Self {
             underlying: Vec::new(),
@@ -63,9 +63,21 @@ impl CompactStringVec {
     pub fn join(&self, sep: &str) -> String {
         self.into_iter().collect::<Vec<_>>().join(sep)
     }
+    pub fn get(&self, index: usize) -> Option<&str> {
+        if index >= self.index.len() {
+            return None;
+        }
+        let start = self.index[index];
+        let end = if index + 1 < self.index.len() {
+            self.index[index + 1]
+        } else {
+            self.underlying.len()
+        };
+        Some(unsafe { std::str::from_utf8_unchecked(&self.underlying[start..end]) })
+    }
 }
 
-impl Extend<String> for CompactStringVec {
+impl Extend<String> for CompactVecString {
     fn extend<T: IntoIterator<Item = String>>(&mut self, iter: T) {
         for s in iter {
             self.push(&s);
@@ -73,7 +85,7 @@ impl Extend<String> for CompactStringVec {
     }
 }
 
-impl<'a> Extend<&'a str> for CompactStringVec {
+impl<'a> Extend<&'a str> for CompactVecString {
     fn extend<T: IntoIterator<Item = &'a str>>(&mut self, iter: T) {
         for s in iter {
             self.push(s);
@@ -81,7 +93,7 @@ impl<'a> Extend<&'a str> for CompactStringVec {
     }
 }
 
-impl FromIterator<String> for CompactStringVec {
+impl FromIterator<String> for CompactVecString {
     fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
         let mut c = Self::new();
         for s in iter {
@@ -91,7 +103,7 @@ impl FromIterator<String> for CompactStringVec {
     }
 }
 
-impl<'a> FromIterator<&'a str> for CompactStringVec {
+impl<'a> FromIterator<&'a str> for CompactVecString {
     fn from_iter<I: IntoIterator<Item = &'a str>>(iter: I) -> Self {
         let mut c = Self::new();
         for s in iter {
@@ -101,7 +113,7 @@ impl<'a> FromIterator<&'a str> for CompactStringVec {
     }
 }
 
-impl<'a> IntoIterator for &'a CompactStringVec {
+impl<'a> IntoIterator for &'a CompactVecString {
     type Item = &'a str;
     type IntoIter = Iter<'a>;
 
@@ -111,7 +123,7 @@ impl<'a> IntoIterator for &'a CompactStringVec {
 }
 
 pub struct Iter<'a> {
-    inner: &'a CompactStringVec,
+    inner: &'a CompactVecString,
     index: usize,
 }
 
@@ -119,21 +131,13 @@ impl<'a> Iterator for Iter<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.inner.index.len() {
-            return None;
-        }
-        let start = self.inner.index[self.index];
-        let end = if self.index + 1 < self.inner.index.len() {
-            self.inner.index[self.index + 1]
-        } else {
-            self.inner.underlying.len()
-        };
+        let result = self.inner.get(self.index);
         self.index += 1;
-        Some(unsafe { std::str::from_utf8_unchecked(&self.inner.underlying[start..end]) })
+        result
     }
 }
 
-impl Serialize for CompactStringVec {
+impl Serialize for CompactVecString {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -142,7 +146,7 @@ impl Serialize for CompactStringVec {
     }
 }
 
-impl<'de> Deserialize<'de> for CompactStringVec {
+impl<'de> Deserialize<'de> for CompactVecString {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -150,7 +154,7 @@ impl<'de> Deserialize<'de> for CompactStringVec {
         struct StringsVisitor;
 
         impl<'de> Visitor<'de> for StringsVisitor {
-            type Value = CompactStringVec;
+            type Value = CompactVecString;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 write!(formatter, "string or [string]")
@@ -162,7 +166,7 @@ impl<'de> Deserialize<'de> for CompactStringVec {
             {
                 let len = seq.size_hint().unwrap_or(10);
 
-                let mut values = CompactStringVec::with_capacity(len);
+                let mut values = CompactVecString::with_capacity(len);
 
                 while let Some(value) = seq.next_element::<String>()? {
                     values.push(&value);
@@ -177,7 +181,7 @@ impl<'de> Deserialize<'de> for CompactStringVec {
             where
                 E: serde::de::Error,
             {
-                let mut values = CompactStringVec::with_capacity(1);
+                let mut values = CompactVecString::with_capacity(1);
                 values.push(value);
                 Ok(values)
             }
@@ -187,7 +191,7 @@ impl<'de> Deserialize<'de> for CompactStringVec {
     }
 }
 
-impl JsonSchema for CompactStringVec {
+impl JsonSchema for CompactVecString {
     fn schema_name() -> String {
         "StringList".to_string()
     }
@@ -197,7 +201,7 @@ impl JsonSchema for CompactStringVec {
     }
 }
 
-impl<S: AsRef<str>> From<Vec<S>> for CompactStringVec {
+impl<S: AsRef<str>> From<Vec<S>> for CompactVecString {
     fn from(v: Vec<S>) -> Self {
         let mut r = Self::new();
         for s in v.iter() {
@@ -208,7 +212,7 @@ impl<S: AsRef<str>> From<Vec<S>> for CompactStringVec {
     }
 }
 
-impl From<String> for CompactStringVec {
+impl From<String> for CompactVecString {
     fn from(v: String) -> Self {
         let mut r = Self::with_capacity(1);
         r.push(&v);
@@ -216,7 +220,7 @@ impl From<String> for CompactStringVec {
     }
 }
 
-impl From<&str> for CompactStringVec {
+impl From<&str> for CompactVecString {
     fn from(v: &str) -> Self {
         let mut r = Self::with_capacity(1);
         r.push(v);
@@ -224,9 +228,9 @@ impl From<&str> for CompactStringVec {
     }
 }
 
-impl_empty_config!(CompactStringVec);
+impl_empty_config!(CompactVecString);
 
-impl<I> PartialEq<Vec<I>> for CompactStringVec
+impl<I> PartialEq<Vec<I>> for CompactVecString
 where
     I: AsRef<str>,
 {
@@ -237,5 +241,25 @@ where
         let i1 = self.iter();
         let i2 = other.iter().map(|s| s.as_ref());
         i1.eq(i2)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compact_vec_string_from() {
+        let v = CompactVecString::from_iter(vec!["a", "b", "c"]);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v.into_iter().collect::<Vec<_>>(), vec!["a", "b", "c"]);
+
+        let v = CompactVecString::from("a");
+        assert_eq!(v.len(), 1);
+        assert_eq!(v.get(0).unwrap(), "a");
+
+        let v = CompactVecString::from("a".to_string());
+        assert_eq!(v.len(), 1);
+        assert_eq!(v.get(0).unwrap(), "a");
     }
 }

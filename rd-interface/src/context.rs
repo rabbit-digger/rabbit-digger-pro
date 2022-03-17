@@ -1,4 +1,4 @@
-use crate::{config::CompactStringVec, Value};
+use crate::{config::CompactVecString, Value};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Map;
 use std::{collections::HashMap, fmt, iter::FromIterator, mem::replace, net::SocketAddr};
@@ -26,7 +26,7 @@ pub trait CommonField: DeserializeOwned + Serialize + 'static {
 #[derive(Clone)]
 pub struct Context {
     data: HashMap<String, Value>,
-    net_list: CompactStringVec,
+    net_list: CompactVecString,
 }
 
 impl fmt::Debug for Context {
@@ -50,7 +50,7 @@ impl Context {
     pub fn new() -> Context {
         Context {
             data: HashMap::with_capacity(16),
-            net_list: CompactStringVec::with_capacity(16),
+            net_list: CompactVecString::with_capacity(16),
         }
     }
     /// new a context from socket addr
@@ -107,12 +107,12 @@ impl Context {
         self.net_list.push(net_name.as_ref())
     }
     /// Get net_list
-    pub fn net_list(&self) -> &CompactStringVec {
+    pub fn net_list(&self) -> &CompactVecString {
         &self.net_list
     }
     /// Take net_list
-    pub fn take_net_list(&mut self) -> CompactStringVec {
-        replace(&mut self.net_list, CompactStringVec::new())
+    pub fn take_net_list(&mut self) -> CompactVecString {
+        replace(&mut self.net_list, CompactVecString::new())
     }
     /// to Value
     pub fn to_value(&self) -> Value {
