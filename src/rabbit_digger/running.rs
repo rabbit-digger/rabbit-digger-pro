@@ -299,12 +299,11 @@ enum State {
     },
 }
 
-#[derive(Clone)]
 pub struct RunningServer {
     #[allow(dead_code)]
     name: String,
     server_type: String,
-    state: Arc<RwLock<State>>,
+    state: RwLock<State>,
 }
 
 #[instrument(err, skip(server))]
@@ -321,7 +320,7 @@ impl RunningServer {
         RunningServer {
             name,
             server_type,
-            state: Arc::new(RwLock::new(State::WaitConfig)),
+            state: RwLock::new(State::WaitConfig),
         }
     }
     pub fn server_type(&self) -> &str {

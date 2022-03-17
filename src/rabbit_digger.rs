@@ -202,8 +202,10 @@ impl RabbitDigger {
             })
             .flatten()
             .collect();
-        let nets =
-            build_nets(&self.registry, config.net.clone(), root).context("Failed to build net")?;
+        let nets = self
+            .registry
+            .build_nets(config.net.clone(), root)
+            .context("Failed to build net")?;
         let servers = build_server(&config.server)
             .await
             .context("Failed to build server")?;
@@ -214,14 +216,12 @@ impl RabbitDigger {
         );
 
         tracing::info!("Server:\n{}", ServerList(&servers));
-        for (
-            _,
-            ServerInfo {
-                name,
-                running_server,
-                config,
-            },
-        ) in &servers
+
+        for ServerInfo {
+            name,
+            running_server,
+            config,
+        } in servers.values()
         {
             let item = self.registry.get_server(&running_server.server_type())?;
             let server = item.build(
@@ -328,9 +328,9 @@ impl RabbitDigger {
                     let mut new_cfg = cfg.clone();
                     update(&mut new_cfg);
 
-                    let net = build_net(net_name, &new_cfg, &self.registry, &|key| {
-                        nets.get(key).map(|i| i.as_net())
-                    })?;
+                    let net = self
+                        .registry
+                        .build_net(net_name, &new_cfg, &|key| nets.get(key).map(|i| i.as_net()))?;
                     running_net.update_net(net);
 
                     *cfg = new_cfg;
@@ -360,7 +360,6 @@ impl RabbitDigger {
     }
 }
 
-#[derive(Clone)]
 pub struct ServerInfo {
     name: String,
     running_server: RunningServer,
@@ -384,65 +383,65 @@ impl<'a> fmt::Display for ServerList<'a> {
     }
 }
 
-fn build_net(name: &str, i: &config::Net, registry: &Registry, getter: NetGetter) -> Result<Net> {
-    let net_item = registry.get_net(&i.net_type)?;
+impl Registry {
+    fn build_net(&self, name: &str, i: &config::Net, getter: NetGetter) -> Result<Net> {
+        let net_item = self.get_net(&i.net_type)?;
 
-    let net = net_item.build(getter, i.opt.clone()).context(format!(
-        "Failed to build net {:?}. Please check your config.",
-        name
-    ))?;
+        let net = net_item.build(getter, i.opt.clone()).context(format!(
+            "Failed to build net {:?}. Please check your config.",
+            name
+        ))?;
 
-    Ok(net)
-}
-
-fn build_nets(
-    registry: &Registry,
-    mut all_net: config::ConfigNet,
-    root: Vec<String>,
-) -> Result<BTreeMap<String, Arc<RunningNet>>> {
-    let mut running_map: BTreeMap<String, Arc<RunningNet>> = BTreeMap::new();
-
-    if !all_net.contains_key("noop") {
-        all_net.insert(
-            "noop".to_string(),
-            config::Net::new_opt("noop", EmptyConfig::default())?,
-        );
-    }
-    if !all_net.contains_key("blackhole") {
-        all_net.insert(
-            "blackhole".to_string(),
-            config::Net::new_opt("blackhole", EmptyConfig::default())?,
-        );
-    }
-    if !all_net.contains_key("local") {
-        all_net.insert(
-            "local".to_string(),
-            config::Net::new_opt("local", LocalNetConfig::default())?,
-        );
+        Ok(net)
     }
 
-    let all_net = topological_sort(RootType::Key(root), all_net.into_iter(), |k, n| {
-        registry
-            .get_net(&n.net_type)?
-            .resolver
-            .get_dependency(n.opt.clone())
-            .context(format!("Failed to get_dependency for net/server: {}", k))
-    })
-    .context("Failed to do topological_sort")?
-    .ok_or_else(|| anyhow!("There is cyclic dependencies in net",))?;
+    fn build_nets(
+        &self,
+        mut all_net: config::ConfigNet,
+        root: Vec<String>,
+    ) -> Result<BTreeMap<String, Arc<RunningNet>>> {
+        let mut running_map: BTreeMap<String, Arc<RunningNet>> = BTreeMap::new();
 
-    for (name, i) in all_net {
-        let net = build_net(&name, &i, registry, &|key| {
-            running_map.get(key).map(|i| i.as_net())
+        if !all_net.contains_key("noop") {
+            all_net.insert(
+                "noop".to_string(),
+                config::Net::new_opt("noop", EmptyConfig::default())?,
+            );
+        }
+        if !all_net.contains_key("blackhole") {
+            all_net.insert(
+                "blackhole".to_string(),
+                config::Net::new_opt("blackhole", EmptyConfig::default())?,
+            );
+        }
+        if !all_net.contains_key("local") {
+            all_net.insert(
+                "local".to_string(),
+                config::Net::new_opt("local", LocalNetConfig::default())?,
+            );
+        }
+
+        let all_net = topological_sort(RootType::Key(root), all_net.into_iter(), |k, n| {
+            self.get_net(&n.net_type)?
+                .resolver
+                .get_dependency(n.opt.clone())
+                .context(format!("Failed to get_dependency for net/server: {}", k))
         })
-        .context(format!("Loading net {}", name))?;
+        .context("Failed to do topological_sort")?
+        .ok_or_else(|| anyhow!("There is cyclic dependencies in net",))?;
 
-        let net = RunningNet::new(name.to_string(), net);
+        for (name, i) in all_net {
+            let net = self
+                .build_net(&name, &i, &|key| running_map.get(key).map(|i| i.as_net()))
+                .context(format!("Loading net {}", name))?;
 
-        running_map.insert(name.to_string(), net);
+            let net = RunningNet::new(name.to_string(), net);
+
+            running_map.insert(name.to_string(), net);
+        }
+
+        Ok(running_map)
     }
-
-    Ok(running_map)
 }
 
 async fn build_server(config: &config::ConfigServer) -> Result<BTreeMap<String, ServerInfo>> {
