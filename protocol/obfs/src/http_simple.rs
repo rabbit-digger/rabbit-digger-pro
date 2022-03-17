@@ -10,8 +10,8 @@ use futures::ready;
 use pin_project_lite::pin_project;
 use rand::prelude::*;
 use rd_interface::{
-    async_trait, prelude::*, rd_config, Address, AsyncWrite, Fd, ITcpStream, IntoDyn, ReadBuf,
-    Result, TcpStream, NOT_IMPLEMENTED,
+    async_trait, prelude::*, rd_config, Address, AsyncWrite, ITcpStream, IntoDyn, ReadBuf, Result,
+    TcpStream, NOT_IMPLEMENTED,
 };
 use tokio::io::AsyncRead;
 
@@ -87,21 +87,6 @@ impl ITcpStream for Connect {
 
     async fn local_addr(&self) -> Result<std::net::SocketAddr> {
         self.inner.local_addr().await
-    }
-
-    fn read_passthrough(&self) -> Option<Fd> {
-        if let ReadState::Done = self.read {
-            self.inner.read_passthrough()
-        } else {
-            None
-        }
-    }
-    fn write_passthrough(&self) -> Option<Fd> {
-        if let WriteState::Done = self.write {
-            self.inner.write_passthrough()
-        } else {
-            None
-        }
     }
 
     fn poll_read(&mut self, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
