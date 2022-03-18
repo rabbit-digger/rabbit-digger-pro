@@ -5,7 +5,7 @@ use std::{
 
 pub use crate::config::NetRef;
 use crate::{
-    config::{resolve_net, CompactVecString, Config, Visitor, VisitorContext},
+    config::{resolve_net, CompactVecString, Config, NetSchema, Visitor, VisitorContext},
     IntoDyn, Net, Result, Server,
 };
 pub use schemars::JsonSchema;
@@ -53,109 +53,22 @@ impl Registry {
 
 pub trait Builder<ItemType> {
     const NAME: &'static str;
-    type Config: Serialize + DeserializeOwned + JsonSchema + Config + 'static;
+    type Config: Serialize + DeserializeOwned + JsonSchema + Config<NetSchema> + 'static;
     type Item: IntoDyn<ItemType> + Sized + 'static;
 
     fn build(config: Self::Config) -> Result<Self::Item>;
 }
 
-pub struct Resolver<ItemType> {
-    parse_config: fn(cfg: Value) -> Result<Box<dyn Config>>,
-    unfold_net_ref: fn(
-        cfg: &mut Value,
-        prefix: &[&str],
-        delimiter: &str,
-        add_net: &mut HashMap<CompactVecString, Value>,
-    ) -> Result<()>,
-    build: fn(getter: NetGetter, cfg: Value) -> Result<ItemType>,
-    schema: RootSchema,
-}
-pub type NetResolver = Resolver<Net>;
-pub type ServerResolver = Resolver<Server>;
-
-impl<ItemType> Resolver<ItemType> {
-    pub fn new<N: Builder<ItemType>>() -> Self {
-        let schema = schema_for!(N::Config);
-        Self {
-            parse_config: |cfg| {
-                let cfg =
-                    serde_json::from_value::<N::Config>(cfg).map_err(Into::<crate::Error>::into)?;
-                Ok(Box::new(cfg))
-            },
-            unfold_net_ref: |cfg_value, prefix, delimiter, to_add| {
-                let mut cfg = serde_json::from_value::<N::Config>(cfg_value.clone())
-                    .map_err(Into::<crate::Error>::into)?;
-                struct ResolveNetRefVisitor<'a> {
-                    prefix: &'a [&'a str],
-                    delimiter: &'a str,
-                    to_add: &'a mut HashMap<CompactVecString, Value>,
-                }
-
-                impl<'a> Visitor for ResolveNetRefVisitor<'a> {
-                    fn visit_net_ref(
-                        &mut self,
-                        ctx: &mut VisitorContext,
-                        net_ref: &mut NetRef,
-                    ) -> Result<()> {
-                        match net_ref.represent() {
-                            Value::String(_) => {}
-                            opt => {
-                                let opt = opt.clone();
-                                let mut key =
-                                    self.prefix.iter().map(|i| *i).collect::<CompactVecString>();
-                                key.extend(ctx.path());
-                                *net_ref.represent_mut() = Value::String(key.join(self.delimiter));
-                                self.to_add.insert(key, opt);
-                            }
-                        }
-                        Ok(())
-                    }
-                }
-
-                cfg.visit(
-                    &mut VisitorContext::new(),
-                    &mut ResolveNetRefVisitor {
-                        prefix,
-                        delimiter,
-                        to_add,
-                    },
-                )?;
-                *cfg_value = serde_json::to_value(cfg)?;
-
-                Ok(())
-            },
-            build: |getter, cfg| {
-                serde_json::from_value(cfg)
-                    .map_err(Into::<crate::Error>::into)
-                    .and_then(|mut cfg: N::Config| {
-                        resolve_net(&mut cfg, getter)?;
-                        Ok(cfg)
-                    })
-                    .and_then(N::build)
-                    .map(|n| n.into_dyn())
-            },
-            schema,
-        }
-    }
-    pub fn unfold_net_ref(
-        &self,
-        cfg: &mut Value,
-        prefix: &[&str],
-        delimiter: &str,
-        add_net: &mut HashMap<CompactVecString, Value>,
-    ) -> Result<()> {
-        (self.unfold_net_ref)(cfg, prefix, delimiter, add_net)
-    }
-    pub fn build(&self, getter: NetGetter, cfg: Value) -> Result<ItemType> {
-        (self.build)(getter, cfg)
-    }
-    pub fn get_dependency(&self, cfg: Value) -> Result<Vec<String>> {
-        let mut cfg = (self.parse_config)(cfg)?;
+impl<ItemType, T: Builder<ItemType>> BuilderExt<ItemType> for T {}
+trait BuilderExt<ItemType>: Builder<ItemType> {
+    fn get_dependency(cfg: Value) -> Result<Vec<String>> {
+        let mut cfg =
+            serde_json::from_value::<Self::Config>(cfg).map_err(Into::<crate::Error>::into)?;
 
         struct GetDependencyVisitor<'a>(&'a mut HashSet<String>);
 
-        impl<'a> Visitor for GetDependencyVisitor<'a> {
-            fn visit_net_ref(
+        impl<'a> Visitor<NetSchema> for GetDependencyVisitor<'a> {
+            fn visit_resolvabe(
                 &mut self,
                 _ctx: &mut VisitorContext,
                 net_ref: &mut NetRef,
@@ -174,6 +87,105 @@ impl<ItemType> Resolver<ItemType> {
         )?;
 
         Ok(nets.into_iter().collect())
+    }
+
+    fn unfold_net_ref(
+        cfg_value: &mut Value,
+        prefix: &[&str],
+        delimiter: &str,
+        add_net: &mut HashMap<CompactVecString, Value>,
+    ) -> Result<()> {
+        let mut cfg = serde_json::from_value::<Self::Config>(cfg_value.clone())
+            .map_err(Into::<crate::Error>::into)?;
+        struct ResolveNetRefVisitor<'a> {
+            prefix: &'a [&'a str],
+            delimiter: &'a str,
+            to_add: &'a mut HashMap<CompactVecString, Value>,
+        }
+
+        impl<'a> Visitor<NetSchema> for ResolveNetRefVisitor<'a> {
+            fn visit_resolvabe(
+                &mut self,
+                ctx: &mut VisitorContext,
+                net_ref: &mut crate::config::Resolvable<NetSchema>,
+            ) -> Result<()> {
+                match net_ref.represent() {
+                    Value::String(_) => {}
+                    opt => {
+                        let opt = opt.clone();
+                        let mut key = self.prefix.iter().map(|i| *i).collect::<CompactVecString>();
+                        key.extend(ctx.path());
+                        *net_ref.represent_mut() = Value::String(key.join(self.delimiter));
+                        self.to_add.insert(key, opt);
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        cfg.visit(
+            &mut VisitorContext::new(),
+            &mut ResolveNetRefVisitor {
+                prefix,
+                delimiter,
+                to_add: add_net,
+            },
+        )?;
+        *cfg_value = serde_json::to_value(cfg)?;
+
+        Ok(())
+    }
+
+    fn build_dyn(getter: NetGetter, cfg: Value) -> Result<ItemType> {
+        serde_json::from_value(cfg)
+            .map_err(Into::<crate::Error>::into)
+            .and_then(|mut cfg: Self::Config| {
+                resolve_net(&mut cfg, getter)?;
+                Ok(cfg)
+            })
+            .and_then(Self::build)
+            .map(|n| n.into_dyn())
+    }
+}
+
+pub struct Resolver<ItemType> {
+    get_dependency: fn(cfg: Value) -> Result<Vec<String>>,
+    unfold_net_ref: fn(
+        cfg: &mut Value,
+        prefix: &[&str],
+        delimiter: &str,
+        add_net: &mut HashMap<CompactVecString, Value>,
+    ) -> Result<()>,
+    build: fn(getter: NetGetter, cfg: Value) -> Result<ItemType>,
+    schema: RootSchema,
+}
+pub type NetResolver = Resolver<Net>;
+pub type ServerResolver = Resolver<Server>;
+
+impl<ItemType> Resolver<ItemType> {
+    pub fn new<N: Builder<ItemType>>() -> Self {
+        let schema = schema_for!(N::Config);
+        Self {
+            get_dependency: N::get_dependency,
+            unfold_net_ref: N::unfold_net_ref,
+            build: N::build_dyn,
+            schema,
+        }
+    }
+    pub fn unfold_net_ref(
+        &self,
+        cfg: &mut Value,
+        prefix: &[&str],
+        delimiter: &str,
+        add_net: &mut HashMap<CompactVecString, Value>,
+    ) -> Result<()> {
+        (self.unfold_net_ref)(cfg, prefix, delimiter, add_net)
+    }
+    pub fn build(&self, getter: NetGetter, cfg: Value) -> Result<ItemType> {
+        (self.build)(getter, cfg)
+    }
+    pub fn get_dependency(&self, cfg: Value) -> Result<Vec<String>> {
+        (self.get_dependency)(cfg)
     }
     pub fn schema(&self) -> &RootSchema {
         &self.schema

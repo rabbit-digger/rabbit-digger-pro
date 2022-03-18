@@ -3,7 +3,7 @@ use std::slice;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{Config, Visitor, VisitorContext};
+use super::{Config, ResolvableSchema, Visitor, VisitorContext};
 use crate::Result;
 
 #[derive(JsonSchema, Clone, Debug, Serialize, Deserialize)]
@@ -13,8 +13,11 @@ pub enum SingleOrVec<T> {
     Vec(Vec<T>),
 }
 
-impl<T: Config> Config for SingleOrVec<T> {
-    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()> {
+impl<R: ResolvableSchema, T: Config<R>> Config<R> for SingleOrVec<T> {
+    fn visit<V>(&mut self, ctx: &mut VisitorContext, visitor: &mut V) -> Result<()>
+    where
+        V: Visitor<R>,
+    {
         match self {
             SingleOrVec::Single(x) => x.visit(ctx, visitor)?,
             SingleOrVec::Vec(x) => {

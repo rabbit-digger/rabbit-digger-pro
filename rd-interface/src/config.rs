@@ -1,5 +1,5 @@
 use crate::{self as rd_interface, registry::NetGetter, Address, Net};
-use resolvable::{Resolvable, ResolvableSchema};
+pub use resolvable::{Resolvable, ResolvableSchema};
 use schemars::{
     schema::{InstanceType, Metadata, SchemaObject, SubschemaValidation},
     JsonSchema,
@@ -56,8 +56,16 @@ impl Default for NetRef {
     }
 }
 
-pub trait Visitor {
-    fn visit_net_ref(&mut self, _ctx: &mut VisitorContext, _net_ref: &mut NetRef) -> Result<()> {
+pub trait Visitor<T>
+where
+    T: ResolvableSchema,
+{
+    #[allow(unused_variables)]
+    fn visit_resolvabe(
+        &mut self,
+        ctx: &mut VisitorContext,
+        resolvable: &mut Resolvable<T>,
+    ) -> Result<()> {
         Ok(())
     }
 }
@@ -84,21 +92,29 @@ impl VisitorContext {
     }
 }
 
-pub trait Config {
-    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()>;
+pub trait Config<R: ResolvableSchema> {
+    fn visit<V>(&mut self, ctx: &mut VisitorContext, visitor: &mut V) -> Result<()>
+    where
+        V: Visitor<R>;
 }
 
-impl Config for NetRef {
-    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()> {
-        visitor.visit_net_ref(ctx, self)
+impl Config<NetSchema> for NetRef {
+    fn visit<V>(&mut self, ctx: &mut VisitorContext, visitor: &mut V) -> Result<()>
+    where
+        V: Visitor<NetSchema>,
+    {
+        visitor.visit_resolvabe(ctx, self)
     }
 }
 
 #[macro_export]
 macro_rules! impl_empty_config {
     ($($x:ident),+ $(,)?) => ($(
-        impl rd_interface::config::Config for $x {
-            fn visit(&mut self, _ctx: &mut rd_interface::config::VisitorContext, _visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
+        impl<R: rd_interface::config::ResolvableSchema> rd_interface::config::Config<R> for $x {
+            fn visit< V>(&mut self, _ctx: &mut rd_interface::config::VisitorContext, _visitor: &mut V) -> rd_interface::Result<()>
+            where
+                V: rd_interface::config::Visitor<R>
+            {
                 Ok(())
             }
         }
@@ -115,8 +131,11 @@ mod impl_std {
 
     macro_rules! impl_container_config {
         ($($x:ident),+ $(,)?) => ($(
-            impl<T: Config> Config for $x<T> {
-                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
+            impl<R: rd_interface::config::ResolvableSchema, T: Config<R>> Config<R> for $x<T> {
+                fn visit<V>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()>
+                where
+                    V: rd_interface::config::Visitor<R>
+                {
                     for (key, i) in self.iter_mut().enumerate() {
                         ctx.push(key.to_string());
                         i.visit(ctx, visitor)?;
@@ -129,8 +148,11 @@ mod impl_std {
     }
     macro_rules! impl_key_container_config {
         ($($x:ident),+ $(,)?) => ($(
-            impl<K: std::string::ToString, T: Config> Config for $x<K, T> {
-                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
+            impl<K: std::string::ToString, R: rd_interface::config::ResolvableSchema, T: Config<R>> Config<R> for $x<K, T> {
+                fn visit<V>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()>
+                where
+                    V: rd_interface::config::Visitor<R>
+                {
                     for (key, i) in self.iter_mut() {
                         ctx.push(key.to_string());
                         i.visit(ctx, visitor)?;
@@ -149,12 +171,17 @@ mod impl_std {
     impl_container_config! { Vec, Option, VecDeque, Result, LinkedList }
     impl_key_container_config! { HashMap, BTreeMap }
 
-    impl<T1, T2> rd_interface::config::Config for (T1, T2) {
-        fn visit(
+    impl<T1, T2, R: rd_interface::config::ResolvableSchema> rd_interface::config::Config<R>
+        for (T1, T2)
+    {
+        fn visit<V>(
             &mut self,
             _ctx: &mut rd_interface::config::VisitorContext,
-            _visitor: &mut dyn rd_interface::config::Visitor,
-        ) -> rd_interface::Result<()> {
+            _visitor: &mut V,
+        ) -> rd_interface::Result<()>
+        where
+            V: rd_interface::config::Visitor<R>,
+        {
             Ok(())
         }
     }
@@ -206,11 +233,15 @@ impl JsonSchema for Address {
     }
 }
 
-pub fn resolve_net(config: &mut impl Config, getter: NetGetter) -> Result<()> {
+pub fn resolve_net(config: &mut impl Config<NetSchema>, getter: NetGetter) -> Result<()> {
     struct ResolveNetVisitor<'a>(NetGetter<'a>);
 
-    impl<'a> Visitor for ResolveNetVisitor<'a> {
-        fn visit_net_ref(&mut self, _ctx: &mut VisitorContext, net_ref: &mut NetRef) -> Result<()> {
+    impl<'a> Visitor<NetSchema> for ResolveNetVisitor<'a> {
+        fn visit_resolvabe(
+            &mut self,
+            _ctx: &mut VisitorContext,
+            net_ref: &mut NetRef,
+        ) -> Result<()> {
             let name = net_ref.represent().as_str();
             let net = name
                 .map(|name| self.0(name))

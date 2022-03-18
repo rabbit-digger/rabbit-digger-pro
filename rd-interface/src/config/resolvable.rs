@@ -3,7 +3,7 @@ use std::{fmt, ops::Deref};
 use schemars::JsonSchema;
 use serde::{de, ser};
 
-pub trait ResolvableSchema: JsonSchema {
+pub trait ResolvableSchema {
     type Represent;
     type Value;
 }
@@ -101,7 +101,7 @@ where
 
 impl<S> JsonSchema for Resolvable<S>
 where
-    S: ResolvableSchema,
+    S: ResolvableSchema + JsonSchema,
 {
     fn is_referenceable() -> bool {
         S::is_referenceable()
