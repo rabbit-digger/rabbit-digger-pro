@@ -296,7 +296,7 @@ impl Clash {
                     "domain" => rule_config::RuleItem {
                         target: target.clone(),
                         matcher: Matcher::Domain(DomainMatcher {
-                            method: DomainMatcherMethod::Suffix,
+                            method: DomainMatcherMethod::Match,
                             domain: payload.into(),
                         }),
                     },
