@@ -109,17 +109,7 @@ impl RDConfigReceiver {
 impl ToTokens for RDConfigReceiver {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ident = &self.ident;
-
-        let type_params = self
-            .generics
-            .type_params()
-            .into_iter()
-            .map(|i| i.to_token_stream());
-        // .chain(std::iter::once(
-        //     quote! { RS: rd_interface::config::ResolvableSchema },
-        // ));
-        let join_type_params = quote! { #(#type_params,)* };
-        let (_, ty_generics, where_clause) = self.generics.split_for_impl();
+        let (impl_generics, ty_generics, where_clause) = self.generics.split_for_impl();
 
         let visitor_body = self.call_all(
             quote! { rd_interface::config::Config::visit },
@@ -127,8 +117,8 @@ impl ToTokens for RDConfigReceiver {
         );
 
         let expanded = quote! {
-            impl <#join_type_params> rd_interface::config::Config<rd_interface::config::NetSchema> for #ident #ty_generics #where_clause {
-                fn visit<V: rd_interface::config::Visitor<rd_interface::config::NetSchema>>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()> {
+            impl #impl_generics rd_interface::config::Config for #ident #ty_generics #where_clause {
+                fn visit<V: rd_interface::config::Visitor>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()> {
                     #visitor_body
                     Ok(())
                 }

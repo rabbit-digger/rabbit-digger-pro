@@ -53,7 +53,7 @@ impl Registry {
 
 pub trait Builder<ItemType> {
     const NAME: &'static str;
-    type Config: Serialize + DeserializeOwned + JsonSchema + Config<NetSchema> + 'static;
+    type Config: Serialize + DeserializeOwned + JsonSchema + Config + 'static;
     type Item: IntoDyn<ItemType> + Sized + 'static;
 
     fn build(config: Self::Config) -> Result<Self::Item>;
@@ -67,8 +67,8 @@ trait BuilderExt<ItemType>: Builder<ItemType> {
 
         struct GetDependencyVisitor<'a>(&'a mut HashSet<String>);
 
-        impl<'a> Visitor<NetSchema> for GetDependencyVisitor<'a> {
-            fn visit_resolvabe(
+        impl<'a> Visitor for GetDependencyVisitor<'a> {
+            fn visit_net_ref(
                 &mut self,
                 _ctx: &mut VisitorContext,
                 net_ref: &mut NetRef,
@@ -103,8 +103,8 @@ trait BuilderExt<ItemType>: Builder<ItemType> {
             to_add: &'a mut HashMap<CompactVecString, Value>,
         }
 
-        impl<'a> Visitor<NetSchema> for ResolveNetRefVisitor<'a> {
-            fn visit_resolvabe(
+        impl<'a> Visitor for ResolveNetRefVisitor<'a> {
+            fn visit_net_ref(
                 &mut self,
                 ctx: &mut VisitorContext,
                 net_ref: &mut crate::config::Resolvable<NetSchema>,
