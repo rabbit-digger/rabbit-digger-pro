@@ -21,19 +21,17 @@ impl DomainMatcher {
     fn test(&self, domain: &str) -> bool {
         match self.method {
             Method::Keyword => self.domain.iter().any(|d| domain.contains(d)),
-            Method::Match => self.domain.iter().any(|d| d == domain),
-            Method::Suffix => self.domain.iter().any(|d| {
+            Method::Match => self.domain.iter().any(|d| {
                 if d.starts_with("+.") {
                     d.strip_prefix('+')
                         .map(|i| domain.ends_with(i))
                         .unwrap_or(false)
-                        || d.strip_prefix("+.")
-                            .map(|d| domain.ends_with(d))
-                            .unwrap_or(false)
+                        || d.strip_prefix("+.").map(|d| domain == d).unwrap_or(false)
                 } else {
-                    domain.ends_with(d)
+                    domain == d
                 }
             }),
+            Method::Suffix => self.domain.iter().any(|d| domain.ends_with(d)),
         }
     }
 }
@@ -91,7 +89,7 @@ mod tests {
         // test suffix with +
         let matcher = DomainMatcher {
             domain: vec!["+.com".to_string()].into(),
-            method: Method::Suffix,
+            method: Method::Match,
         };
         assert!(match_addr("example.com:26666", &matcher).await);
         assert!(match_addr("sub.example.com:26666", &matcher).await);
