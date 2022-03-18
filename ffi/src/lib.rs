@@ -51,7 +51,7 @@ pub extern "C" fn rdp_run(rabbit_digger: *mut RDP, config: *const c_char) -> RES
     match runtime.block_on(async move {
         let app = App::new().await?;
 
-        let rx = UnboundedReceiverStream::new(rx).map(ImportSource::Oneshot);
+        let rx = UnboundedReceiverStream::new(rx).map(ImportSource::Text);
         let config_stream = Box::pin(app.cfg_mgr.config_stream_from_sources(rx).await?);
 
         tokio::spawn(async move {

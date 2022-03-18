@@ -11,6 +11,8 @@ use rd_interface::{
 
 mod clash;
 mod merge;
+#[cfg(feature = "rhai")]
+mod rhai;
 
 type Registry = BTreeMap<&'static str, Resolver<BoxImporter>>;
 
@@ -24,6 +26,8 @@ pub fn get_importer_registry() -> &'static Registry {
         }
         add_importer::<clash::Clash>(&mut registry);
         add_importer::<merge::Merge>(&mut registry);
+        #[cfg(feature = "rhai")]
+        add_importer::<rhai::Rhai>(&mut registry);
 
         registry
     })
