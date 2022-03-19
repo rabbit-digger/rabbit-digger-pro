@@ -12,5 +12,5 @@ pub use rd_interface;
 #[cfg(feature = "rd-std")]
 pub use rd_std;
 
-pub use self::rabbit_digger::{PluginLoader, RabbitDigger};
+pub use self::rabbit_digger::RabbitDigger;
 pub use uuid::Uuid;

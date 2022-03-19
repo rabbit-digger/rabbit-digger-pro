@@ -14,10 +14,7 @@ pub enum SingleOrVec<T> {
 }
 
 impl<T: Config> Config for SingleOrVec<T> {
-    fn visit<V>(&mut self, ctx: &mut VisitorContext, visitor: &mut V) -> Result<()>
-    where
-        V: Visitor,
-    {
+    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()> {
         match self {
             SingleOrVec::Single(x) => x.visit(ctx, visitor)?,
             SingleOrVec::Vec(x) => {

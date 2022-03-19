@@ -12,8 +12,8 @@ use parking_lot::RwLock as SyncRwLock;
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net,
-    ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket, Value,
+    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, Error, INet, IUdpSocket, IntoDyn,
+    Net, ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket,
 };
 use tokio::{
     sync::{RwLock, Semaphore},
@@ -288,26 +288,27 @@ impl rd_interface::ITcpStream for WrapTcpStream {
 }
 
 enum State {
-    WaitConfig,
+    Idle,
     Running {
-        opt: Value,
-        handle: JoinHandle<anyhow::Result<()>>,
+        handle: JoinHandle<Result<()>>,
         semaphore: Arc<Semaphore>,
     },
     Finished {
-        result: anyhow::Result<()>,
+        result: Result<()>,
     },
 }
 
 pub struct RunningServer {
     #[allow(dead_code)]
     name: String,
+    #[allow(dead_code)]
     server_type: String,
+    server: Server,
     state: RwLock<State>,
 }
 
 #[instrument(err, skip(server))]
-async fn server_start(name: String, server: &Server) -> anyhow::Result<()> {
+async fn server_start(name: String, server: &Server) -> Result<()> {
     server
         .start()
         .inspect_err(move |e| tracing::error!("Server {} error: {:?}", name, e))
@@ -316,33 +317,24 @@ async fn server_start(name: String, server: &Server) -> anyhow::Result<()> {
 }
 
 impl RunningServer {
-    pub fn new(name: String, server_type: String) -> Self {
+    pub fn new(name: String, server_type: String, server: Server) -> Self {
         RunningServer {
             name,
             server_type,
-            state: RwLock::new(State::WaitConfig),
+            server,
+            state: RwLock::new(State::Idle),
         }
     }
+    #[allow(dead_code)]
     pub fn server_type(&self) -> &str {
         &self.server_type
     }
-    pub async fn start(&self, server: Server, opt: &Value) -> anyhow::Result<()> {
-        match &*self.state.read().await {
-            // skip if config is not changed
-            State::Running {
-                opt: running_opt, ..
-            } => {
-                if opt == running_opt {
-                    return Ok(());
-                }
-            }
-            _ => {}
-        };
-
+    pub async fn start(&self) -> Result<()> {
         self.stop().await?;
 
         let name = self.name.clone();
         let semaphore = Arc::new(Semaphore::new(0));
+        let server = self.server.clone();
         let s2 = semaphore.clone();
         let task = async move {
             let r = server_start(name, &server).await;
@@ -352,15 +344,11 @@ impl RunningServer {
         };
         let handle = tokio::spawn(task);
 
-        *self.state.write().await = State::Running {
-            opt: opt.clone(),
-            handle,
-            semaphore,
-        };
+        *self.state.write().await = State::Running { handle, semaphore };
 
         Ok(())
     }
-    pub async fn stop(&self) -> anyhow::Result<()> {
+    pub async fn stop(&self) -> rd_interface::Result<()> {
         match &*self.state.read().await {
             State::Running {
                 handle, semaphore, ..
@@ -388,18 +376,21 @@ impl RunningServer {
         let mut state = self.state.write().await;
 
         let result = match &mut *state {
-            State::Running { handle, .. } => handle.await.map_err(Into::into).and_then(|i| i),
+            State::Running { handle, .. } => handle
+                .await
+                .map_err(|_| Error::other("Failed to join"))
+                .and_then(|i| i),
             _ => return,
         };
 
         *state = State::Finished { result };
     }
-    pub async fn take_result(&self) -> Option<anyhow::Result<()>> {
+    pub async fn take_result(&self) -> Option<Result<()>> {
         let mut state = self.state.write().await;
 
         match &*state {
             State::Finished { .. } => {
-                let old = replace(&mut *state, State::WaitConfig);
+                let old = replace(&mut *state, State::Idle);
                 return match old {
                     State::Finished { result, .. } => Some(result),
                     _ => unreachable!(),
@@ -567,15 +558,14 @@ mod tests {
             }
         }
 
-        let server = RunningServer::new("server".to_string(), "forever".to_string());
+        let server = ForeverServer.into_dyn();
+
+        let server = RunningServer::new("server".to_string(), "forever".to_string(), server);
         assert_eq!(server.server_type(), "forever");
-        assert!(matches!(*server.state.read().await, State::WaitConfig));
+        assert!(matches!(*server.state.read().await, State::Idle));
         assert!(server.take_result().await.is_none());
 
-        server
-            .start(ForeverServer.into_dyn(), &Value::Null)
-            .await
-            .unwrap();
+        server.start().await.unwrap();
         assert!(matches!(*server.state.read().await, State::Running { .. }));
 
         server.stop().await.unwrap();

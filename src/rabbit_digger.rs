@@ -1,10 +1,9 @@
-use std::{collections::BTreeMap, fmt, time::Duration};
+use std::{cell::RefCell, collections::BTreeMap, fmt, mem::replace, time::Duration};
 
 use crate::{
-    config,
+    config::{self, init_default_net},
     rabbit_digger::running::{RunningNet, RunningServer, RunningServerNet},
     registry::Registry,
-    util::{topological_sort, RootType},
 };
 use anyhow::{anyhow, Context, Result};
 use futures::{
@@ -13,10 +12,11 @@ use futures::{
     Stream, StreamExt, TryStreamExt,
 };
 use rd_interface::{
-    config::EmptyConfig, registry::NetGetter, schemars::schema::RootSchema, Arc, IntoDyn, Net,
-    Value,
+    config::{CompactVecString, NetRef, VisitorContext},
+    registry::NetGetter,
+    schemars::schema::RootSchema,
+    Arc, Error, IntoDyn, Net, Server, Value,
 };
-use rd_std::builtin::local::LocalNetConfig;
 use serde::{Deserialize, Serialize};
 use tokio::{pin, sync::RwLock, time::timeout};
 use uuid::Uuid;
@@ -27,15 +27,16 @@ mod connection_manager;
 mod event;
 mod running;
 
-pub type PluginLoader =
-    Arc<dyn Fn(&config::Config, &mut Registry) -> Result<()> + Send + Sync + 'static>;
+struct RunningEntities {
+    nets: BTreeMap<String, Arc<RunningNet>>,
+    servers: BTreeMap<String, ServerInfo>,
+}
 
 #[allow(dead_code)]
 struct Running {
     config: RwLock<config::Config>,
     registry_schema: RegistrySchema,
-    nets: BTreeMap<String, Arc<RunningNet>>,
-    servers: BTreeMap<String, ServerInfo>,
+    entities: RunningEntities,
 }
 
 enum State {
@@ -94,7 +95,10 @@ impl RabbitDigger {
         let state = inner.state.read().await;
 
         match &*state {
-            State::Running(Running { servers, .. }) => {
+            State::Running(Running {
+                entities: RunningEntities { servers, .. },
+                ..
+            }) => {
                 for i in servers.values() {
                     i.running_server.stop().await?;
                 }
@@ -113,7 +117,10 @@ impl RabbitDigger {
 
         match &*inner.state.read().await {
             State::WaitConfig => return Ok(()),
-            State::Running(Running { servers, .. }) => {
+            State::Running(Running {
+                entities: RunningEntities { servers, .. },
+                ..
+            }) => {
                 let mut race = FuturesUnordered::new();
                 for (name, i) in servers {
                     race.push(async move {
@@ -181,68 +188,34 @@ impl RabbitDigger {
     }
 
     // start all server, all server run in background.
-    pub async fn start(&self, config: config::Config) -> Result<()> {
+    pub async fn start(&self, mut config: config::Config) -> Result<()> {
         let inner = &self.inner;
 
-        self.stop().await?;
-
-        let state = &mut *inner.state.write().await;
         tracing::debug!("Registry:\n{}", self.registry);
 
-        let root = config
-            .server
-            .values()
-            .flat_map(|i| {
-                Result::<_, anyhow::Error>::Ok(
-                    self.registry
-                        .get_server(&i.server_type)?
-                        .resolver
-                        .get_dependency(i.opt.clone())?,
-                )
-            })
-            .flatten()
-            .collect();
-        let nets = self
+        let entities = self
             .registry
-            .build_nets(config.net.clone(), root)
-            .context("Failed to build net")?;
-        let servers = build_server(&config.server)
-            .await
+            .build_entities(&mut config, &inner.conn_mgr)
             .context("Failed to build server")?;
         tracing::debug!(
             "net and server are built. net count: {}, server count: {}",
-            nets.len(),
-            servers.len()
+            entities.nets.len(),
+            entities.servers.len()
         );
 
-        tracing::info!("Server:\n{}", ServerList(&servers));
+        tracing::info!("Server:\n{}", ServerList(&entities.servers));
 
-        for ServerInfo {
-            name,
-            running_server,
-            config,
-        } in servers.values()
-        {
-            let item = self.registry.get_server(&running_server.server_type())?;
-            let server = item.build(
-                &|key| {
-                    nets.get(key).map(|i| {
-                        let net = i.as_net();
+        self.stop().await?;
+        let state = &mut *inner.state.write().await;
 
-                        RunningServerNet::new(name.clone(), net.clone(), inner.conn_mgr.clone())
-                            .into_dyn()
-                    })
-                },
-                config.clone(),
-            )?;
-            running_server.start(server, &config).await?;
+        for ServerInfo { running_server, .. } in entities.servers.values() {
+            running_server.start().await?;
         }
 
         *state = State::Running(Running {
             config: RwLock::new(config),
             registry_schema: get_registry_schema(&self.registry),
-            nets,
-            servers,
+            entities,
         });
 
         Ok(())
@@ -308,7 +281,10 @@ impl RabbitDigger {
     pub async fn get_net(&self, name: &str) -> Result<Option<Arc<RunningNet>>> {
         let state = self.inner.state.read().await;
         match &*state {
-            State::Running(Running { nets, .. }) => Ok(nets.get(name).cloned()),
+            State::Running(Running {
+                entities: RunningEntities { nets, .. },
+                ..
+            }) => Ok(nets.get(name).cloned()),
             _ => Err(anyhow!("Not running")),
         }
     }
@@ -320,7 +296,11 @@ impl RabbitDigger {
     {
         let state = self.inner.state.read().await;
         match &*state {
-            State::Running(Running { config, nets, .. }) => {
+            State::Running(Running {
+                config,
+                entities: RunningEntities { nets, .. },
+                ..
+            }) => {
                 let mut config = config.write().await;
                 if let (Some(cfg), Some(running_net)) =
                     (config.net.get_mut(net_name), nets.get(net_name))
@@ -330,7 +310,15 @@ impl RabbitDigger {
 
                     let net = self
                         .registry
-                        .build_net(net_name, &new_cfg, &|key| nets.get(key).map(|i| i.as_net()))?;
+                        .build_net(net_name, &mut new_cfg, &mut |key, _| {
+                            let name = key
+                                .represent()
+                                .as_str()
+                                .ok_or_else(|| Error::other(format!("Net not found")))?;
+                            nets.get(name)
+                                .map(|i| i.as_net())
+                                .ok_or_else(|| Error::NotFound(name.to_string()))
+                        })?;
                     running_net.update_net(net);
 
                     *cfg = new_cfg;
@@ -384,92 +372,86 @@ impl<'a> fmt::Display for ServerList<'a> {
 }
 
 impl Registry {
-    fn build_net(&self, name: &str, i: &config::Net, getter: NetGetter) -> Result<Net> {
+    fn build_net(
+        &self,
+        name: &str,
+        i: &mut config::Net,
+        getter: NetGetter,
+    ) -> rd_interface::Result<Net> {
         let net_item = self.get_net(&i.net_type)?;
 
-        let net = net_item.build(getter, i.opt.clone()).context(format!(
-            "Failed to build net {:?}. Please check your config.",
-            name
-        ))?;
+        let net = rd_interface::error::ErrorContext::context(
+            net_item.build(getter, &mut i.opt),
+            format!("Failed to build net {:?}. Please check your config.", name),
+        )?;
 
         Ok(net)
     }
 
-    fn build_nets(
+    fn build_server(
         &self,
-        mut all_net: config::ConfigNet,
-        root: Vec<String>,
-    ) -> Result<BTreeMap<String, Arc<RunningNet>>> {
-        let mut running_map: BTreeMap<String, Arc<RunningNet>> = BTreeMap::new();
+        name: &str,
+        i: &mut config::Server,
+        getter: NetGetter,
+    ) -> rd_interface::Result<Server> {
+        let server_item = self.get_server(&i.server_type)?;
 
-        if !all_net.contains_key("noop") {
-            all_net.insert(
-                "noop".to_string(),
-                config::Net::new_opt("noop", EmptyConfig::default())?,
-            );
-        }
-        if !all_net.contains_key("blackhole") {
-            all_net.insert(
-                "blackhole".to_string(),
-                config::Net::new_opt("blackhole", EmptyConfig::default())?,
-            );
-        }
-        if !all_net.contains_key("local") {
-            all_net.insert(
-                "local".to_string(),
-                config::Net::new_opt("local", LocalNetConfig::default())?,
-            );
+        let server = rd_interface::error::ErrorContext::context(
+            server_item.build(getter, &mut i.opt),
+            format!(
+                "Failed to build server {:?}. Please check your config.",
+                name
+            ),
+        )?;
+
+        Ok(server)
+    }
+
+    // Build all net and server, the nested net will be flatten. So the config may change.
+    fn build_entities(
+        &self,
+        config: &mut config::Config,
+        conn_mgr: &ConnectionManager,
+    ) -> Result<RunningEntities> {
+        let config::Config { net, server, .. } = config;
+        init_default_net(net)?;
+        let build_context = BuildContext::new(&self, net);
+
+        let mut servers = BTreeMap::new();
+
+        for (name, mut i) in server.iter_mut() {
+            let server_name = &name;
+
+            let mut load_server = || {
+                let server = self.build_server(server_name, &mut i, &|name, ctx| {
+                    build_context.get_server_net(
+                        name,
+                        ctx,
+                        server_name.to_string(),
+                        conn_mgr.clone(),
+                    )
+                })?;
+                let server =
+                    RunningServer::new(server_name.to_string(), i.server_type.clone(), server);
+                servers.insert(
+                    server_name.to_string(),
+                    ServerInfo {
+                        name: server_name.to_string(),
+                        running_server: server,
+                        config: i.opt.clone(),
+                    },
+                );
+                Ok(()) as Result<()>
+            };
+
+            load_server().context(format!("Loading server {}", server_name))?;
         }
 
-        let all_net = topological_sort(RootType::Key(root), all_net.into_iter(), |k, n| {
-            self.get_net(&n.net_type)?
-                .resolver
-                .get_dependency(n.opt.clone())
-                .context(format!("Failed to get_dependency for net/server: {}", k))
+        Ok(RunningEntities {
+            nets: build_context.take_net(),
+            servers,
         })
-        .context("Failed to do topological_sort")?
-        .ok_or_else(|| anyhow!("There is cyclic dependencies in net",))?;
-
-        for (name, i) in all_net {
-            let net = self
-                .build_net(&name, &i, &|key| running_map.get(key).map(|i| i.as_net()))
-                .context(format!("Loading net {}", name))?;
-
-            let net = RunningNet::new(name.to_string(), net);
-
-            running_map.insert(name.to_string(), net);
-        }
-
-        Ok(running_map)
     }
-}
-
-async fn build_server(config: &config::ConfigServer) -> Result<BTreeMap<String, ServerInfo>> {
-    let mut servers = BTreeMap::new();
-    let config = config.clone();
-
-    for (name, i) in config {
-        let name = &name;
-
-        let load_server = async {
-            let server = RunningServer::new(name.to_string(), i.server_type);
-            servers.insert(
-                name.to_string(),
-                ServerInfo {
-                    name: name.to_string(),
-                    running_server: server,
-                    config: i.opt,
-                },
-            );
-            Ok(()) as Result<()>
-        };
-
-        load_server
-            .await
-            .context(format!("Loading server {}", name))?;
-    }
-
-    Ok(servers)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -493,4 +475,97 @@ fn get_registry_schema(registry: &Registry) -> RegistrySchema {
     }
 
     r
+}
+
+pub struct BuildContext<'a> {
+    config: RefCell<&'a mut config::ConfigNet>,
+    registry: &'a Registry,
+    net_cache: RefCell<BTreeMap<String, Arc<RunningNet>>>,
+    delimiter: &'a str,
+}
+
+impl<'a> BuildContext<'a> {
+    fn new(registry: &'a Registry, config: &'a mut config::ConfigNet) -> Self {
+        BuildContext {
+            config: RefCell::new(config),
+            registry,
+            net_cache: RefCell::new(BTreeMap::new()),
+            delimiter: "/",
+        }
+    }
+    fn take_net(&self) -> BTreeMap<String, Arc<RunningNet>> {
+        self.net_cache.replace(BTreeMap::new())
+    }
+    fn get_net(
+        &self,
+        net_ref: &mut NetRef,
+        ctx: &VisitorContext,
+        prefix: &CompactVecString,
+    ) -> rd_interface::Result<Net> {
+        let placeholder: config::Net = config::Net::new("circular reference", Value::Null);
+
+        let name = match net_ref.represent() {
+            Value::String(name) => name,
+            net_cfg => {
+                let mut key = prefix.clone();
+                key.extend(ctx.path());
+
+                let generated_name = key.join(self.delimiter);
+                self.config.borrow_mut().insert(
+                    generated_name.to_string(),
+                    serde_json::from_value(net_cfg.clone())?,
+                );
+
+                *net_ref.represent_mut() = Value::String(generated_name);
+
+                net_ref.represent().as_str().expect("Impossible")
+            }
+        };
+        if let Some(net) = self.net_cache.borrow().get(name) {
+            return Ok(net.as_net());
+        }
+
+        let mut cfg = self
+            .config
+            .borrow_mut()
+            .get_mut(name)
+            .map(|i| replace(i, placeholder))
+            .ok_or(Error::NotFound(format!(
+                "Failed to find net in config file: {}",
+                name
+            )))?;
+
+        let prefix = ["net", name].iter().copied().collect();
+        let net = RunningNet::new(
+            name.to_string(),
+            self.registry.build_net(name, &mut cfg, &|name, ctx| {
+                self.get_net(name, ctx, &prefix)
+            })?,
+        );
+
+        *self
+            .config
+            .borrow_mut()
+            .get_mut(name)
+            .expect("It must exist") = cfg;
+
+        self.net_cache
+            .borrow_mut()
+            .insert(name.to_string(), net.clone());
+
+        Ok(net.as_net())
+    }
+    fn get_server_net(
+        &self,
+        net_ref: &mut NetRef,
+        ctx: &VisitorContext,
+        server_name: String,
+        conn_mgr: ConnectionManager,
+    ) -> rd_interface::Result<Net> {
+        let prefix = ["server", &server_name].iter().copied().collect();
+        Ok(
+            RunningServerNet::new(server_name, self.get_net(net_ref, ctx, &prefix)?, conn_mgr)
+                .into_dyn(),
+        )
+    }
 }

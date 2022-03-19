@@ -301,7 +301,8 @@ pub trait IServer: Unpin + Send + Sync {
     /// Start the server, drop to stop.
     async fn start(&self) -> Result<()>;
 }
-pub struct Server(Box<dyn IServer>);
+#[derive(Clone)]
+pub struct Server(Arc<dyn IServer>);
 
 impl Server {
     pub async fn start(&self) -> Result<()> {
@@ -314,7 +315,7 @@ impl<T: IServer> IntoDyn<Server> for T {
     where
         Self: Sized + 'static,
     {
-        Server(Box::new(self))
+        Server(Arc::new(self))
     }
 }
 

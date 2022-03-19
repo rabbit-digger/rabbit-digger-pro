@@ -22,7 +22,7 @@ pub struct ServerItem {
 }
 
 impl NetItem {
-    pub fn build(&self, getter: NetGetter, config: Value) -> Result<Net> {
+    pub fn build(&self, getter: NetGetter, config: &mut Value) -> rd_interface::Result<Net> {
         self.resolver
             .build(getter, config)
             .with_context(|| format!("Failed to build net: {}", self.id))
@@ -30,7 +30,7 @@ impl NetItem {
 }
 
 impl ServerItem {
-    pub fn build(&self, getter: NetGetter, config: Value) -> Result<Server> {
+    pub fn build(&self, getter: NetGetter, config: &mut Value) -> rd_interface::Result<Server> {
         self.resolver
             .build(getter, config)
             .with_context(|| format!("Failed to build server: {}", self.id))
@@ -153,7 +153,7 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rd_interface::IntoDyn;
+    use rd_interface::{Error, IntoDyn};
     use rd_std::tests::TestNet;
     use serde_json::Map;
 
@@ -197,21 +197,24 @@ mod tests {
         assert!(registry
             .get_net("local")
             .unwrap()
-            .build(&|_| None, Value::Object(Map::new()))
+            .build(
+                &|_, _| Err(Error::NotFound("not found".to_string())),
+                &mut Value::Object(Map::new())
+            )
             .is_ok());
 
         assert!(registry
             .get_server("socks5")
             .unwrap()
-            .build(&|_| Some(test_net.clone()), Value::Object(Map::new()))
+            .build(&|_, _| Ok(test_net.clone()), &mut Value::Object(Map::new()))
             .is_err());
 
         assert!(registry
             .get_server("socks5")
             .unwrap()
             .build(
-                &|_| Some(test_net.clone()),
-                serde_json::json!({
+                &|_, _| Ok(test_net.clone()),
+                &mut serde_json::json!({
                     "bind": "127.0.0.1:1080"
                 })
             )
