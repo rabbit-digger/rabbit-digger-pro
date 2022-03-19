@@ -1,8 +1,6 @@
 use anyhow::{anyhow, Result};
 use rabbit_digger::Config;
-use rd_interface::{
-    async_trait, config::EmptyConfig, prelude::*, rd_config, registry::Builder, IntoDyn,
-};
+use rd_interface::{async_trait, prelude::*, rd_config, registry::Builder, IntoDyn};
 use rhai::{
     serde::{from_dynamic, to_dynamic},
     Engine, Scope,
@@ -46,7 +44,7 @@ impl Importer for Rhai {
 impl Builder<BoxImporter> for Rhai {
     const NAME: &'static str = "rhai";
 
-    type Config = EmptyConfig;
+    type Config = Rhai;
     type Item = Rhai;
 
     fn build(_cfg: Self::Config) -> rd_interface::Result<Self::Item> {
