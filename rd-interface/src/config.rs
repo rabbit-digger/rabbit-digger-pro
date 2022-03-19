@@ -1,5 +1,5 @@
 use crate::{self as rd_interface, registry::NetGetter, Address, Net};
-use resolvable::{Resolvable, ResolvableSchema};
+pub use resolvable::{Resolvable, ResolvableSchema};
 use schemars::{
     schema::{InstanceType, Metadata, SchemaObject, SubschemaValidation},
     JsonSchema,
@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::Result;
+pub use compact_vec_string::CompactVecString;
 pub use single_or_vec::SingleOrVec;
 
+mod compact_vec_string;
 mod resolvable;
 mod single_or_vec;
 
@@ -55,37 +57,40 @@ impl Default for NetRef {
 }
 
 pub trait Visitor {
-    fn visit_net_ref(&mut self, _ctx: &mut VisitorContext, _net_ref: &mut NetRef) -> Result<()> {
+    #[allow(unused_variables)]
+    fn visit_net_ref(&mut self, ctx: &mut VisitorContext, net_ref: &mut NetRef) -> Result<()> {
         Ok(())
     }
 }
 
 pub struct VisitorContext {
-    path: Vec<String>,
+    path: CompactVecString,
 }
 
 impl VisitorContext {
     pub(crate) fn new() -> VisitorContext {
-        VisitorContext { path: Vec::new() }
+        VisitorContext {
+            path: CompactVecString::new(),
+        }
     }
-    pub fn push(&mut self, field: impl Into<String>) -> &mut Self {
-        self.path.push(field.into());
+    pub fn push(&mut self, field: impl AsRef<str>) -> &mut Self {
+        self.path.push(field.as_ref());
         self
     }
     pub fn pop(&mut self) {
         self.path.pop();
     }
-    pub(crate) fn path(&self) -> &[String] {
+    pub fn path(&self) -> &CompactVecString {
         &self.path
     }
 }
 
 pub trait Config {
-    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()>;
+    fn visit<V: Visitor>(&mut self, ctx: &mut VisitorContext, visitor: &mut V) -> Result<()>;
 }
 
 impl Config for NetRef {
-    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()> {
+    fn visit<V: Visitor>(&mut self, ctx: &mut VisitorContext, visitor: &mut V) -> Result<()> {
         visitor.visit_net_ref(ctx, self)
     }
 }
@@ -94,7 +99,10 @@ impl Config for NetRef {
 macro_rules! impl_empty_config {
     ($($x:ident),+ $(,)?) => ($(
         impl rd_interface::config::Config for $x {
-            fn visit(&mut self, _ctx: &mut rd_interface::config::VisitorContext, _visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
+            fn visit<V>(&mut self, _ctx: &mut rd_interface::config::VisitorContext, _visitor: &mut V) -> rd_interface::Result<()>
+            where
+                V: rd_interface::config::Visitor,
+            {
                 Ok(())
             }
         }
@@ -112,7 +120,10 @@ mod impl_std {
     macro_rules! impl_container_config {
         ($($x:ident),+ $(,)?) => ($(
             impl<T: Config> Config for $x<T> {
-                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
+                fn visit<V>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()>
+                where
+                    V: rd_interface::config::Visitor,
+                {
                     for (key, i) in self.iter_mut().enumerate() {
                         ctx.push(key.to_string());
                         i.visit(ctx, visitor)?;
@@ -126,7 +137,10 @@ mod impl_std {
     macro_rules! impl_key_container_config {
         ($($x:ident),+ $(,)?) => ($(
             impl<K: std::string::ToString, T: Config> Config for $x<K, T> {
-                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
+                fn visit<V>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()>
+                where
+                    V: rd_interface::config::Visitor
+                {
                     for (key, i) in self.iter_mut() {
                         ctx.push(key.to_string());
                         i.visit(ctx, visitor)?;
@@ -146,11 +160,14 @@ mod impl_std {
     impl_key_container_config! { HashMap, BTreeMap }
 
     impl<T1, T2> rd_interface::config::Config for (T1, T2) {
-        fn visit(
+        fn visit<V>(
             &mut self,
             _ctx: &mut rd_interface::config::VisitorContext,
-            _visitor: &mut dyn rd_interface::config::Visitor,
-        ) -> rd_interface::Result<()> {
+            _visitor: &mut V,
+        ) -> rd_interface::Result<()>
+        where
+            V: rd_interface::config::Visitor,
+        {
             Ok(())
         }
     }

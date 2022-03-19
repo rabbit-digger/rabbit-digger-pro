@@ -1,5 +1,3 @@
-#[cfg(unix)]
-use std::os::unix::prelude::RawFd;
 use std::{
     net::SocketAddr,
     pin::Pin,
@@ -38,19 +36,6 @@ impl<T: ITcpListener> IntoDyn<TcpListener> for T {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Fd {
-    #[cfg(unix)]
-    Unix(RawFd),
-}
-
-#[cfg(unix)]
-impl From<RawFd> for Fd {
-    fn from(fd: RawFd) -> Self {
-        Fd::Unix(fd)
-    }
-}
-
 /// A TcpStream.
 #[async_trait]
 pub trait ITcpStream: Unpin + Send + Sync {
@@ -62,12 +47,6 @@ pub trait ITcpStream: Unpin + Send + Sync {
     fn poll_write(&mut self, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>>;
     fn poll_flush(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>>;
     fn poll_shutdown(&mut self, cx: &mut task::Context<'_>) -> Poll<io::Result<()>>;
-    fn read_passthrough(&self) -> Option<Fd> {
-        None
-    }
-    fn write_passthrough(&self) -> Option<Fd> {
-        None
-    }
 
     async fn peer_addr(&self) -> Result<SocketAddr>;
     async fn local_addr(&self) -> Result<SocketAddr>;
@@ -126,12 +105,6 @@ impl TcpStream {
     }
     pub async fn local_addr(&self) -> Result<SocketAddr> {
         self.0.local_addr().await
-    }
-    pub fn read_passthrough(&self) -> Option<Fd> {
-        self.0.read_passthrough()
-    }
-    pub fn write_passthrough(&self) -> Option<Fd> {
-        self.0.write_passthrough()
     }
 }
 

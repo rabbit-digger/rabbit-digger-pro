@@ -56,7 +56,6 @@ pub enum Error {
 }
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub const NOT_IMPLEMENTED: Error = Error::NotImplemented;
-pub const NOT_ENABLED: Error = Error::NotEnabled;
 
 pub fn map_other(e: impl StdError + Send + Sync + 'static) -> Error {
     Error::Other(e.into())

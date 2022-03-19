@@ -12,8 +12,8 @@ use parking_lot::RwLock as SyncRwLock;
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, Fd, INet, IUdpSocket, IntoDyn,
-    Net, ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket, Value,
+    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net,
+    ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket, Value,
 };
 use tokio::{
     sync::{RwLock, Semaphore},
@@ -251,13 +251,6 @@ impl rd_interface::ITcpStream for WrapTcpStream {
         self.inner.local_addr().await
     }
 
-    fn read_passthrough(&self) -> Option<Fd> {
-        self.inner.read_passthrough()
-    }
-    fn write_passthrough(&self) -> Option<Fd> {
-        self.inner.write_passthrough()
-    }
-
     fn poll_read(
         &mut self,
         cx: &mut task::Context<'_>,
@@ -306,12 +299,11 @@ enum State {
     },
 }
 
-#[derive(Clone)]
 pub struct RunningServer {
     #[allow(dead_code)]
     name: String,
     server_type: String,
-    state: Arc<RwLock<State>>,
+    state: RwLock<State>,
 }
 
 #[instrument(err, skip(server))]
@@ -328,7 +320,7 @@ impl RunningServer {
         RunningServer {
             name,
             server_type,
-            state: Arc::new(RwLock::new(State::WaitConfig)),
+            state: RwLock::new(State::WaitConfig),
         }
     }
     pub fn server_type(&self) -> &str {

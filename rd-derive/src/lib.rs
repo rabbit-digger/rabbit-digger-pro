@@ -118,7 +118,7 @@ impl ToTokens for RDConfigReceiver {
 
         let expanded = quote! {
             impl #impl_generics rd_interface::config::Config for #ident #ty_generics #where_clause {
-                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()> {
+                fn visit<V: rd_interface::config::Visitor>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()> {
                     #visitor_body
                     Ok(())
                 }

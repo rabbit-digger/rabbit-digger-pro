@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use super::matcher::{self, MatchContext};
 use rd_interface::{
-    config::{NetRef, SingleOrVec},
+    config::{CompactVecString, NetRef, SingleOrVec},
     impl_empty_config,
     prelude::*,
     schemars::{
@@ -23,10 +23,10 @@ pub enum DomainMatcherMethod {
 }
 
 #[rd_config]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DomainMatcher {
     pub method: DomainMatcherMethod,
-    pub domain: SingleOrVec<String>,
+    pub domain: CompactVecString,
 }
 
 #[derive(Debug, Clone, SerializeDisplay, DeserializeFromStr)]
@@ -97,7 +97,7 @@ impl JsonSchema for IpCidr {
 pub struct AnyMatcher {}
 
 #[rd_config]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Matcher {
     Domain(DomainMatcher),
@@ -109,7 +109,7 @@ pub enum Matcher {
 }
 
 #[rd_config]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RuleItem {
     pub target: NetRef,
     #[serde(flatten)]
@@ -117,7 +117,7 @@ pub struct RuleItem {
 }
 
 #[rd_config]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RuleNetConfig {
     #[serde(default = "default_lru_cache_size")]
     pub lru_cache_size: usize,
@@ -137,5 +137,34 @@ impl matcher::Matcher for Matcher {
             Matcher::GeoIp(i) => i.match_rule(match_context),
             Matcher::Any(i) => i.match_rule(match_context),
         }
+    }
+}
+
+impl Matcher {
+    pub fn shrink_to_fit(&mut self) {
+        match self {
+            Matcher::Domain(i) => i.shrink_to_fit(),
+            Matcher::IpCidr(i) => i.shrink_to_fit(),
+            Matcher::SrcIpCidr(i) => i.shrink_to_fit(),
+            _ => {}
+        }
+    }
+}
+
+impl DomainMatcher {
+    pub fn shrink_to_fit(&mut self) {
+        self.domain.shrink_to_fit();
+    }
+}
+
+impl IpCidrMatcher {
+    pub fn shrink_to_fit(&mut self) {
+        self.ipcidr.shrink_to_fit()
+    }
+}
+
+impl SrcIpCidrMatcher {
+    pub fn shrink_to_fit(&mut self) {
+        self.ipcidr.shrink_to_fit()
     }
 }

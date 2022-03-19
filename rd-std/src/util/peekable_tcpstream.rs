@@ -1,4 +1,4 @@
-use rd_interface::{async_trait, impl_async_write, AsyncRead, Fd, ITcpStream, TcpStream};
+use rd_interface::{async_trait, impl_async_write, AsyncRead, ITcpStream, TcpStream};
 use std::{
     collections::VecDeque,
     io,
@@ -21,17 +21,6 @@ impl ITcpStream for PeekableTcpStream {
 
     async fn local_addr(&self) -> crate::Result<SocketAddr> {
         self.tcp.local_addr().await
-    }
-
-    fn read_passthrough(&self) -> Option<Fd> {
-        if self.buf.is_empty() {
-            self.tcp.read_passthrough()
-        } else {
-            None
-        }
-    }
-    fn write_passthrough(&self) -> Option<Fd> {
-        self.tcp.write_passthrough()
     }
 
     impl_async_write!(tcp);
@@ -133,10 +122,6 @@ mod tests {
         assert_eq!(&buf, b"1234");
 
         let mut tcp = tcp.into_dyn();
-        #[cfg(target_os = "linux")]
-        assert!(tcp.read_passthrough().is_none());
-        #[cfg(target_os = "linux")]
-        assert!(tcp.write_passthrough().is_some());
 
         let mut buf = [0u8; 8];
         tcp.read_exact(&mut buf).await.unwrap();
@@ -167,10 +152,5 @@ mod tests {
         assert_eq!(&rest, b"1234");
         tcp.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, b"5678");
-
-        #[cfg(target_os = "linux")]
-        assert!(tcp.read_passthrough().is_some());
-        #[cfg(target_os = "linux")]
-        assert!(tcp.write_passthrough().is_some());
     }
 }

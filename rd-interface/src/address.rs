@@ -193,21 +193,18 @@ impl Address {
     }
 
     pub fn to_any_addr_port(&self) -> Result<Self> {
-        match self {
-            Address::SocketAddr(addr) => Ok(Address::any_addr_port(addr)),
-            _ => Err(no_addr()),
+        match self.normalize() {
+            Either::Left(s) => Ok(Address::any_addr_port(&s)),
+            Either::Right(_) => Err(no_addr()),
         }
     }
 
     /// Converts to SocketAddr if Address can be convert to.
     /// Otherwise [AddrNotAvailable](std::io::ErrorKind::AddrNotAvailable) is returned.
     pub fn to_socket_addr(&self) -> Result<SocketAddr> {
-        match self {
-            Address::SocketAddr(s) => Ok(*s),
-            Address::Domain(d, p) => match strip_brackets(d).parse::<IpAddr>() {
-                Ok(ip) => Ok(SocketAddr::new(ip, *p)),
-                Err(_) => Err(no_addr()),
-            },
+        match self.normalize() {
+            Either::Left(s) => Ok(s),
+            Either::Right(_) => Err(no_addr()),
         }
     }
 
@@ -216,19 +213,17 @@ impl Address {
     where
         Fut: std::future::Future<Output = Result<Vec<SocketAddr>>>,
     {
-        match self {
-            Address::SocketAddr(s) => Ok(vec![*s]),
-            Address::Domain(d, p) => match strip_brackets(d).parse::<IpAddr>() {
-                Ok(ip) => Ok(vec![SocketAddr::new(ip, *p)]),
-                Err(_) => f(d.to_string(), *p).await,
-            },
+        match self.normalize() {
+            Either::Left(s) => Ok(vec![s]),
+            Either::Right((d, p)) => f(d.to_string(), p).await,
         }
     }
 
     /// Get host part of the Address
     pub fn host(&self) -> String {
         match self {
-            Address::SocketAddr(s) => s.ip().to_string(),
+            Address::SocketAddr(SocketAddr::V4(s)) => s.ip().to_string(),
+            Address::SocketAddr(SocketAddr::V6(s)) => format!("[{}]", s.ip()),
             Address::Domain(d, _) => d.to_string(),
         }
     }
@@ -240,6 +235,23 @@ impl Address {
             Address::Domain(_, p) => *p,
         }
     }
+
+    /// parse domain first, if it can be parsed as IP address,
+    /// then return it, otherwise return the original domain.
+    fn normalize(&self) -> Either<SocketAddr, (&String, u16)> {
+        match self {
+            Address::SocketAddr(s) => Either::Left(*s),
+            Address::Domain(d, p) => match strip_brackets(d).parse::<IpAddr>() {
+                Ok(ip) => Either::Left(SocketAddr::new(ip, *p)),
+                Err(_) => Either::Right((d, *p)),
+            },
+        }
+    }
+}
+
+enum Either<T, U> {
+    Left(T),
+    Right(U),
 }
 
 impl<'de> de::Deserialize<'de> for Address {
@@ -269,6 +281,7 @@ mod tests {
     const IPV4_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4));
     const IPV6_ADDR: IpAddr = IpAddr::V6(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
     const DOMAIN: &'static str = "example.com";
+    const IP_DOMAIN: &str = "[1:2:3:4:5:6:7:8]";
 
     #[test]
     fn test_any_addr_port() {
@@ -337,5 +350,97 @@ mod tests {
         // (IpAddr, u16)
         assert_eq!(ipv4_addr, (IPV4_ADDR, 1234).into_address().unwrap());
         assert_eq!(ipv6_addr, (IPV6_ADDR, 1234).into_address().unwrap());
+    }
+
+    #[test]
+    fn test_serde() {
+        let ipv4_addr = Address::SocketAddr(SocketAddr::new(IPV4_ADDR, 1234));
+        let ipv6_addr = Address::SocketAddr(SocketAddr::new(IPV6_ADDR, 1234));
+        let domain_addr = Address::Domain(DOMAIN.to_string(), 1234);
+
+        assert_eq!(
+            serde_json::to_string(&ipv4_addr).unwrap(),
+            "\"1.2.3.4:1234\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ipv6_addr).unwrap(),
+            "\"[1:2:3:4:5:6:7:8]:1234\""
+        );
+        assert_eq!(
+            serde_json::to_string(&domain_addr).unwrap(),
+            "\"example.com:1234\""
+        );
+
+        assert_eq!(
+            serde_json::from_str::<Address>(&serde_json::to_string(&ipv4_addr).unwrap()).unwrap(),
+            ipv4_addr
+        );
+        assert_eq!(
+            serde_json::from_str::<Address>(&serde_json::to_string(&ipv6_addr).unwrap()).unwrap(),
+            ipv6_addr
+        );
+        assert_eq!(
+            serde_json::from_str::<Address>(&serde_json::to_string(&domain_addr).unwrap()).unwrap(),
+            domain_addr
+        );
+    }
+
+    #[tokio::test]
+    async fn test_methods() {
+        let ipv4_addr = Address::SocketAddr(SocketAddr::new(IPV4_ADDR, 1234));
+        let ipv6_addr = Address::SocketAddr(SocketAddr::new(IPV6_ADDR, 1234));
+        let domain_addr = Address::Domain(DOMAIN.to_string(), 1234);
+        let domain_ip_addr = Address::Domain(IP_DOMAIN.to_string(), 1234);
+
+        assert_eq!(
+            ipv4_addr.to_any_addr_port().unwrap(),
+            Address::SocketAddr(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0)),
+        );
+        assert_eq!(
+            ipv6_addr.to_any_addr_port().unwrap(),
+            Address::SocketAddr(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0)),
+        );
+        assert!(domain_addr.to_any_addr_port().is_err());
+        assert_eq!(
+            domain_ip_addr.to_any_addr_port().unwrap(),
+            Address::SocketAddr(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0))
+        );
+
+        assert_eq!(
+            ipv4_addr.to_socket_addr().unwrap(),
+            SocketAddr::new(IPV4_ADDR, 1234)
+        );
+        assert_eq!(
+            ipv6_addr.to_socket_addr().unwrap(),
+            SocketAddr::new(IPV6_ADDR, 1234)
+        );
+        assert!(domain_addr.to_socket_addr().is_err());
+        assert_eq!(
+            domain_ip_addr.to_socket_addr().unwrap(),
+            SocketAddr::new(IPV6_ADDR, 1234)
+        );
+
+        assert_eq!(
+            ipv4_addr.resolve(dummy_resolve).await.unwrap(),
+            vec![SocketAddr::new(IPV4_ADDR, 1234)]
+        );
+        assert_eq!(
+            domain_ip_addr.resolve(dummy_resolve).await.unwrap(),
+            vec![SocketAddr::new(IPV6_ADDR, 1234)]
+        );
+
+        assert_eq!(ipv4_addr.host(), "1.2.3.4");
+        assert_eq!(ipv6_addr.host(), "[1:2:3:4:5:6:7:8]");
+        assert_eq!(domain_addr.host(), "example.com");
+        assert_eq!(domain_ip_addr.host(), "[1:2:3:4:5:6:7:8]");
+
+        assert_eq!(ipv4_addr.port(), 1234);
+        assert_eq!(ipv6_addr.port(), 1234);
+        assert_eq!(domain_addr.port(), 1234);
+        assert_eq!(domain_ip_addr.port(), 1234);
+    }
+
+    async fn dummy_resolve(_host: String, _port: u16) -> Result<Vec<SocketAddr>> {
+        panic!("dummy_resolve shouldn't be called")
     }
 }
