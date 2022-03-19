@@ -7,7 +7,7 @@ use crate::{
 };
 use rd_interface::{
     async_trait, prelude::*, registry::NetRef, Address as RdAddress, Address, INet, IntoDyn, Net,
-    Result, TcpStream, UdpSocket, NOT_ENABLED,
+    Result, TcpStream, UdpSocket,
 };
 use sha2::{Digest, Sha224};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
@@ -20,7 +20,6 @@ pub struct TrojanNet {
     server: RdAddress,
     connector: TlsConnector,
     password: String,
-    udp: bool,
     websocket: Option<WebSocket>,
 }
 
@@ -38,7 +37,6 @@ impl TrojanNet {
             server,
             connector,
             password,
-            udp: config.udp,
             websocket: config.websocket,
         })
     }
@@ -61,10 +59,6 @@ pub struct TrojanNetConfig {
     server: Address,
     /// password in plain text
     password: String,
-
-    /// enable udp or not
-    #[serde(default)]
-    udp: bool,
 
     /// sni
     #[serde(default)]
@@ -130,9 +124,6 @@ impl INet for TrojanNet {
         ctx: &mut rd_interface::Context,
         addr: &RdAddress,
     ) -> Result<UdpSocket> {
-        if !self.udp {
-            return Err(NOT_ENABLED);
-        }
         let stream = self.get_stream(ctx).await?;
         let head = self.make_head(3, ra2sa(addr.clone()))?;
 

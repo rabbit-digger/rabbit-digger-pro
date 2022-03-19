@@ -138,7 +138,8 @@ impl Clash {
                     server: String,
                     port: u16,
                     password: String,
-                    udp: Option<bool>,
+                    // udp is ignored
+                    // udp: Option<bool>,
                     sni: Option<String>,
                     skip_cert_verify: Option<bool>,
                 }
@@ -149,7 +150,6 @@ impl Clash {
                     json!({
                         "server": format!("{}:{}", params.server, params.port),
                         "password": params.password,
-                        "udp": params.udp.unwrap_or_default(),
                         "sni": params.sni.unwrap_or(params.server),
                         "skip_cert_verify": params.skip_cert_verify.unwrap_or_default(),
                     }),
