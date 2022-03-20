@@ -40,7 +40,6 @@ struct SerializedConfig {
 #[allow(dead_code)]
 struct Running {
     config: RwLock<SerializedConfig>,
-    registry_schema: RegistrySchema,
     entities: RunningEntities,
 }
 
@@ -186,10 +185,9 @@ impl RabbitDigger {
     // get registry schema
     pub async fn registry<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(Option<&RegistrySchema>) -> R,
+        F: FnOnce(&RegistrySchema) -> R,
     {
-        let state = self.inner.state.read().await;
-        f(state.running().map(|i| &i.registry_schema))
+        f(&get_registry_schema(&self.registry))
     }
 
     // start all server, all server run in background.
@@ -222,7 +220,6 @@ impl RabbitDigger {
                 str: serde_json::to_string(&config)?,
                 id: config.id,
             }),
-            registry_schema: get_registry_schema(&self.registry),
             entities,
         });
 
