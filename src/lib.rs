@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use config::ConfigManager;
 pub use rabbit_digger;
-use rabbit_digger::Registry;
+use rabbit_digger::{RabbitDigger, Registry};
 use yaml_merge_keys::merge_keys_serde;
 
 #[cfg(feature = "api_server")]
@@ -35,4 +36,40 @@ pub fn deserialize_config(s: &str) -> Result<config::ConfigExt> {
     let raw_yaml = serde_yaml::from_str(s)?;
     let merged = merge_keys_serde(raw_yaml)?;
     Ok(serde_yaml::from_value(merged)?)
+}
+
+pub struct App {
+    pub rd: RabbitDigger,
+    pub cfg_mgr: ConfigManager,
+}
+
+#[derive(Default, Debug)]
+pub struct ApiServer {
+    pub bind: Option<String>,
+    pub access_token: Option<String>,
+    pub web_ui: Option<String>,
+}
+
+impl App {
+    pub async fn new() -> Result<Self> {
+        let rd = RabbitDigger::new(get_registry()?).await?;
+        let cfg_mgr = ConfigManager::new().await?;
+
+        Ok(Self { rd, cfg_mgr })
+    }
+    pub async fn run_api_server(&self, api_server: ApiServer) -> Result<()> {
+        #[cfg(feature = "api_server")]
+        if let Some(bind) = api_server.bind {
+            api_server::ApiServer {
+                rabbit_digger: self.rd.clone(),
+                config_manager: self.cfg_mgr.clone(),
+                access_token: api_server.access_token,
+                web_ui: api_server.web_ui,
+            }
+            .run(&bind)
+            .await
+            .context("Failed to run api server.")?;
+        }
+        Ok(())
+    }
 }

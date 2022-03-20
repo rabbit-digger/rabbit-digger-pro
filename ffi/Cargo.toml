@@ -1,0 +1,30 @@
+[package]
+name = "rdp"
+version = "0.1.0"
+authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
+edition = "2021"
+description = "FFI wrapper for rabbit-digger-pro"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1.0.38"
+rabbit-digger-pro = { path = "../", default-features = false, features = [
+    "trojan",
+    "rpc",
+    "obfs",
+    "api_server",
+] }
+tokio = { version = "1.15.0", features = ["full"] }
+tokio-stream = { version = "0.1.6", features = ["net", "sync", "time"] }
+tracing-subscriber = { version = "0.3.7", features = [
+    "registry",
+    "env-filter",
+    "json",
+] }
+tracing = "0.1.26"
+
+[build-dependencies]
+cbindgen = "0.20.0"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]

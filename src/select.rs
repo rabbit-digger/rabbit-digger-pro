@@ -12,7 +12,9 @@ pub struct SelectNetConfig {
     list: Vec<NetRef>,
 }
 
-pub struct SelectNet(Option<Net>);
+pub struct SelectNet {
+    selected: Net,
+}
 
 impl SelectNet {
     pub fn new(config: SelectNetConfig) -> Result<Self> {
@@ -20,12 +22,12 @@ impl SelectNet {
             return Err(Error::Other("select list is empty".into()));
         }
 
-        Ok(SelectNet(Some((*config.selected).clone())))
+        Ok(SelectNet {
+            selected: (*config.selected).clone(),
+        })
     }
     fn net(&self) -> Result<&Net> {
-        self.0
-            .as_ref()
-            .ok_or_else(|| Error::Other("select net not found".into()))
+        Ok(&self.selected)
     }
 }
 

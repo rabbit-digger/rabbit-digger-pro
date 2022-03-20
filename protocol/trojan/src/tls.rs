@@ -12,6 +12,7 @@ mod backend;
 
 pub use backend::*;
 
+#[derive(Clone)]
 pub struct TlsConnectorConfig {
     pub skip_cert_verify: bool,
     pub sni: String,

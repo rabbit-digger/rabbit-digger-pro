@@ -69,6 +69,7 @@ impl From<Medium> for Layer {
         match m {
             Medium::Ethernet => Layer::L2,
             Medium::Ip => Layer::L3,
+            #[allow(unreachable_patterns)]
             _ => panic!("unsupported medium"),
         }
     }

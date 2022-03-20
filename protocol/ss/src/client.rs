@@ -2,8 +2,8 @@ use std::io;
 
 use super::wrapper::{Cipher, WrapAddress, WrapSSTcp, WrapSSUdp};
 use rd_interface::{
-    async_trait, prelude::*, registry::NetRef, Address, INet, IntoDyn, Net, Result, TcpStream,
-    UdpSocket, NOT_ENABLED,
+    async_trait, prelude::*, registry::NetRef, Address, Error, INet, IntoDyn, Net, Result,
+    TcpStream, UdpSocket,
 };
 use shadowsocks::{
     config::{ServerConfig, ServerType},
@@ -73,7 +73,7 @@ impl INet for SSNet {
         _addr: &Address,
     ) -> Result<UdpSocket> {
         if !self.udp {
-            return Err(NOT_ENABLED);
+            return Err(Error::NotEnabled);
         }
 
         let server_addr = self

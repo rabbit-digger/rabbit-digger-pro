@@ -65,6 +65,12 @@ opentelemetry-jaeger = { version = "0.16.0", features = [
     "rt-tokio",
     "reqwest_collector_client",
 ], optional = true }
+rhai = { version = "1.5.0", optional = true, features = [
+    "no_optimize",
+    "no_closure",
+    "no_closure",
+    "serde",
+] }
 
 jemallocator = { version = "0.3", optional = true }
 mimalloc = { version = "0.1", optional = true }
@@ -73,7 +79,7 @@ mimalloc = { version = "0.1", optional = true }
 rusty-hook = "0.11.0"
 
 [features]
-default = ["ss", "trojan", "rpc", "obfs", "api_server"]
+default = ["ss", "trojan", "rpc", "obfs", "api_server", "rhai"]
 api_server = [
     "axum",
     "serde_urlencoded",
@@ -95,6 +101,7 @@ members = [
     "protocol/rpc",
     "protocol/raw",
     "protocol/obfs",
+    "ffi",
 ]
 exclude = ["rabbit-digger"]
 

@@ -47,6 +47,7 @@ pub enum ImportSource {
     Path(PathBuf),
     Poll(ImportUrl),
     Storage(ImportStorage),
+    Text(String),
 }
 
 async fn fetch(url: &str) -> Result<String> {
@@ -93,6 +94,7 @@ impl ImportSource {
             ImportSource::Path(path) => format!("path:{:?}", path),
             ImportSource::Poll(url) => format!("poll:{}", url.url),
             ImportSource::Storage(storage) => format!("storage:{}:{}", storage.folder, storage.key),
+            ImportSource::Text(_) => format!("text"),
         }
     }
     pub async fn get_content(&self, cache: &dyn Storage) -> Result<String> {
@@ -128,6 +130,7 @@ impl ImportSource {
                     .ok_or_else(|| anyhow!("Not found"))?;
                 item.content
             }
+            ImportSource::Text(content) => content.to_string(),
         })
     }
     fn get_expire_duration(&self) -> Option<Duration> {
@@ -135,6 +138,7 @@ impl ImportSource {
             ImportSource::Path(_) => None,
             ImportSource::Poll(ImportUrl { interval, .. }) => interval.map(Duration::from_secs),
             ImportSource::Storage(_) => None,
+            ImportSource::Text(_) => None,
         }
     }
     pub async fn wait(&self, cache: &dyn Storage) -> Result<()> {
@@ -168,6 +172,9 @@ impl ImportSource {
                 let mut stream = notify_stream(path, RecursiveMode::NonRecursive)?
                     .debounce(Duration::from_millis(100));
                 stream.next().await;
+            }
+            ImportSource::Text(_) => {
+                pending::<()>().await;
             }
         };
         Ok(())

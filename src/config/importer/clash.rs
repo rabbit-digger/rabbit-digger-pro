@@ -138,7 +138,8 @@ impl Clash {
                     server: String,
                     port: u16,
                     password: String,
-                    udp: Option<bool>,
+                    // udp is ignored
+                    // udp: Option<bool>,
                     sni: Option<String>,
                     skip_cert_verify: Option<bool>,
                 }
@@ -149,7 +150,6 @@ impl Clash {
                     json!({
                         "server": format!("{}:{}", params.server, params.port),
                         "password": params.password,
-                        "udp": params.udp.unwrap_or_default(),
                         "sni": params.sni.unwrap_or(params.server),
                         "skip_cert_verify": params.skip_cert_verify.unwrap_or_default(),
                     }),
@@ -296,7 +296,7 @@ impl Clash {
                     "domain" => rule_config::RuleItem {
                         target: target.clone(),
                         matcher: Matcher::Domain(DomainMatcher {
-                            method: DomainMatcherMethod::Suffix,
+                            method: DomainMatcherMethod::Match,
                             domain: payload.into(),
                         }),
                     },
@@ -389,7 +389,19 @@ impl Importer for Clash {
                 .map(|r| self.rule_to_rule(r, cache, &clash_config.rule_providers))
                 .buffered(10)
                 .flat_map(|r| stream::iter(r))
-                .collect::<Vec<_>>()
+                .fold(
+                    Vec::<rule_config::RuleItem>::new(),
+                    |mut state, item| async move {
+                        let mut merged = false;
+                        if let Some(last) = state.last_mut() {
+                            merged = last.merge(&item);
+                        }
+                        if !merged {
+                            state.push(item);
+                        }
+                        state
+                    },
+                )
                 .await;
 
             config
