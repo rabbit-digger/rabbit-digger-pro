@@ -53,7 +53,7 @@ pub struct ApiServer {
 impl App {
     pub async fn new() -> Result<Self> {
         let rd = RabbitDigger::new(get_registry()?).await?;
-        let cfg_mgr = ConfigManager::new(get_registry()?).await?;
+        let cfg_mgr = ConfigManager::new().await?;
 
         Ok(Self { rd, cfg_mgr })
     }
