@@ -108,12 +108,51 @@ pub enum Matcher {
     Any(AnyMatcher),
 }
 
+impl Matcher {
+    pub fn merge(&mut self, other: &Matcher) -> bool {
+        match (self, other) {
+            (Matcher::Domain(ref mut self_domain), Matcher::Domain(ref other_domain)) => {
+                self_domain.domain.extend(&other_domain.domain);
+                true
+            }
+            (Matcher::IpCidr(ref mut self_ipcidr), Matcher::IpCidr(ref other_ipcidr)) => {
+                self_ipcidr
+                    .ipcidr
+                    .extend(other_ipcidr.ipcidr.iter().cloned());
+                true
+            }
+            (
+                Matcher::SrcIpCidr(ref mut self_srcipcidr),
+                Matcher::SrcIpCidr(ref other_srcipcidr),
+            ) => {
+                self_srcipcidr
+                    .ipcidr
+                    .extend(other_srcipcidr.ipcidr.iter().cloned());
+                true
+            }
+            (Matcher::Any(_), Matcher::Any(_)) => true,
+            (Matcher::GeoIp(_), Matcher::GeoIp(_)) => false,
+            _ => false,
+        }
+    }
+}
+
 #[rd_config]
 #[derive(Debug)]
 pub struct RuleItem {
     pub target: NetRef,
     #[serde(flatten)]
     pub matcher: Matcher,
+}
+
+impl RuleItem {
+    pub fn merge(&mut self, other: &RuleItem) -> bool {
+        if self.target.represent() == other.target.represent() {
+            self.matcher.merge(&other.matcher)
+        } else {
+            false
+        }
+    }
 }
 
 #[rd_config]

@@ -1,4 +1,4 @@
-use crate::{self as rd_interface, registry::NetGetter, Address, Net};
+use crate::{self as rd_interface, Address, Net};
 pub use resolvable::{Resolvable, ResolvableSchema};
 use schemars::{
     schema::{InstanceType, Metadata, SchemaObject, SubschemaValidation},
@@ -86,11 +86,11 @@ impl VisitorContext {
 }
 
 pub trait Config {
-    fn visit<V: Visitor>(&mut self, ctx: &mut VisitorContext, visitor: &mut V) -> Result<()>;
+    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()>;
 }
 
 impl Config for NetRef {
-    fn visit<V: Visitor>(&mut self, ctx: &mut VisitorContext, visitor: &mut V) -> Result<()> {
+    fn visit(&mut self, ctx: &mut VisitorContext, visitor: &mut dyn Visitor) -> Result<()> {
         visitor.visit_net_ref(ctx, self)
     }
 }
@@ -99,9 +99,7 @@ impl Config for NetRef {
 macro_rules! impl_empty_config {
     ($($x:ident),+ $(,)?) => ($(
         impl rd_interface::config::Config for $x {
-            fn visit<V>(&mut self, _ctx: &mut rd_interface::config::VisitorContext, _visitor: &mut V) -> rd_interface::Result<()>
-            where
-                V: rd_interface::config::Visitor,
+            fn visit(&mut self, _ctx: &mut rd_interface::config::VisitorContext, _visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()>
             {
                 Ok(())
             }
@@ -120,9 +118,7 @@ mod impl_std {
     macro_rules! impl_container_config {
         ($($x:ident),+ $(,)?) => ($(
             impl<T: Config> Config for $x<T> {
-                fn visit<V>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()>
-                where
-                    V: rd_interface::config::Visitor,
+                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()>
                 {
                     for (key, i) in self.iter_mut().enumerate() {
                         ctx.push(key.to_string());
@@ -137,9 +133,7 @@ mod impl_std {
     macro_rules! impl_key_container_config {
         ($($x:ident),+ $(,)?) => ($(
             impl<K: std::string::ToString, T: Config> Config for $x<K, T> {
-                fn visit<V>(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut V) -> rd_interface::Result<()>
-                where
-                    V: rd_interface::config::Visitor
+                fn visit(&mut self, ctx: &mut rd_interface::config::VisitorContext, visitor: &mut dyn rd_interface::config::Visitor) -> rd_interface::Result<()>
                 {
                     for (key, i) in self.iter_mut() {
                         ctx.push(key.to_string());
@@ -160,14 +154,11 @@ mod impl_std {
     impl_key_container_config! { HashMap, BTreeMap }
 
     impl<T1, T2> rd_interface::config::Config for (T1, T2) {
-        fn visit<V>(
+        fn visit(
             &mut self,
             _ctx: &mut rd_interface::config::VisitorContext,
-            _visitor: &mut V,
-        ) -> rd_interface::Result<()>
-        where
-            V: rd_interface::config::Visitor,
-        {
+            _visitor: &mut dyn rd_interface::config::Visitor,
+        ) -> rd_interface::Result<()> {
             Ok(())
         }
     }
@@ -183,7 +174,7 @@ impl JsonSchema for EmptyConfig {
 
     fn json_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
         SchemaObject {
-            instance_type: Some(InstanceType::Null.into()),
+            instance_type: Some(InstanceType::Object.into()),
             format: None,
             ..Default::default()
         }
@@ -216,57 +207,5 @@ impl JsonSchema for Address {
             ..Default::default()
         }
         .into()
-    }
-}
-
-pub fn resolve_net(config: &mut impl Config, getter: NetGetter) -> Result<()> {
-    struct ResolveNetVisitor<'a>(NetGetter<'a>);
-
-    impl<'a> Visitor for ResolveNetVisitor<'a> {
-        fn visit_net_ref(&mut self, _ctx: &mut VisitorContext, net_ref: &mut NetRef) -> Result<()> {
-            let name = net_ref.represent().as_str();
-            let net = name
-                .map(|name| self.0(name))
-                .flatten()
-                .ok_or_else(|| crate::Error::NotFound(net_ref.represent().to_string()))?
-                .clone();
-            net_ref.set_value(net);
-            Ok(())
-        }
-    }
-
-    config.visit(&mut VisitorContext::new(), &mut ResolveNetVisitor(getter))?;
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{async_trait, rd_config, INet, IntoDyn};
-    use std::collections::HashMap;
-
-    struct NotImplementedNet;
-    #[async_trait]
-    impl INet for NotImplementedNet {}
-
-    #[test]
-    fn test_net_ref() {
-        #[rd_config]
-        struct TestConfig {
-            net: Vec<NetRef>,
-        }
-
-        let mut test: TestConfig = serde_json::from_str(r#"{ "net": ["test"] }"#).unwrap();
-
-        assert_eq!(test.net[0].represent(), "test");
-
-        let mut net_map = HashMap::new();
-        let noop = NotImplementedNet.into_dyn();
-
-        net_map.insert("test".to_string(), noop.clone());
-        resolve_net(&mut test, &|key| net_map.get(key).map(|i| i.clone())).unwrap();
-
-        assert_eq!(test.net[0].as_ptr(), noop.as_ptr())
     }
 }

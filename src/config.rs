@@ -1,11 +1,11 @@
 pub mod default;
 
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 
 use indexmap::IndexMap;
 use rd_interface::{
     schemars::{self, JsonSchema},
-    Result, Value,
+    Value,
 };
 use serde::{Deserialize, Serialize};
 
@@ -127,35 +127,27 @@ impl Server {
     }
 }
 
-impl Config {
-    // Flatten nested net
-    pub fn flatten_net(&mut self, delimiter: &str, registry: &crate::Registry) -> Result<()> {
-        loop {
-            let mut to_add = HashMap::new();
-            for (name, net) in self.net.iter_mut() {
-                registry.get_net(&net.net_type)?.resolver.unfold_net_ref(
-                    &mut net.opt,
-                    &["net", name],
-                    delimiter,
-                    &mut to_add,
-                )?;
-            }
-            for (name, server) in self.server.iter_mut() {
-                registry
-                    .get_server(&server.server_type)?
-                    .resolver
-                    .unfold_net_ref(&mut server.opt, &["server", name], delimiter, &mut to_add)?
-            }
-            if to_add.len() == 0 {
-                break;
-            }
+pub fn init_default_net(config_net: &mut ConfigNet) -> rd_interface::Result<()> {
+    use rd_interface::config::EmptyConfig;
 
-            for (path, opt) in to_add.into_iter() {
-                let key = path.join(delimiter);
-                self.net.insert(key, serde_json::from_value(opt)?);
-            }
-        }
-
-        Ok(())
+    if !config_net.contains_key("noop") {
+        config_net.insert(
+            "noop".to_string(),
+            Net::new_opt("noop", EmptyConfig::default())?,
+        );
     }
+    if !config_net.contains_key("blackhole") {
+        config_net.insert(
+            "blackhole".to_string(),
+            Net::new_opt("blackhole", EmptyConfig::default())?,
+        );
+    }
+    if !config_net.contains_key("local") {
+        config_net.insert(
+            "local".to_string(),
+            Net::new_opt("local", rd_std::builtin::local::LocalNetConfig::default())?,
+        );
+    }
+
+    Ok(())
 }
