@@ -1,4 +1,4 @@
-use std::slice;
+use std::{mem::replace, slice};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,23 @@ impl<T: Config> Config for SingleOrVec<T> {
             }
         }
         Ok(())
+    }
+}
+
+impl<A> Extend<A> for SingleOrVec<A> {
+    fn extend<T: IntoIterator<Item = A>>(&mut self, iter: T) {
+        let iter = iter.into_iter();
+        let mut this = replace(self, SingleOrVec::Vec(Vec::new()));
+        match this {
+            SingleOrVec::Single(i) => {
+                let mut v = Vec::with_capacity(1 + iter.size_hint().0);
+                v.push(i);
+                v.extend(iter);
+                this = SingleOrVec::Vec(v);
+            }
+            SingleOrVec::Vec(ref mut v) => v.extend(iter),
+        }
+        *self = this;
     }
 }
 
