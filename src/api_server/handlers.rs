@@ -11,11 +11,12 @@ use axum::{
         ws::{Message, WebSocket},
         Extension, Path, Query, RawBody, WebSocketUpgrade,
     },
+    http::HeaderValue,
     response::{IntoResponse, Response},
     BoxError, Json,
 };
 use futures::{Stream, StreamExt, TryStreamExt};
-use hyper::StatusCode;
+use hyper::{header::HeaderName, HeaderMap, StatusCode};
 use rabbit_digger::{RabbitDigger, Uuid};
 use rd_interface::{IntoAddress, Value};
 use serde::{Deserialize, Serialize};
@@ -70,7 +71,14 @@ impl IntoResponse for ApiError {
 pub(super) async fn get_config(
     Extension(Ctx { rd, .. }): Extension<Ctx>,
 ) -> Result<impl IntoResponse, ApiError> {
-    Ok(Json(rd.config().await?))
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("content-type"),
+        HeaderValue::from_static("application/json"),
+    );
+
+    let config_str = rd.config().await?;
+    Ok((headers, config_str))
 }
 
 pub(super) async fn post_config(
@@ -131,7 +139,7 @@ pub(super) async fn post_select(
     })
     .await?;
 
-    if let Some(id) = rd.get_config(|c| c.map(|c| c.id.clone())).await {
+    if let Some(id) = rd.get_id().await {
         let mut select_map = SelectMap::from_cache(&id, cfg_mgr.select_storage()).await?;
 
         select_map.insert(net_name.to_string(), selected);
