@@ -16,6 +16,7 @@ tokio = "1.0"
 tokio-tungstenite = "0.16.1"
 tokio-util = { version = "0.6.6", features = ["codec", "net"] }
 bytes = "1.1.0"
+once_cell = "1.7.2"
 
 tokio-rustls = { version = "0.23.2", features = [
     "dangerous_configuration",
