@@ -12,8 +12,8 @@ use parking_lot::RwLock as SyncRwLock;
 use rd_interface::{
     async_trait,
     context::common_field::{DestDomain, DestSocketAddr},
-    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, Error, INet, IUdpSocket, IntoDyn,
-    Net, ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket,
+    Address, AddressDomain, Arc, AsyncRead, AsyncWrite, Context, INet, IUdpSocket, IntoDyn, Net,
+    ReadBuf, Result, Server, TcpListener, TcpStream, UdpSocket,
 };
 use tokio::{
     sync::{RwLock, Semaphore},
@@ -115,7 +115,7 @@ impl INet for RunningServerNet {
         &self,
         ctx: &mut rd_interface::Context,
         addr: &Address,
-    ) -> rd_interface::Result<TcpStream> {
+    ) -> Result<TcpStream> {
         ctx.append_net(self.server_name.clone());
         // prepare context
         match addr {
@@ -139,18 +139,14 @@ impl INet for RunningServerNet {
         &self,
         ctx: &mut rd_interface::Context,
         addr: &Address,
-    ) -> rd_interface::Result<TcpListener> {
+    ) -> Result<TcpListener> {
         ctx.append_net(self.server_name.clone());
 
         self.net.tcp_bind(ctx, addr).await
     }
 
     #[instrument(err)]
-    async fn udp_bind(
-        &self,
-        ctx: &mut rd_interface::Context,
-        addr: &Address,
-    ) -> rd_interface::Result<UdpSocket> {
+    async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
         ctx.append_net(self.server_name.clone());
 
         let udp = WrapUdpSocket::new(
@@ -290,11 +286,11 @@ impl rd_interface::ITcpStream for WrapTcpStream {
 enum State {
     Idle,
     Running {
-        handle: JoinHandle<Result<()>>,
+        handle: JoinHandle<anyhow::Result<()>>,
         semaphore: Arc<Semaphore>,
     },
     Finished {
-        result: Result<()>,
+        result: anyhow::Result<()>,
     },
 }
 
@@ -308,7 +304,7 @@ pub struct RunningServer {
 }
 
 #[instrument(err, skip(server))]
-async fn server_start(name: String, server: &Server) -> Result<()> {
+async fn server_start(name: String, server: &Server) -> anyhow::Result<()> {
     server
         .start()
         .inspect_err(move |e| tracing::error!("Server {} error: {:?}", name, e))
@@ -329,7 +325,7 @@ impl RunningServer {
     pub fn server_type(&self) -> &str {
         &self.server_type
     }
-    pub async fn start(&self) -> Result<()> {
+    pub async fn start(&self) -> anyhow::Result<()> {
         self.stop().await?;
 
         let name = self.name.clone();
@@ -348,7 +344,7 @@ impl RunningServer {
 
         Ok(())
     }
-    pub async fn stop(&self) -> rd_interface::Result<()> {
+    pub async fn stop(&self) -> Result<()> {
         match &*self.state.read().await {
             State::Running {
                 handle, semaphore, ..
@@ -376,16 +372,13 @@ impl RunningServer {
         let mut state = self.state.write().await;
 
         let result = match &mut *state {
-            State::Running { handle, .. } => handle
-                .await
-                .map_err(|_| Error::other("Failed to join"))
-                .and_then(|i| i),
+            State::Running { handle, .. } => handle.await.map_err(Into::into).and_then(|i| i),
             _ => return,
         };
 
         *state = State::Finished { result };
     }
-    pub async fn take_result(&self) -> Option<Result<()>> {
+    pub async fn take_result(&self) -> Option<anyhow::Result<()>> {
         let mut state = self.state.write().await;
 
         match &*state {
