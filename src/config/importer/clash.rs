@@ -389,7 +389,19 @@ impl Importer for Clash {
                 .map(|r| self.rule_to_rule(r, cache, &clash_config.rule_providers))
                 .buffered(10)
                 .flat_map(|r| stream::iter(r))
-                .collect::<Vec<_>>()
+                .fold(
+                    Vec::<rule_config::RuleItem>::new(),
+                    |mut state, item| async move {
+                        let mut merged = false;
+                        if let Some(last) = state.last_mut() {
+                            merged = last.merge(&item);
+                        }
+                        if !merged {
+                            state.push(item);
+                        }
+                        state
+                    },
+                )
                 .await;
 
             config
