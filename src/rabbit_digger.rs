@@ -32,9 +32,14 @@ struct RunningEntities {
     servers: BTreeMap<String, ServerInfo>,
 }
 
+struct SerializedConfig {
+    id: String,
+    str: String,
+}
+
 #[allow(dead_code)]
 struct Running {
-    config: RwLock<config::Config>,
+    config: RwLock<SerializedConfig>,
     registry_schema: RegistrySchema,
     entities: RunningEntities,
 }
@@ -149,11 +154,11 @@ impl RabbitDigger {
     }
 
     // get current config if it's running
-    pub async fn config(&self) -> Result<config::Config> {
+    pub async fn config(&self) -> Result<String> {
         let state = self.inner.state.read().await;
         match &*state {
             State::Running(Running { config, .. }) => {
-                return Ok(config.read().await.clone());
+                return Ok(config.read().await.str.clone());
             }
             _ => {
                 return Err(anyhow!("Not running"));
@@ -213,7 +218,10 @@ impl RabbitDigger {
         }
 
         *state = State::Running(Running {
-            config: RwLock::new(config),
+            config: RwLock::new(SerializedConfig {
+                str: serde_json::to_string(&config)?,
+                id: config.id,
+            }),
             registry_schema: get_registry_schema(&self.registry),
             entities,
         });
@@ -301,7 +309,9 @@ impl RabbitDigger {
                 entities: RunningEntities { nets, .. },
                 ..
             }) => {
-                let mut config = config.write().await;
+                let config_str = &mut config.write().await.str;
+                let mut config: config::Config = serde_json::from_str(config_str)?;
+
                 if let (Some(cfg), Some(running_net)) =
                     (config.net.get_mut(net_name), nets.get(net_name))
                 {
@@ -322,6 +332,7 @@ impl RabbitDigger {
                     running_net.update_net(net);
 
                     *cfg = new_cfg;
+                    *config_str = serde_json::to_string(&config)?;
                 }
                 return Ok(());
             }
@@ -331,13 +342,21 @@ impl RabbitDigger {
         };
     }
 
+    pub async fn get_id(&self) -> Option<String> {
+        let state = self.inner.state.read().await;
+        match &*state {
+            State::Running(Running { config, .. }) => Some(config.read().await.id.clone()),
+            _ => None,
+        }
+    }
+
     pub async fn get_config<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(Option<&config::Config>) -> R,
+        F: FnOnce(Option<&str>) -> R,
     {
         let state = self.inner.state.read().await;
         match state.running() {
-            Some(i) => f(Some(&*i.config.read().await)),
+            Some(i) => f(Some(&*i.config.read().await.str)),
             None => f(None),
         }
     }
