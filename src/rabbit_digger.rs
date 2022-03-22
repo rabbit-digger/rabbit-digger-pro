@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, mem::replace, time::Duratio
 use crate::{
     config::{self, init_default_net},
     rabbit_digger::running::{RunningNet, RunningServer, RunningServerNet},
-    registry::Registry,
+    registry::{Registry, RegistrySchema},
 };
 use anyhow::{anyhow, Context, Result};
 use futures::{
@@ -14,10 +14,8 @@ use futures::{
 use rd_interface::{
     config::{CompactVecString, NetRef, VisitorContext},
     registry::NetGetter,
-    schemars::schema::RootSchema,
     Arc, Error, IntoDyn, Net, Server, Value,
 };
-use serde::{Deserialize, Serialize};
 use tokio::{pin, sync::RwLock, time::timeout};
 use uuid::Uuid;
 
@@ -187,7 +185,7 @@ impl RabbitDigger {
     where
         F: FnOnce(&RegistrySchema) -> R,
     {
-        f(&get_registry_schema(&self.registry))
+        f(&self.registry.get_registry_schema())
     }
 
     // start all server, all server run in background.
@@ -470,30 +468,7 @@ impl Registry {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RegistrySchema {
-    net: BTreeMap<String, RootSchema>,
-    server: BTreeMap<String, RootSchema>,
-}
-
-fn get_registry_schema(registry: &Registry) -> RegistrySchema {
-    let mut r = RegistrySchema {
-        net: BTreeMap::new(),
-        server: BTreeMap::new(),
-    };
-
-    for (key, value) in registry.net() {
-        r.net.insert(key.clone(), value.resolver.schema().clone());
-    }
-    for (key, value) in registry.server() {
-        r.server
-            .insert(key.clone(), value.resolver.schema().clone());
-    }
-
-    r
-}
-
-pub struct BuildContext<'a> {
+struct BuildContext<'a> {
     config: RefCell<&'a mut config::ConfigNet>,
     registry: &'a Registry,
     net_cache: RefCell<BTreeMap<String, Arc<RunningNet>>>,

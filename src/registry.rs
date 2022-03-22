@@ -2,26 +2,22 @@
 
 use rd_interface::{
     error::ErrorContext,
-    registry::{NetGetter, NetResolver, ServerResolver},
+    registry::{NetGetter, Resolver},
+    schemars::schema::RootSchema,
     Net, Result, Server, Value,
 };
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt};
 
 use crate::builtin::load_builtin;
 
-pub struct NetItem {
+pub struct Item<T> {
     id: String,
-    pub plugin_name: String,
-    pub resolver: NetResolver,
+    plugin_name: String,
+    resolver: Resolver<T>,
 }
 
-pub struct ServerItem {
-    id: String,
-    pub plugin_name: String,
-    pub resolver: ServerResolver,
-}
-
-impl NetItem {
+impl Item<Net> {
     pub fn build(&self, getter: NetGetter, config: &mut Value) -> rd_interface::Result<Net> {
         self.resolver
             .build(getter, config)
@@ -29,7 +25,7 @@ impl NetItem {
     }
 }
 
-impl ServerItem {
+impl Item<Server> {
     pub fn build(&self, getter: NetGetter, config: &mut Value) -> rd_interface::Result<Server> {
         self.resolver
             .build(getter, config)
@@ -39,8 +35,8 @@ impl ServerItem {
 
 #[derive(Debug)]
 pub struct Registry {
-    net: BTreeMap<String, NetItem>,
-    server: BTreeMap<String, ServerItem>,
+    net: BTreeMap<String, Item<Net>>,
+    server: BTreeMap<String, Item<Server>>,
 }
 
 impl Default for Registry {
@@ -53,7 +49,7 @@ impl Default for Registry {
     }
 }
 
-impl fmt::Debug for NetItem {
+impl fmt::Debug for Item<Net> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NetItem")
             .field("plugin_name", &self.plugin_name)
@@ -61,7 +57,7 @@ impl fmt::Debug for NetItem {
     }
 }
 
-impl fmt::Debug for ServerItem {
+impl fmt::Debug for Item<Server> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ServerItem")
             .field("plugin_name", &self.plugin_name)
@@ -102,52 +98,76 @@ impl Registry {
     }
     pub fn init_with_registry(
         &mut self,
-        name: impl Into<String>,
+        name: impl AsRef<str>,
         init: impl Fn(&mut rd_interface::Registry) -> rd_interface::Result<()>,
     ) -> rd_interface::Result<()> {
         let mut r = rd_interface::Registry::new();
         init(&mut r)?;
-        self.add_registry(name.into(), r);
+        self.add_registry(name.as_ref(), r);
         Ok(())
     }
-    fn add_registry(&mut self, plugin_name: String, registry: rd_interface::Registry) {
-        for (k, v) in registry.net {
-            self.net.insert(
-                k.clone(),
-                NetItem {
-                    id: k,
-                    plugin_name: plugin_name.clone(),
-                    resolver: v,
-                },
-            );
-        }
-        for (k, v) in registry.server {
-            self.server.insert(
-                k.clone(),
-                ServerItem {
-                    id: k,
-                    plugin_name: plugin_name.clone(),
-                    resolver: v,
-                },
-            );
-        }
+    fn add_registry(&mut self, plugin_name: &str, registry: rd_interface::Registry) {
+        self.net
+            .extend(registry.net.into_iter().map(|(id, resolver)| {
+                (
+                    id.clone(),
+                    Item {
+                        id,
+                        plugin_name: plugin_name.to_string(),
+                        resolver,
+                    },
+                )
+            }));
+        self.server
+            .extend(registry.server.into_iter().map(|(id, resolver)| {
+                (
+                    id.clone(),
+                    Item {
+                        id,
+                        plugin_name: plugin_name.to_string(),
+                        resolver,
+                    },
+                )
+            }));
     }
-    pub fn net(&self) -> &BTreeMap<String, NetItem> {
+    pub fn net(&self) -> &BTreeMap<String, Item<Net>> {
         &self.net
     }
-    pub fn server(&self) -> &BTreeMap<String, ServerItem> {
+    pub fn server(&self) -> &BTreeMap<String, Item<Server>> {
         &self.server
     }
-    pub fn get_net(&self, net_type: &str) -> Result<&NetItem> {
+    pub fn get_net(&self, net_type: &str) -> Result<&Item<Net>> {
         self.net.get(net_type).ok_or_else(|| {
             rd_interface::Error::other(format!("Net type is not loaded: {}", net_type))
         })
     }
-    pub fn get_server(&self, server_type: &str) -> Result<&ServerItem> {
+    pub fn get_server(&self, server_type: &str) -> Result<&Item<Server>> {
         self.server.get(server_type).ok_or_else(|| {
             rd_interface::Error::other(format!("Server type is not loaded: {}", server_type))
         })
     }
+    pub fn get_registry_schema(&self) -> RegistrySchema {
+        let mut r = RegistrySchema {
+            net: BTreeMap::new(),
+            server: BTreeMap::new(),
+        };
+
+        for (key, value) in self.net() {
+            r.net.insert(key.clone(), value.resolver.schema().clone());
+        }
+        for (key, value) in self.server() {
+            r.server
+                .insert(key.clone(), value.resolver.schema().clone());
+        }
+
+        r
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegistrySchema {
+    net: BTreeMap<String, RootSchema>,
+    server: BTreeMap<String, RootSchema>,
 }
 
 #[cfg(test)]
