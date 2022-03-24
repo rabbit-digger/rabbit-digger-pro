@@ -17,6 +17,12 @@ pub struct Item<T> {
     resolver: Resolver<T>,
 }
 
+impl<T> Item<T> {
+    pub fn schema(&self) -> &RootSchema {
+        self.resolver.schema()
+    }
+}
+
 impl Item<Net> {
     pub fn build(&self, getter: NetGetter, config: &mut Value) -> rd_interface::Result<Net> {
         self.resolver
