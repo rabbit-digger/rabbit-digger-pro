@@ -131,12 +131,12 @@ impl LocalNet {
         }
 
         #[cfg(target_os = "linux")]
-        if let Some(mark) = self.0.mark {
+        if let Some(mark) = self.cfg.mark {
             socket.set_mark(mark)?;
         }
 
         #[cfg(target_os = "linux")]
-        if let Some(device) = &self.0.bind_device {
+        if let Some(device) = &self.cfg.bind_device {
             socket.bind_device(Some(device.as_bytes()))?;
         }
 
