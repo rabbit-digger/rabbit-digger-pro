@@ -7,13 +7,17 @@ use trust_dns_resolver::{
     TokioAsyncResolver,
 };
 
-/// A net refering to another net.
 #[rd_config]
 #[derive(Debug)]
-pub enum DnsConfig {
+pub enum DnsServer {
     Google,
     Cloudflare,
     Custom { nameserver: Vec<SocketAddr> },
+}
+#[rd_config]
+#[derive(Debug)]
+pub struct DnsConfig {
+    server: DnsServer,
 }
 
 pub struct DnsNet {
@@ -44,14 +48,14 @@ impl Builder<Net> for DnsNet {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        let resolver = match config {
-            DnsConfig::Google => {
+        let resolver = match config.server {
+            DnsServer::Google => {
                 TokioAsyncResolver::tokio(ResolverConfig::google(), ResolverOpts::default())
             }
-            DnsConfig::Cloudflare => {
+            DnsServer::Cloudflare => {
                 TokioAsyncResolver::tokio(ResolverConfig::cloudflare(), ResolverOpts::default())
             }
-            DnsConfig::Custom { nameserver } => {
+            DnsServer::Custom { nameserver } => {
                 let groups = nameserver
                     .into_iter()
                     .map(|s| nameserver_config(s))
