@@ -1,30 +1,19 @@
-use std::{
-    error::Error as StdError,
-    fmt::{self, Display},
-    io,
-};
+use std::{error::Error as StdError, fmt::Display, io};
 use thiserror::Error;
 
+#[derive(Debug, Error)]
 pub struct ErrorWithContext {
-    context: Box<dyn Display + Send + Sync + 'static>,
+    context: String,
+    #[source]
     error: Box<dyn StdError + Send + Sync + 'static>,
 }
 
-impl fmt::Debug for ErrorWithContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {:?}", self.context, self.error)
-    }
-}
-impl ErrorWithContext {
-    fn new<C, E>(context: C, error: E) -> ErrorWithContext
-    where
-        E: StdError + Send + Sync + 'static,
-        C: Display + Send + Sync + 'static,
-    {
-        ErrorWithContext {
-            context: Box::new(context),
-            error: Box::new(error),
-        }
+impl Display for ErrorWithContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}\nCaused by:\n", self.context)?;
+
+        write!(f, "{}", self.error)?;
+        Ok(())
     }
 }
 
@@ -49,7 +38,7 @@ pub enum Error {
     NotFound(String),
     #[error("{0:?}")]
     Other(Box<dyn StdError + Send + Sync + 'static>),
-    #[error("{0:?}")]
+    #[error("{0}")]
     WithContext(ErrorWithContext),
     #[error("Operation timeout: {0:?}")]
     Timeout(#[from] tokio::time::error::Elapsed),
@@ -103,14 +92,24 @@ where
     where
         C: Display + Send + Sync + 'static,
     {
-        self.map_err(|error| Error::WithContext(ErrorWithContext::new(context, error)))
+        self.map_err(|error| {
+            Error::WithContext(ErrorWithContext {
+                context: context.to_string(),
+                error: Box::new(error),
+            })
+        })
     }
     fn with_context<C, F>(self, f: F) -> Result<T, Error>
     where
         C: Display + Send + Sync + 'static,
         F: FnOnce() -> C,
     {
-        self.map_err(|error| Error::WithContext(ErrorWithContext::new(f(), error)))
+        self.map_err(|error| {
+            Error::WithContext(ErrorWithContext {
+                context: f().to_string(),
+                error: Box::new(error),
+            })
+        })
     }
 }
 
@@ -122,11 +121,29 @@ mod tests {
     fn test_context() {
         let error = Result::<()>::Err(Error::AbortedByUser);
         let error = error.context("A context");
-        assert_eq!(error.unwrap_err().to_string(), "A context: AbortedByUser");
+        assert_eq!(
+            error.unwrap_err().to_string(),
+            "A context\nCaused by:\nAborted by user"
+        );
 
         let error = Result::<()>::Err(Error::AbortedByUser);
         let error = error.with_context(|| "A context");
-        assert_eq!(error.unwrap_err().to_string(), "A context: AbortedByUser");
+        assert_eq!(
+            error.unwrap_err().to_string(),
+            "A context\nCaused by:\nAborted by user"
+        );
+    }
+
+    #[test]
+    fn test_nested_context() {
+        let error = Result::<()>::Err(Error::AbortedByUser);
+        let error = error.context("Error 1");
+        let error = error.context("Error 2");
+        let error = error.context("Error 3");
+        assert_eq!(
+            format!("{}", error.unwrap_err()),
+            "Error 3\nCaused by:\nError 2\nCaused by:\nError 1\nCaused by:\nAborted by user"
+        );
     }
 
     #[test]
