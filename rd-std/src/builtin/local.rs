@@ -9,8 +9,8 @@ use std::{
 use futures::{ready, Future, FutureExt};
 use parking_lot::Mutex;
 use rd_interface::{
-    async_trait, impl_async_read_write, prelude::*, registry::Builder, Address, INet, IntoDyn, Net,
-    ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
+    async_trait, config::NetRef, impl_async_read_write, prelude::*, registry::Builder, Address,
+    INet, IntoDyn, Net, ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
 use tokio::{net, time::timeout};
@@ -51,6 +51,10 @@ pub struct LocalNetConfig {
     /// change the system send buffer size of the socket.
     /// by default it remains unchanged.
     pub send_buffer_size: Option<usize>,
+
+    /// Change the default system DNS resolver to custom one.
+    #[serde(default)]
+    pub lookup_host: Option<NetRef>,
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
@@ -60,40 +64,65 @@ enum UdpState {
     Sending(SocketAddr),
 }
 
-pub struct LocalNet(LocalNetConfig);
+pub struct LocalNet {
+    cfg: LocalNetConfig,
+    resolver: Resolver,
+}
 pub struct CompatTcp(pub(crate) net::TcpStream);
 pub struct Listener(net::TcpListener, LocalNetConfig);
 pub struct Udp {
     inner: net::UdpSocket,
     state: UdpState,
+    resolver: Resolver,
+}
+
+#[derive(Clone)]
+struct Resolver {
+    net: Option<Net>,
+}
+
+impl Resolver {
+    fn new(net: Option<Net>) -> Self {
+        Resolver { net }
+    }
+    async fn lookup_host(self, domain: String, port: u16) -> io::Result<Vec<SocketAddr>> {
+        Ok(match self.net {
+            Some(net) => net.lookup_host(&Address::Domain(domain, port)).await?,
+            None => tokio::net::lookup_host((domain, port)).await?.collect(),
+        })
+    }
 }
 
 impl LocalNet {
-    pub fn new(config: LocalNetConfig) -> LocalNet {
-        LocalNet(config)
+    pub fn new(cfg: LocalNetConfig) -> LocalNet {
+        let net = cfg.lookup_host.as_ref().map(|n| (**n).clone());
+        LocalNet {
+            cfg,
+            resolver: Resolver::new(net),
+        }
     }
     fn set_socket(&self, socket: &Socket, _addr: SocketAddr, is_tcp: bool) -> Result<()> {
         socket.set_nonblocking(true)?;
 
-        if let Some(size) = self.0.recv_buffer_size {
+        if let Some(size) = self.cfg.recv_buffer_size {
             socket.set_recv_buffer_size(size)?;
         }
-        if let Some(size) = self.0.send_buffer_size {
+        if let Some(size) = self.cfg.send_buffer_size {
             socket.set_send_buffer_size(size)?;
         }
 
-        if let Some(local_addr) = self.0.bind_addr {
+        if let Some(local_addr) = self.cfg.bind_addr {
             socket.bind(&SocketAddr::new(local_addr, 0).into())?;
         }
 
-        if let Some(ttl) = self.0.ttl {
+        if let Some(ttl) = self.cfg.ttl {
             socket.set_ttl(ttl)?;
         }
 
         if is_tcp {
-            socket.set_nodelay(self.0.nodelay.unwrap_or(true))?;
+            socket.set_nodelay(self.cfg.nodelay.unwrap_or(true))?;
 
-            let keepalive_duration = self.0.tcp_keepalive.unwrap_or(600.0);
+            let keepalive_duration = self.cfg.tcp_keepalive.unwrap_or(600.0);
             if keepalive_duration > 0.0 {
                 let keepalive = socket2::TcpKeepalive::new()
                     .with_time(Duration::from_secs_f64(keepalive_duration));
@@ -112,7 +141,7 @@ impl LocalNet {
         }
 
         #[cfg(target_os = "macos")]
-        if let Some(device) = &self.0.bind_device {
+        if let Some(device) = &self.cfg.bind_device {
             let device = std::ffi::CString::new(device.as_bytes())
                 .map_err(rd_interface::error::map_other)?;
             unsafe {
@@ -157,7 +186,7 @@ impl LocalNet {
 
         let socket = net::TcpSocket::from_std_stream(socket.into());
 
-        let tcp = match self.0.connect_timeout {
+        let tcp = match self.cfg.connect_timeout {
             None => socket.connect(addr).await?,
             Some(secs) => timeout(Duration::from_secs(secs), socket.connect(addr)).await??,
         };
@@ -189,14 +218,6 @@ impl std::fmt::Debug for LocalNet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LocalNet").finish()
     }
-}
-
-#[instrument(err)]
-async fn lookup_host(domain: String, port: u16) -> io::Result<Vec<SocketAddr>> {
-    use tokio::net::lookup_host;
-
-    let domain = (domain.as_ref(), port);
-    Ok(lookup_host(domain).await?.collect())
 }
 
 #[async_trait]
@@ -233,10 +254,11 @@ impl rd_interface::ITcpListener for Listener {
 }
 
 impl Udp {
-    fn new(socket: net::UdpSocket) -> Udp {
+    fn new(socket: net::UdpSocket, resolver: Resolver) -> Udp {
         Udp {
             inner: socket,
             state: UdpState::Idle,
+            resolver,
         }
     }
     fn poll_send_to_ready(
@@ -292,7 +314,12 @@ impl rd_interface::IUdpSocket for Udp {
                     self.state = UdpState::Sending(*s);
                 }
                 Address::Domain(domain, port) => {
-                    let fut = Mutex::new(lookup_host(domain.clone(), *port).boxed());
+                    let fut = Mutex::new(
+                        self.resolver
+                            .clone()
+                            .lookup_host(domain.clone(), *port)
+                            .boxed(),
+                    );
                     self.state = UdpState::LookupHost(fut);
                 }
             },
@@ -311,7 +338,9 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpStream> {
-        let addrs = addr.resolve(lookup_host).await?;
+        let addrs = addr
+            .resolve(|d, p| self.resolver.clone().lookup_host(d, p))
+            .await?;
         let mut last_err = None;
 
         for addr in addrs {
@@ -336,12 +365,14 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpListener> {
-        let addrs = addr.resolve(lookup_host).await?;
+        let addrs = addr
+            .resolve(|d, p| self.resolver.clone().lookup_host(d, p))
+            .await?;
         let mut last_err = None;
 
         for addr in addrs {
             match self.tcp_bind_single(addr).await {
-                Ok(listener) => return Ok(Listener(listener, self.0.clone()).into_dyn()),
+                Ok(listener) => return Ok(Listener(listener, self.cfg.clone()).into_dyn()),
                 Err(e) => last_err = Some(e),
             }
         }
@@ -361,12 +392,14 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<UdpSocket> {
-        let addrs = addr.resolve(lookup_host).await?;
+        let addrs = addr
+            .resolve(|d, p| self.resolver.clone().lookup_host(d, p))
+            .await?;
         let mut last_err = None;
 
         for addr in addrs {
             match self.udp_bind_single(addr).await {
-                Ok(udp) => return Ok(Udp::new(udp).into_dyn()),
+                Ok(udp) => return Ok(Udp::new(udp, self.resolver.clone()).into_dyn()),
                 Err(e) => last_err = Some(e),
             }
         }
@@ -382,7 +415,9 @@ impl INet for LocalNet {
 
     #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        let addr = addr.resolve(lookup_host).await?;
+        let addr = addr
+            .resolve(|d, p| self.resolver.clone().lookup_host(d, p))
+            .await?;
         Ok(addr)
     }
 }
