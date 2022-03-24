@@ -3,6 +3,7 @@ use rd_interface::{Registry, Result};
 pub mod alias;
 pub mod blackhole;
 pub mod combine;
+pub mod dns;
 pub mod echo;
 pub mod forward;
 pub mod local;
@@ -13,6 +14,7 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_net::<alias::AliasNet>();
     registry.add_net::<blackhole::BlackholeNet>();
     registry.add_net::<combine::CombineNet>();
+    registry.add_net::<dns::DnsNet>();
     registry.add_net::<local::LocalNet>();
     registry.add_net::<noop::NoopNet>();
     registry.add_net::<resolve::ResolveNet>();
