@@ -6,7 +6,7 @@ use rabbit_digger::rd_interface::schemars::{
     },
     visit::{visit_root_schema, visit_schema_object, Visitor},
 };
-use rd_interface::{registry::Resolver, schemars::schema_for};
+use rd_interface::schemars::schema_for;
 use serde_json::Value;
 use std::iter::FromIterator;
 use std::{collections::BTreeMap, path::Path};
@@ -102,18 +102,15 @@ pub async fn write_schema(path: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
-fn merge_config<'a, Item>(
+fn merge_config<'a>(
     prefix: &str,
     root: &mut RootSchema,
-    iter: impl Iterator<Item = (&'a str, &'a Resolver<Item>)>,
-) -> Vec<SchemaObject>
-where
-    Item: 'a,
-{
+    iter: impl Iterator<Item = (&'a str, &'a RootSchema)>,
+) -> Vec<SchemaObject> {
     let mut schemas: Vec<SchemaObject> = Vec::new();
 
-    for (id, resolver) in iter {
-        let mut schema = append_type(resolver.schema(), id);
+    for (id, schema) in iter {
+        let mut schema = append_type(schema, id);
         let mut visitor = PrefixVisitor(format!("{}_{}_", prefix, id));
 
         visitor.visit_root_schema(&mut schema);
@@ -133,10 +130,7 @@ pub async fn generate_schema() -> Result<RootSchema> {
     let net_schema = any_of_schema(merge_config(
         "net",
         &mut root,
-        registry
-            .net()
-            .iter()
-            .map(|(k, v)| (k.as_ref(), &v.resolver)),
+        registry.net().iter().map(|(k, v)| (k.as_ref(), v.schema())),
     ));
     let server_schema = any_of_schema(merge_config(
         "server",
@@ -144,13 +138,13 @@ pub async fn generate_schema() -> Result<RootSchema> {
         registry
             .server()
             .iter()
-            .map(|(k, v)| (k.as_ref(), &v.resolver)),
+            .map(|(k, v)| (k.as_ref(), v.schema())),
     ));
     let import_schema = any_of_schema(
         merge_config(
             "import",
             &mut root,
-            importer_registry.iter().map(|(k, v)| (*k, v)),
+            importer_registry.iter().map(|(k, v)| (*k, v.schema())),
         )
         .into_iter()
         .map(Import::append_schema)
