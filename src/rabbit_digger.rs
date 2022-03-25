@@ -360,6 +360,11 @@ impl RabbitDigger {
     pub async fn stop_connection(&self, uuid: Uuid) -> Result<bool> {
         Ok(self.inner.conn_mgr.stop_connection(uuid))
     }
+
+    // Stop all connections
+    pub async fn stop_connections(&self) -> Result<usize> {
+        Ok(self.inner.conn_mgr.stop_connections())
+    }
 }
 
 pub struct ServerInfo {

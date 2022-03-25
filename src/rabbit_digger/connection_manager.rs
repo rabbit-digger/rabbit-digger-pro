@@ -227,6 +227,17 @@ impl ConnectionManager {
             .map(|sender| sender.send(()).is_ok())
             .unwrap_or_default()
     }
+    pub fn stop_connections(&self) -> usize {
+        let mut stopped = 0;
+        for conn in &self.inner.state.connections {
+            if let Some(sender) = conn.stop_sender.lock().take() {
+                if sender.send(()).is_ok() {
+                    stopped += 1;
+                }
+            }
+        }
+        stopped
+    }
     pub fn new_connection<T: ConnType>(
         &self,
         addr: Address,
