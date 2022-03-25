@@ -10,7 +10,7 @@ use trust_dns_resolver::{
     AsyncResolver,
 };
 
-use self::rd_runtime::{TokioConnection, TokioConnectionProvider, TokioHandle};
+use self::rd_runtime::{RDConnection, RDConnectionProvider, RDHandle};
 
 use super::local::{LocalNet, LocalNetConfig};
 
@@ -23,6 +23,7 @@ pub enum DnsServer {
     Cloudflare,
     Custom { nameserver: Vec<SocketAddr> },
 }
+
 #[rd_config]
 #[derive(Debug)]
 pub struct DnsConfig {
@@ -33,7 +34,7 @@ pub struct DnsConfig {
 
 pub struct DnsNet {
     net: Net,
-    resolver: AsyncResolver<TokioConnection, TokioConnectionProvider>,
+    resolver: AsyncResolver<RDConnection, RDConnectionProvider>,
 }
 
 #[async_trait]
@@ -83,7 +84,7 @@ impl Builder<Net> for DnsNet {
         let resolver = AsyncResolver::new(
             resolver_config,
             ResolverOpts::default(),
-            TokioHandle(net.clone()),
+            RDHandle(net.clone()),
         )
         .map_err(|e| Error::other(format!("Failed to build resolver: {:?}", e)))?;
 
@@ -102,10 +103,14 @@ fn nameserver_config(socket_addr: SocketAddr) -> NameServerConfig {
 }
 
 mod rd_runtime {
-    use std::task::Poll;
+    use std::{
+        io,
+        pin::Pin,
+        task::{Context, Poll},
+    };
 
     use super::*;
-    use futures::{ready, Future};
+    use futures::{ready, Future, TryFutureExt};
     use parking_lot::Mutex;
     use trust_dns_resolver::{
         name_server::{GenericConnection, GenericConnectionProvider, RuntimeProvider, Spawn},
@@ -116,32 +121,62 @@ mod rd_runtime {
         pub(super) static NET:  Net;
     }
 
-    pub struct RDUdpSocket(Mutex<rd_interface::UdpSocket>);
+    enum Inner {
+        Connecting(Pin<Box<dyn Future<Output = io::Result<rd_interface::UdpSocket>> + Send>>),
+        Connected(rd_interface::UdpSocket),
+    }
+
+    // TODO: remove this workaround: https://github.com/bluejekyll/trust-dns/issues/1669
+    pub struct RDUdpSocket {
+        inner: Mutex<Inner>,
+    }
+
+    impl RDUdpSocket {
+        fn poll_udp<F, R>(&self, cx: &mut Context<'_>, f: F) -> Poll<io::Result<R>>
+        where
+            F: FnOnce(&mut Context<'_>, &mut rd_interface::UdpSocket) -> Poll<io::Result<R>>,
+        {
+            loop {
+                let inner = &mut *self.inner.lock();
+                match inner {
+                    Inner::Connecting(fut) => {
+                        let socket = ready!(fut.as_mut().poll(cx))?;
+                        *inner = Inner::Connected(socket);
+                    }
+                    Inner::Connected(ref mut socket) => return f(cx, socket),
+                }
+            }
+        }
+    }
 
     #[async_trait]
     impl UdpSocket for RDUdpSocket {
         type Time = TokioTime;
 
-        async fn bind(addr: SocketAddr) -> std::io::Result<Self> {
+        async fn bind(addr: SocketAddr) -> io::Result<Self> {
             let net = NET.with(Clone::clone);
-
-            net.udp_bind(&mut rd_interface::Context::new(), &addr.into())
-                .await
-                .map(Mutex::new)
-                .map(RDUdpSocket)
-                .map_err(|e| e.to_io_err())
+            let fut = async move {
+                net.udp_bind(&mut rd_interface::Context::new(), &addr.into())
+                    .map_err(|e| e.to_io_err())
+                    .await
+            };
+            Ok(RDUdpSocket {
+                inner: Mutex::new(Inner::Connecting(Box::pin(fut))),
+            })
         }
 
         fn poll_recv_from(
             &self,
             cx: &mut std::task::Context<'_>,
             buf: &mut [u8],
-        ) -> Poll<std::io::Result<(usize, SocketAddr)>> {
-            let mut buf = tokio::io::ReadBuf::new(buf);
-            let addr = ready!(self.0.lock().poll_recv_from(cx, &mut buf))?;
-            let len = buf.filled().len();
+        ) -> Poll<io::Result<(usize, SocketAddr)>> {
+            self.poll_udp(cx, |cx, s| {
+                let mut buf = tokio::io::ReadBuf::new(buf);
+                let addr = ready!(s.poll_recv_from(cx, &mut buf))?;
+                let len = buf.filled().len();
 
-            Poll::Ready(Ok((len, addr)))
+                Poll::Ready(Ok((len, addr)))
+            })
         }
 
         fn poll_send_to(
@@ -149,31 +184,35 @@ mod rd_runtime {
             cx: &mut std::task::Context<'_>,
             buf: &[u8],
             target: SocketAddr,
-        ) -> Poll<std::io::Result<usize>> {
-            self.0.lock().poll_send_to(cx, buf, &target.into())
+        ) -> Poll<io::Result<usize>> {
+            self.poll_udp(cx, |cx, s| s.poll_send_to(cx, buf, &target.into()))
         }
     }
 
     #[derive(Clone)]
-    pub struct TokioHandle(pub Net);
-    impl Spawn for TokioHandle {
+    pub struct RDHandle(pub Net);
+    impl Spawn for RDHandle {
         fn spawn_bg<F>(&mut self, future: F)
         where
             F: Future<Output = Result<(), ProtoError>> + Send + 'static,
         {
             let net = self.0.clone();
-            let _join = tokio::spawn(async move { NET.scope(net, future).await });
+            let _join = tokio::spawn(async move {
+                if let Err(e) = NET.scope(net, future).await {
+                    eprintln!("spawn return error {:?}", e);
+                }
+            });
         }
     }
 
     #[derive(Clone, Copy)]
-    pub struct TokioRuntime;
-    impl RuntimeProvider for TokioRuntime {
-        type Handle = TokioHandle;
+    pub struct RDRuntime;
+    impl RuntimeProvider for RDRuntime {
+        type Handle = RDHandle;
         type Tcp = AsyncIoTokioAsStd<tokio::net::TcpStream>;
         type Timer = TokioTime;
         type Udp = RDUdpSocket;
     }
-    pub type TokioConnection = GenericConnection;
-    pub type TokioConnectionProvider = GenericConnectionProvider<TokioRuntime>;
+    pub type RDConnection = GenericConnection;
+    pub type RDConnectionProvider = GenericConnectionProvider<RDRuntime>;
 }
