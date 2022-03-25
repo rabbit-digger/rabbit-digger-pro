@@ -72,6 +72,12 @@ impl Error {
     pub fn other(string: impl Into<String>) -> Error {
         Error::Other(string.into().into())
     }
+    pub fn to_io_err(self) -> io::Error {
+        match self {
+            Self::IO(e) => e,
+            e => io::Error::new(io::ErrorKind::Other, e),
+        }
+    }
 }
 
 pub trait ErrorContext<T, E> {
