@@ -48,7 +48,7 @@ tar = "0.4.35"
 once_cell = "1.7.2"
 
 # dns
-dns-parser = "0.8"
+trust-dns-proto = "0.21.1"
 trust-dns-resolver = { version = "0.21.1", optional = true }
 
 [dev-dependencies]
