@@ -113,6 +113,12 @@ pub(super) async fn get_connections(
     Ok(rd.connection(|c| Json(&c).into_response()).await)
 }
 
+pub(super) async fn delete_connections(
+    Extension(Ctx { rd, .. }): Extension<Ctx>,
+) -> Result<Response, ApiError> {
+    Ok(Json(&rd.stop_connections().await?).into_response())
+}
+
 pub(super) async fn get_state(
     Extension(Ctx { rd, .. }): Extension<Ctx>,
 ) -> Result<impl IntoResponse, ApiError> {

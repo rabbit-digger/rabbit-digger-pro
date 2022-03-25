@@ -68,7 +68,10 @@ impl ApiServer {
             .route("/get", get(handlers::get_registry))
             .route("/state", get(handlers::get_state))
             .route("/connection/:uuid", delete(handlers::delete_conn))
-            .route("/connection", get(handlers::get_connections))
+            .route(
+                "/connection",
+                get(handlers::get_connections).delete(handlers::delete_connections),
+            )
             .route("/net/:net_name", post(handlers::post_select))
             .route("/net/:net_name/delay", get(handlers::get_delay))
             .route(
