@@ -1,8 +1,12 @@
 use std::{net::IpAddr, sync::Arc, time::Duration};
 
-use dns_parser::{Packet, RData};
 use lru_time_cache::LruCache;
 use parking_lot::Mutex;
+use trust_dns_proto::{
+    op::Message,
+    rr::RData,
+    serialize::binary::{BinDecodable, BinDecoder},
+};
 
 struct Inner {
     records: LruCache<IpAddr, String>,
@@ -30,29 +34,32 @@ impl ReverseLookup {
         }
     }
     pub fn record_packet(&self, packet: &[u8]) {
-        let packet = match Packet::parse(packet) {
-            Ok(packet) if packet.questions.len() == 1 => packet,
+        let mut decoder = BinDecoder::new(packet);
+        let msg = match Message::read(&mut decoder) {
+            Ok(msg) if msg.queries().len() == 1 => msg,
             _ => return,
         };
 
         // It seems to be ok to assume that only one question is present
         // https://stackoverflow.com/questions/4082081/requesting-a-and-aaaa-records-in-single-dns-query/4083071#4083071
-        let domain = packet.questions.first().unwrap().qname.to_string();
+        let domain = msg.queries().first().unwrap().name().to_utf8();
+        let domain = domain.trim_end_matches('.');
 
         let Inner { records, cname_map } = &mut *self.inner.lock();
-        for ans in packet.answers {
-            match ans.data {
+        for rdata in msg.answers().into_iter().flat_map(|i| i.data()) {
+            match rdata {
                 RData::A(addr) => {
-                    records.insert(addr.0.into(), domain.to_string());
+                    records.insert((*addr).into(), domain.to_string());
                 }
                 RData::AAAA(addr) => {
-                    records.insert(addr.0.into(), domain.to_string());
+                    records.insert((*addr).into(), domain.to_string());
                 }
                 RData::CNAME(cname) => {
-                    cname_map.insert(cname.0.to_string(), domain.to_string());
+                    let cname = cname.to_utf8().trim_end_matches('.').to_string();
+                    cname_map.insert(domain.to_string(), cname);
                 }
                 _ => {}
-            };
+            }
         }
     }
     pub fn reverse_lookup(&self, addr: IpAddr) -> Option<String> {

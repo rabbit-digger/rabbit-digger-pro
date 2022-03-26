@@ -109,7 +109,7 @@ impl IUdpSocket for MitmUdp {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     use rd_interface::{IntoAddress, ReadBuf};
 
@@ -177,6 +177,69 @@ mod tests {
                 &"220.181.38.251:443".into_address().unwrap()
             ),
             "baidu.com:443".into_address().unwrap()
+        )
+    }
+
+    #[tokio::test]
+    async fn test_dns_sniffer_v6() {
+        let test_net = TestNet::new().into_dyn();
+        let net = DNSSnifferNet::new(test_net.clone());
+
+        let mut ctx = Context::new();
+        let mut dns_server = net
+            .udp_bind(&mut ctx, &"127.0.0.1:53".into_address().unwrap())
+            .await
+            .unwrap();
+        let mut client = net
+            .udp_bind(&mut ctx, &"127.0.0.1:0".into_address().unwrap())
+            .await
+            .unwrap();
+
+        // dns request to www.google.com
+        client
+            .send_to(
+                &[
+                    0xb2, 0xbe, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+                    0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f,
+                    0x6d, 0x00, 0x00, 0x1c, 0x00, 0x01,
+                ],
+                &SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 53).into(),
+            )
+            .await
+            .unwrap();
+        let buf = &mut vec![0; 1024];
+        let addr = dns_server.recv_from(&mut ReadBuf::new(buf)).await.unwrap();
+
+        assert_eq!(addr, client.local_addr().await.unwrap());
+
+        // dns response to baidu.com. 220.181.38.148, 220.181.38.251
+        dns_server
+            .send_to(
+                &[
+                    0xb2, 0xbe, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x03,
+                    0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f,
+                    0x6d, 0x00, 0x00, 0x1c, 0x00, 0x01, 0xc0, 0x0c, 0x00, 0x1c, 0x00, 0x01, 0x00,
+                    0x00, 0x00, 0x22, 0x00, 0x10, 0x20, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x1f, 0x0d, 0x56, 0x15,
+                ],
+                &addr.into(),
+            )
+            .await
+            .unwrap();
+        let _ = client.recv_from(&mut ReadBuf::new(buf)).await.unwrap();
+
+        assert_eq!(
+            net.rl
+                .reverse_lookup(Ipv6Addr::new(0x2001, 0, 0, 0, 0, 0, 0x1f0d, 0x5615).into()),
+            Some("www.google.com".to_string()),
+        );
+
+        assert_eq!(
+            net.reverse_lookup(
+                &mut Context::new(),
+                &"[2001::1f0d:5615]:443".into_address().unwrap()
+            ),
+            "www.google.com:443".into_address().unwrap()
         )
     }
 }

@@ -48,13 +48,13 @@ tar = "0.4.35"
 once_cell = "1.7.2"
 
 # dns
-dns-parser = "0.8"
-trust-dns-resolver = { version = "0.20.4", optional = true }
+trust-dns-proto = "0.21.1"
+trust-dns-resolver = { version = "0.21.1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.5.0", features = ["full"] }
 
 [features]
-default = ["http_server"]
+default = ["http_server", "trust-dns-resolver"]
 plugin = []
 http_server = []
