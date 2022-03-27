@@ -1,6 +1,8 @@
+pub use context::ContextExt;
 use rd_interface::{Registry, Result};
 
 pub mod builtin;
+mod context;
 pub mod http;
 pub mod mixed;
 pub mod rule;

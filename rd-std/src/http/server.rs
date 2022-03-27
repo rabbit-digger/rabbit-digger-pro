@@ -1,10 +1,12 @@
 use hyper::{
-    client::conn as client_conn, http, server::conn as server_conn, service::service_fn,
-    upgrade::Upgraded, Body, Method, Request, Response,
+    client::conn as client_conn, http, server::conn as server_conn, service::service_fn, Body,
+    Method, Request, Response,
 };
 use rd_interface::{async_trait, Address, Context, IServer, IntoAddress, Net, Result, TcpStream};
 use std::net::SocketAddr;
 use tracing::instrument;
+
+use crate::ContextExt;
 
 #[derive(Clone)]
 pub struct HttpServer {
@@ -78,10 +80,9 @@ async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result
             tokio::spawn(async move {
                 match hyper::upgrade::on(req).await {
                     Ok(upgraded) => {
-                        let stream = net
-                            .tcp_connect(&mut Context::from_socketaddr(addr), &dst)
-                            .await?;
-                        if let Err(e) = tunnel(stream, upgraded).await {
+                        let mut ctx = Context::from_socketaddr(addr);
+                        let stream = net.tcp_connect(&mut ctx, &dst).await?;
+                        if let Err(e) = ctx.connect_tcp(stream, upgraded).await {
                             tracing::debug!("tunnel io error: {}", e);
                         };
                     }
@@ -119,9 +120,4 @@ async fn proxy(net: Net, req: Request<Body>, addr: SocketAddr) -> anyhow::Result
 
 fn host_addr(uri: &http::Uri) -> Option<String> {
     uri.authority().map(|auth| auth.to_string())
-}
-
-async fn tunnel(mut stream: TcpStream, mut upgraded: Upgraded) -> std::io::Result<()> {
-    tokio::io::copy_bidirectional(&mut upgraded, &mut stream).await?;
-    Ok(())
 }

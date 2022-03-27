@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use super::origin_addr::OriginAddrExt;
-use crate::{builtin::local::CompatTcp, util::connect_tcp};
+use crate::{builtin::local::CompatTcp, ContextExt};
 use rd_derive::rd_config;
 use rd_interface::{
     async_trait, config::NetRef, registry::Builder, schemars, Address, Context, IServer,
@@ -56,7 +56,7 @@ impl RedirServer {
         let target_tcp = net.tcp_connect(ctx, &target.into_address()?).await?;
         let socket = CompatTcp(socket).into_dyn();
 
-        connect_tcp(ctx, socket, target_tcp).await?;
+        ctx.connect_tcp(socket, target_tcp).await?;
 
         Ok(())
     }

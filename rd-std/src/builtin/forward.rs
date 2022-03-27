@@ -5,7 +5,7 @@ use std::{
     task::{self, Poll},
 };
 
-use crate::util::{connect_tcp, connect_udp};
+use crate::ContextExt;
 use futures::ready;
 use rd_interface::{
     async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, IServer,
@@ -77,7 +77,7 @@ impl ForwardServer {
     ) -> Result<()> {
         let ctx = &mut Context::from_socketaddr(addr);
         let target = net.tcp_connect(ctx, &target).await?;
-        connect_tcp(ctx, socket, target).await?;
+        ctx.connect_tcp(socket, target).await?;
         Ok(())
     }
     pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
@@ -107,12 +107,13 @@ impl ForwardServer {
         }
         .into_dyn();
 
+        let mut ctx = Context::new();
         let udp = self
             .net
-            .udp_bind(&mut Context::new(), &self.target.to_any_addr_port()?)
+            .udp_bind(&mut ctx, &self.target.to_any_addr_port()?)
             .await?;
 
-        connect_udp(&mut Context::new(), udp_listener, udp).await?;
+        ctx.connect_udp(udp_listener, udp).await?;
 
         Ok(())
     }

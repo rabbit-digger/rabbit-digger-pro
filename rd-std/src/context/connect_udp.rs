@@ -3,7 +3,7 @@ use std::{collections::VecDeque, fmt, future::Future, io, pin::Pin, task::Contex
 use rd_interface::{Address, ReadBuf, UdpChannel, UdpSocket};
 use tracing::instrument;
 
-use super::DropAbort;
+use crate::util::DropAbort;
 
 pub const UDP_BUFFER_SIZE: usize = 4 * 1024;
 

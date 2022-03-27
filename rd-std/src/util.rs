@@ -1,5 +1,3 @@
-pub use connect_tcp::connect_tcp;
-pub use connect_udp::connect_udp;
 pub use drop_abort::DropAbort;
 pub use forward_udp::forward_udp;
 pub use lru_cache::LruCache;
@@ -10,8 +8,6 @@ pub use udp_connector::UdpConnector;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 pub mod async_fn;
-mod connect_tcp;
-mod connect_udp;
 mod drop_abort;
 pub mod forward_udp;
 mod lru_cache;

@@ -6,11 +6,10 @@ use std::{
 };
 
 use futures::ready;
-use rd_interface::TcpStream;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tracing::instrument;
 
-use super::DropAbort;
+use crate::util::DropAbort;
 
 #[derive(Debug)]
 pub(super) struct CopyBuffer {
@@ -34,12 +33,16 @@ impl CopyBuffer {
         }
     }
 
-    pub(super) fn poll_copy(
+    pub(super) fn poll_copy<R, W>(
         &mut self,
         cx: &mut Context<'_>,
-        mut reader: Pin<&mut TcpStream>,
-        mut writer: Pin<&mut TcpStream>,
-    ) -> Poll<io::Result<u64>> {
+        mut reader: Pin<&mut R>,
+        mut writer: Pin<&mut W>,
+    ) -> Poll<io::Result<u64>>
+    where
+        R: AsyncRead + ?Sized,
+        W: AsyncWrite + ?Sized,
+    {
         loop {
             // If our buffer is empty, then we need to read some data to
             // continue.
@@ -103,19 +106,23 @@ enum TransferState {
     Done(u64),
 }
 
-struct CopyBidirectional {
-    a: TcpStream,
-    b: TcpStream,
+struct CopyBidirectional<A, B> {
+    a: A,
+    b: B,
     a_to_b: TransferState,
     b_to_a: TransferState,
 }
 
-fn transfer_one_direction(
+fn transfer_one_direction<A, B>(
     cx: &mut Context<'_>,
     state: &mut TransferState,
-    r: &mut TcpStream,
-    w: &mut TcpStream,
-) -> Poll<io::Result<u64>> {
+    r: &mut A,
+    w: &mut B,
+) -> Poll<io::Result<u64>>
+where
+    A: AsyncRead + AsyncWrite + Unpin + ?Sized,
+    B: AsyncRead + AsyncWrite + Unpin + ?Sized,
+{
     let mut r = Pin::new(r);
     let mut w = Pin::new(w);
 
@@ -135,7 +142,11 @@ fn transfer_one_direction(
     }
 }
 
-impl Future for CopyBidirectional {
+impl<A, B> Future for CopyBidirectional<A, B>
+where
+    A: AsyncRead + AsyncWrite + Unpin,
+    B: AsyncRead + AsyncWrite + Unpin,
+{
     type Output = io::Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -159,11 +170,15 @@ impl Future for CopyBidirectional {
 
 /// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
 #[instrument(err, skip(a, b), fields(ctx = ?_ctx))]
-pub async fn connect_tcp(
+pub async fn connect_tcp<A, B>(
     _ctx: &mut rd_interface::Context,
-    a: TcpStream,
-    b: TcpStream,
-) -> Result<(), std::io::Error> {
+    a: A,
+    b: B,
+) -> Result<(), std::io::Error>
+where
+    A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    B: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     DropAbort::new(tokio::spawn(CopyBidirectional {
         a,
         b,

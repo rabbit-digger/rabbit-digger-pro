@@ -1,5 +1,5 @@
 use super::common::{pack_udp, parse_udp, sa2ra};
-use crate::util::{connect_tcp, connect_udp};
+use crate::ContextExt;
 use anyhow::Context as AnyhowContext;
 use futures::ready;
 use rd_interface::{
@@ -86,7 +86,7 @@ impl Socks5Server {
 
                 let socket = socket.into_inner();
 
-                connect_tcp(ctx, out, socket).await.context("connect tcp")?;
+                ctx.connect_tcp(out, socket).await.context("connect tcp")?;
             }
             Command::UdpAssociate => {
                 let dst = match cmd_req.address {
@@ -131,7 +131,7 @@ impl Socks5Server {
                     endpoint: None,
                     send_buf: Vec::with_capacity(UDP_BUFFER_SIZE),
                 };
-                connect_udp(ctx, udp_channel.into_dyn(), out)
+                ctx.connect_udp(udp_channel.into_dyn(), out)
                     .await
                     .context("connect udp")?;
             }

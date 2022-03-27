@@ -11,10 +11,10 @@ use super::socket::{create_tcp_listener, TransparentUdp};
 use crate::{
     builtin::local::CompatTcp,
     util::{
-        connect_tcp,
         forward_udp::{forward_udp, RawUdpSource, UdpEndpoint},
         is_reserved, LruCache,
     },
+    ContextExt,
 };
 use futures::ready;
 use rd_derive::rd_config;
@@ -96,7 +96,7 @@ impl TProxyServer {
         let target_tcp = net.tcp_connect(ctx, &target.into_address()?).await?;
         let socket = CompatTcp(socket).into_dyn();
 
-        connect_tcp(ctx, socket, target_tcp).await?;
+        ctx.connect_tcp(socket, target_tcp).await?;
 
         Ok(())
     }
