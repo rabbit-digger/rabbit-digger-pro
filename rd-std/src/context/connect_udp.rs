@@ -5,12 +5,12 @@ use tracing::instrument;
 
 use crate::util::DropAbort;
 
-pub const UDP_BUFFER_SIZE: usize = 4 * 1024;
+pub const UDP_BUFFER_SIZE: usize = 2 * 1024;
 
 #[derive(Clone)]
 #[must_use = "Don't waste memory by not using this"]
 struct PacketBuffer {
-    buf: Vec<u8>,
+    buf: Box<[u8]>,
     filled: Option<(usize, Address)>,
 }
 
@@ -29,7 +29,7 @@ impl fmt::Debug for PacketBuffer {
 impl PacketBuffer {
     fn new() -> Self {
         Self {
-            buf: vec![0; UDP_BUFFER_SIZE],
+            buf: vec![0; UDP_BUFFER_SIZE].into_boxed_slice(),
             filled: None,
         }
     }
@@ -43,13 +43,15 @@ impl PacketBuffer {
 struct CopyBuffer {
     pool: Vec<PacketBuffer>,
     queue: VecDeque<PacketBuffer>,
+    max_buffer_size: usize,
 }
 
 impl CopyBuffer {
-    fn new(buffer_size: usize) -> Self {
+    fn new(buffer_size: usize, max_buffer_size: usize) -> Self {
         Self {
             pool: vec![PacketBuffer::new(); buffer_size],
             queue: VecDeque::with_capacity(buffer_size),
+            max_buffer_size,
         }
     }
     fn borrow_front(&mut self) -> Option<&mut PacketBuffer> {
@@ -64,11 +66,19 @@ impl CopyBuffer {
     fn borrow_back(&mut self) -> Option<&mut PacketBuffer> {
         match self.queue.back().map(|i| i.filled.is_some()) {
             Some(true) | None => {
+                self.grow();
                 self.queue.push_back(self.pool.pop()?);
             }
             Some(false) => {}
         };
         self.queue.back_mut()
+    }
+    fn grow(&mut self) {
+        if self.pool.is_empty() {
+            let goal = self.max_buffer_size.min(self.queue.len() * 2);
+            let to_add = goal - self.queue.len();
+            self.pool.append(&mut vec![PacketBuffer::new(); to_add]);
+        }
     }
 }
 
@@ -194,8 +204,8 @@ pub async fn connect_udp(
     DropAbort::new(tokio::spawn(CopyBidirectional {
         a,
         b,
-        send_queue: CopyBuffer::new(16),
-        recv_queue: CopyBuffer::new(16),
+        send_queue: CopyBuffer::new(1, 16),
+        recv_queue: CopyBuffer::new(1, 16),
     }))
     .await??;
 
