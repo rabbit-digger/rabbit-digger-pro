@@ -5,7 +5,8 @@ use super::wrapper::{Cipher, CryptoStream};
 use rd_interface::{
     async_trait, config::NetRef, prelude::*, Address, Arc, IServer, Net, Result, TcpStream,
 };
-use rd_std::util::{connect_tcp, forward_udp};
+use rd_std::util::forward_udp;
+use rd_std::ContextExt;
 use shadowsocks::{config::ServerType, context::Context, ServerConfig};
 use socks5_protocol::Address as S5Addr;
 use tokio::select;
@@ -117,7 +118,7 @@ impl SSServer {
                 },
             )
             .await?;
-        connect_tcp(ctx, TcpStream::from(socket), target).await?;
+        ctx.connect_tcp(TcpStream::from(socket), target).await?;
         Ok(())
     }
 }
