@@ -1,3 +1,5 @@
+use std::io;
+
 use futures::TryFutureExt;
 use rd_interface::{Address, Arc, Context, Net, Result, TcpListener, TcpStream, UdpSocket};
 use state::ClientSessionState;
@@ -65,6 +67,10 @@ impl ClientSession {
         }
         .inspect_err(|e| tracing::error!("Failed to close object: {:?}", e));
         tokio::spawn(fut);
+    }
+    #[allow(dead_code)]
+    pub async fn close(&self) -> io::Result<()> {
+        self.conn.close().await
     }
 }
 

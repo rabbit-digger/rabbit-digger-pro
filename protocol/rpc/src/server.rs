@@ -2,10 +2,11 @@ use std::{pin::Pin, task::Poll};
 
 use futures::{future::poll_fn, ready};
 use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, Address, AsyncRead, AsyncWrite, Context, IServer, Net,
-    ReadBuf, Result, TcpStream,
+    async_trait, constant::UDP_BUFFER_SIZE, Address, Arc, AsyncRead, AsyncWrite, Context, IServer,
+    Net, ReadBuf, Result, TcpStream,
 };
 use serde_json::to_value;
+use tokio::{select, sync::Notify};
 
 use crate::{
     session::{Obj, RequestGetter, ServerSession},
@@ -217,11 +218,21 @@ impl RpcServer {
         };
         handshake_req.response(Ok(RpcValue::Null), None).await?;
 
-        loop {
-            let req = sess.recv().await?;
+        let notify = Arc::new(Notify::new());
+
+        let e = loop {
+            let req = match sess.recv().await {
+                Ok(req) => req,
+                Err(e) => break e,
+            };
             let this = self.clone();
+            let notify = notify.clone();
             tokio::spawn(async move {
-                let (result, data) = match this.handle_req(&req).await {
+                let result = select! {
+                    r = this.handle_req(&req) => r,
+                    _ = notify.notified() => Err(rd_interface::Error::other("Connection closed")),
+                };
+                let (result, data) = match result {
                     Ok((result, data)) => (Ok(result), data),
                     Err(e) => (Err(e.to_string()), None),
                 };
@@ -231,6 +242,11 @@ impl RpcServer {
                     None => req.response(result, None).await,
                 }
             });
-        }
+        };
+        notify.notify_waiters();
+
+        tracing::error!("RPC server error: {:?}", e);
+
+        Ok(())
     }
 }

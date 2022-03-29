@@ -25,7 +25,7 @@ impl RpcNet {
             sess: OnceCell::new(),
         }
     }
-    async fn get_sess(&self) -> Result<&ClientSession> {
+    pub async fn get_sess(&self) -> Result<&ClientSession> {
         self.sess
             .get_or_init(|| ClientSession::new(&self.net, &self.endpoint))
             .await

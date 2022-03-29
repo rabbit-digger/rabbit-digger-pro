@@ -1,11 +1,11 @@
 use super::*;
-use rd_interface::IntoAddress;
+use rd_interface::{Context, INet, IntoAddress};
 use rd_interface::{IServer, IntoDyn};
 use rd_std::tests::{
     assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet,
 };
 use std::time::Duration;
-use tokio::time::sleep;
+use tokio::{task::yield_now, time::sleep};
 
 #[tokio::test]
 async fn test_rpc_server_client() {
@@ -32,4 +32,46 @@ async fn test_rpc_server_client() {
     sleep(Duration::from_millis(1)).await;
     assert_echo(&local, "127.0.0.1:36666").await;
     assert_echo_udp(&local, "127.0.0.1:36666").await;
+}
+
+#[tokio::test]
+async fn test_broken_session() {
+    let local = TestNet::new().into_dyn();
+    let bind_addr = "127.0.0.1:12345".into_address().unwrap();
+
+    let server = RpcServer::new(
+        local.clone(),
+        local.clone(),
+        "127.0.0.1:16666".into_address().unwrap(),
+    );
+    let client = RpcNet::new(local.clone(), "127.0.0.1:16666".into_address().unwrap());
+    tokio::spawn(async move { server.start().await });
+
+    yield_now().await;
+
+    let listener = client
+        .tcp_bind(&mut Context::new(), &bind_addr)
+        .await
+        .unwrap();
+
+    assert!(local
+        .tcp_bind(&mut Context::new(), &bind_addr)
+        .await
+        .is_err());
+
+    client.get_sess().await.unwrap().close().await.unwrap();
+
+    assert!(listener.accept().await.is_err());
+
+    yield_now().await;
+
+    assert!(client
+        .tcp_bind(&mut Context::new(), &bind_addr,)
+        .await
+        .is_err());
+
+    local
+        .tcp_bind(&mut Context::new(), &bind_addr)
+        .await
+        .unwrap();
 }

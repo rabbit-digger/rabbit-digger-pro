@@ -5,7 +5,7 @@ use std::{
 
 use rd_interface::{Arc, Context, IntoAddress, Net, Result, TcpStream};
 use rd_std::{util::forward_udp, ContextExt};
-use tokio::{select, spawn};
+use tokio::select;
 use tokio_smoltcp::{
     smoltcp::wire::{IpCidr, IpProtocol, IpVersion},
     Net as SmoltcpNet, RawSocket, TcpListener,
@@ -57,7 +57,7 @@ impl Forward {
             });
             if let Some(orig_addr) = orig_addr {
                 let net = self.net.clone();
-                spawn(async move {
+                tokio::spawn(async move {
                     let ctx = &mut Context::from_socketaddr(addr);
                     let target = net
                         .tcp_connect(ctx, &SocketAddr::from(orig_addr).into_address()?)

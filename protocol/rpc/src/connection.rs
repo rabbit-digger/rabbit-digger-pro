@@ -68,4 +68,8 @@ where
 
         Ok((item, data_buf))
     }
+    #[allow(dead_code)]
+    pub async fn close(&self) -> io::Result<()> {
+        self.write.lock().await.shutdown().await
+    }
 }
