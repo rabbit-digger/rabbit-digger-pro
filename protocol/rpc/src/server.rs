@@ -18,10 +18,40 @@ pub struct RpcServer {
     listen: Net,
     net: Net,
     bind: Address,
+    stopper: Arc<Notify>,
 }
 impl RpcServer {
     pub fn new(listen: Net, net: Net, bind: Address) -> RpcServer {
-        RpcServer { listen, net, bind }
+        RpcServer {
+            listen,
+            net,
+            bind,
+            stopper: Arc::new(Notify::new()),
+        }
+    }
+}
+
+struct Guard<F>(Option<F>)
+where
+    F: FnOnce();
+
+impl<F> Guard<F>
+where
+    F: FnOnce(),
+{
+    fn new(f: F) -> Self {
+        Guard(Some(f))
+    }
+}
+
+impl<F> Drop for Guard<F>
+where
+    F: FnOnce(),
+{
+    fn drop(&mut self) {
+        if let Some(f) = self.0.take() {
+            f()
+        }
     }
 }
 
@@ -32,12 +62,17 @@ impl IServer for RpcServer {
             .listen
             .tcp_bind(&mut Context::new(), &self.bind)
             .await?;
+        let _guard = Guard::new(|| self.stopper.notify_waiters());
 
         loop {
             let (conn, _) = listener.accept().await?;
             let this = self.clone();
             tokio::spawn(async move {
-                if let Err(e) = this.handle_conn(conn).await {
+                let result = select! {
+                    r = this.handle_conn(conn) => r,
+                    _ = this.stopper.notified() => Ok(()),
+                };
+                if let Err(e) = result {
                     tracing::error!("handle_conn {:?}", e);
                 }
             });
@@ -219,6 +254,11 @@ impl RpcServer {
         handshake_req.response(Ok(RpcValue::Null), None).await?;
 
         let notify = Arc::new(Notify::new());
+        let _guard = Guard::new(|| {
+            let sess = sess.clone();
+            tokio::spawn(async move { sess.close().await });
+            notify.notify_waiters()
+        });
 
         let e = loop {
             let req = match sess.recv().await {
@@ -230,7 +270,7 @@ impl RpcServer {
             tokio::spawn(async move {
                 let result = select! {
                     r = this.handle_req(&req) => r,
-                    _ = notify.notified() => Err(rd_interface::Error::other("Connection closed")),
+                    _ = notify.notified() => return Err(rd_interface::Error::other("Connection closed")),
                 };
                 let (result, data) = match result {
                     Ok((result, data)) => (Ok(result), data),
@@ -243,7 +283,6 @@ impl RpcServer {
                 }
             });
         };
-        notify.notify_waiters();
 
         tracing::error!("RPC server error: {:?}", e);
 

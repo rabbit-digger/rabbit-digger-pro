@@ -36,7 +36,7 @@ impl Builder<Net> for RpcNet {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        Ok(RpcNet::new((*config.net).clone(), config.endpoint))
+        Ok(RpcNet::new((*config.net).clone(), config.endpoint, true))
     }
 }
 

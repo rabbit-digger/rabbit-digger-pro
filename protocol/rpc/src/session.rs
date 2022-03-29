@@ -1,5 +1,8 @@
 use core::fmt;
-use std::io;
+use std::{
+    io,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use futures::TryFutureExt;
 use rd_interface::{Address, Arc, Context, Net, Result, TcpListener, TcpStream, UdpSocket};
@@ -19,6 +22,7 @@ use self::state::{ServerSessionState, Shared};
 pub struct ClientSession {
     conn: Arc<ClientConnection>,
     state: Arc<ClientSessionState>,
+    closed: Arc<AtomicBool>,
 }
 
 impl ClientSession {
@@ -28,6 +32,7 @@ impl ClientSession {
         let t = Self {
             conn: Arc::new(ClientConnection::new(tcp)),
             state: Arc::new(ClientSessionState::new()),
+            closed: Arc::new(AtomicBool::new(false)),
         };
 
         t.send(Command::Handshake(t.state.session_id()), None)
@@ -50,12 +55,31 @@ impl ClientSession {
 
     pub async fn send(&self, cmd: Command, data: Option<&[u8]>) -> Result<ResponseGetter> {
         let seq_id = self.state.next_seq_id();
-        self.conn.send(Request { cmd, seq_id }, data).await?;
+        match self.conn.send(Request { cmd, seq_id }, data).await {
+            Ok(_) => {}
+            Err(e) => {
+                self.closed.store(true, Ordering::Relaxed);
+                return Err(e.into());
+            }
+        };
 
         let rx = self.state.wait_for_response(seq_id);
 
         let conn = self.clone();
-        tokio::spawn(async move { conn.wait_response().await });
+        let closed = self.closed.clone();
+        let state = self.state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = conn.wait_response().await {
+                closed.store(true, Ordering::Relaxed);
+                state.send_response(
+                    Response {
+                        seq_id,
+                        result: Err(e.to_string()),
+                    },
+                    Vec::new(),
+                )
+            }
+        });
         Ok(ResponseGetter { rx })
     }
 
@@ -72,6 +96,9 @@ impl ClientSession {
     #[allow(dead_code)]
     pub async fn close(&self) -> io::Result<()> {
         self.conn.close().await
+    }
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Relaxed)
     }
 }
 
@@ -137,6 +164,9 @@ impl ServerSession {
             state: self.state.clone(),
             sent: false,
         })
+    }
+    pub async fn close(&self) -> io::Result<()> {
+        self.conn.close().await
     }
 }
 

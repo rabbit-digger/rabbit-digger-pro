@@ -6,31 +6,43 @@ use self::socket::TcpListenerWrapper;
 use rd_interface::{async_trait, Address, Context, INet, IntoDyn, Net, Result, TcpStream};
 
 use socket::{TcpWrapper, UdpWrapper};
-use tokio::sync::OnceCell;
+use tokio::sync::{Mutex, OnceCell};
 
 mod socket;
 
 pub struct RpcNet {
     net: Net,
     endpoint: Address,
+    auto_reconnect: bool,
 
-    sess: OnceCell<Result<ClientSession>>,
+    sess: Mutex<OnceCell<Result<ClientSession>>>,
 }
 
 impl RpcNet {
-    pub fn new(net: Net, endpoint: Address) -> Self {
+    pub fn new(net: Net, endpoint: Address, auto_reconnect: bool) -> Self {
         RpcNet {
             net,
             endpoint,
-            sess: OnceCell::new(),
+            auto_reconnect,
+            sess: Mutex::new(OnceCell::new()),
         }
     }
-    pub async fn get_sess(&self) -> Result<&ClientSession> {
-        self.sess
-            .get_or_init(|| ClientSession::new(&self.net, &self.endpoint))
-            .await
-            .as_ref()
-            .map_err(|e| rd_interface::Error::other(e.to_string()))
+    pub async fn get_sess(&self) -> Result<ClientSession> {
+        let mut sess = self.sess.lock().await;
+        Ok(loop {
+            let client_sess = sess
+                .get_or_init(|| ClientSession::new(&self.net, &self.endpoint))
+                .await
+                .as_ref()
+                .map_err(|e| rd_interface::Error::other(e.to_string()))
+                .cloned()?;
+            if !self.auto_reconnect || !client_sess.is_closed() {
+                break client_sess;
+            } else {
+                tracing::info!("reconnect to server");
+                *sess = OnceCell::new();
+            }
+        })
     }
 }
 

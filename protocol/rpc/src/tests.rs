@@ -21,7 +21,12 @@ async fn test_rpc_server_client() {
         local.clone(),
         "127.0.0.1:16666".into_address().unwrap(),
     );
-    let client = RpcNet::new(local.clone(), "127.0.0.1:16666".into_address().unwrap()).into_dyn();
+    let client = RpcNet::new(
+        local.clone(),
+        "127.0.0.1:16666".into_address().unwrap(),
+        false,
+    )
+    .into_dyn();
     tokio::spawn(async move { server.start().await });
 
     sleep(Duration::from_millis(10)).await;
@@ -47,7 +52,11 @@ async fn test_broken_session() {
         local.clone(),
         "127.0.0.1:16666".into_address().unwrap(),
     );
-    let client = RpcNet::new(local.clone(), "127.0.0.1:16666".into_address().unwrap());
+    let client = RpcNet::new(
+        local.clone(),
+        "127.0.0.1:16666".into_address().unwrap(),
+        false,
+    );
     tokio::spawn(async move { server.start().await });
 
     yield_now().await;
@@ -85,6 +94,49 @@ async fn test_broken_session() {
         .is_err());
 
     local
+        .tcp_bind(&mut Context::new(), &bind_addr)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_client_reconnect() {
+    let local = TestNet::new().into_dyn();
+    let bind_addr = "127.0.0.1:12345".into_address().unwrap();
+
+    let server = RpcServer::new(
+        local.clone(),
+        local.clone(),
+        "127.0.0.1:16666".into_address().unwrap(),
+    );
+    let client = RpcNet::new(
+        local.clone(),
+        "127.0.0.1:16666".into_address().unwrap(),
+        true,
+    );
+    let server2 = server.clone();
+    let server_handle = tokio::spawn(async move { server2.start().await });
+
+    yield_now().await;
+
+    let listener = client
+        .tcp_bind(&mut Context::new(), &bind_addr)
+        .await
+        .unwrap();
+
+    server_handle.abort();
+
+    yield_now().await;
+
+    assert!(listener.accept().await.is_err());
+
+    tokio::spawn(async move { server.start().await });
+    yield_now().await;
+
+    // reconnected
+    assert!(!client.get_sess().await.unwrap().is_closed());
+
+    client
         .tcp_bind(&mut Context::new(), &bind_addr)
         .await
         .unwrap();
