@@ -98,6 +98,9 @@ mod tests {
             let (mut tcp, _) = listener.accept().await.unwrap();
 
             tcp.write_all(b"12345678").await.unwrap();
+            let mut buf = Vec::new();
+            tcp.read_to_end(&mut buf).await.unwrap();
+            buf
         });
 
         sleep(Duration::from_millis(10)).await;

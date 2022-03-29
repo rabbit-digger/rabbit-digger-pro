@@ -211,6 +211,9 @@ impl ITcpStream for MyTcpStream {
             buf.advance(to_copy);
             Ok(()).into()
         } else {
+            if self.channel.is_closed() {
+                return Ok(()).into();
+            }
             let item = { ready!(self.channel.poll_next_unpin(cx)) };
             match item {
                 Some(mut data) => {
@@ -228,6 +231,13 @@ impl ITcpStream for MyTcpStream {
     }
     fn poll_write(&mut self, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         let MyTcpStream { channel, data, .. } = &mut *self;
+
+        if channel.is_closed() {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "broken pipe",
+            )));
+        }
 
         loop {
             if data.is_flushing {
@@ -420,7 +430,7 @@ mod tests {
 
     use super::*;
     use rd_interface::{Context, IntoAddress};
-    use tokio::task::yield_now;
+    use tokio::{io::AsyncWriteExt, task::yield_now};
 
     #[tokio::test]
     async fn test_tcp() {
@@ -537,5 +547,24 @@ mod tests {
             .await
             .unwrap();
         drop(socket);
+    }
+
+    #[tokio::test]
+    async fn tcp_close_on_drop() {
+        let ctx = &mut Context::new();
+        let net = TestNet::new().into_dyn();
+        let addr = "127.0.0.1:12345".into_address().unwrap();
+        let mut buf = [];
+
+        let server = net.tcp_bind(ctx, &addr).await.unwrap();
+
+        let tcp = net.tcp_connect(ctx, &addr).await.unwrap();
+        let mut server_tcp = server.accept().await.unwrap().0;
+
+        assert!(server_tcp.write(&mut buf).await.is_ok());
+
+        drop(tcp);
+
+        assert!(server_tcp.write(&mut buf).await.is_err());
     }
 }

@@ -37,6 +37,9 @@ impl<T: Send + 'static> Channel<T> {
             },
         )
     }
+    pub fn is_closed(&self) -> bool {
+        self.sender.is_closed()
+    }
 }
 
 impl<T> Stream for Channel<T> {

@@ -64,6 +64,7 @@ enum UdpState {
     Sending(SocketAddr),
 }
 
+#[derive(Default)]
 pub struct LocalNet {
     cfg: LocalNetConfig,
     resolver: Resolver,
@@ -76,7 +77,7 @@ pub struct Udp {
     resolver: Resolver,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct Resolver {
     net: Option<Net>,
 }
