@@ -174,9 +174,9 @@ impl TcpWrapper {
     }
 }
 
-impl Drop for TcpAsyncFn {
+impl Drop for TcpWrapper {
     fn drop(&mut self) {
-        self.conn.close_object(self.obj)
+        self.0.get_ref().conn.close_object(self.0.get_ref().obj)
     }
 }
 

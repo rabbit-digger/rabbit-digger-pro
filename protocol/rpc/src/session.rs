@@ -1,3 +1,4 @@
+use core::fmt;
 use std::io;
 
 use futures::TryFutureExt;
@@ -146,6 +147,16 @@ pub struct RequestGetter {
     conn: Arc<ServerConnection>,
     state: Arc<ServerSessionState<Obj>>,
     sent: bool,
+}
+
+impl fmt::Debug for RequestGetter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RequestGetter")
+            .field("req", &self.req)
+            .field("data", &self.data)
+            .field("sent", &self.sent)
+            .finish()
+    }
 }
 
 impl RequestGetter {

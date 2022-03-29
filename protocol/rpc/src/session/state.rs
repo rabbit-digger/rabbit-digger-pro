@@ -99,7 +99,7 @@ impl<Obj> ServerSessionState<Obj> {
             .objects
             .lock()
             .get(&obj)
-            .ok_or_else(|| rd_interface::Error::NotFound("Object".to_string()))?
+            .ok_or_else(|| rd_interface::Error::NotFound(format!("Object {:?} not found", obj)))?
             .clone();
         Ok(obj)
     }
