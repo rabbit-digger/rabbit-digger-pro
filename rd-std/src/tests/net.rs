@@ -96,16 +96,18 @@ impl INet for TestNet {
 
     async fn tcp_bind(&self, _ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
         check_address(&addr)?;
+        let inner2 = self.inner.clone();
         let mut inner = self.inner.lock().await;
         let key = inner.get_port(Protocol::Tcp, addr.port())?;
         let (listener, sender) = Pipe::new(key);
 
         inner.ports.insert(key, Value::TcpListener(sender));
-        Ok(MyTcpListener(Mutex::new(listener)).into_dyn())
+        Ok(MyTcpListener(Mutex::new(listener), inner2).into_dyn())
     }
 
     async fn udp_bind(&self, _ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         check_address(&addr)?;
+        let inner2 = self.inner.clone();
         let mut inner = self.inner.lock().await;
         let key = inner.get_port(Protocol::Udp, addr.port())?;
         let (udp_socket, other) = Pipe::new(UdpData {
@@ -114,7 +116,7 @@ impl INet for TestNet {
             flushing: false,
         });
         inner.ports.insert(key, Value::UdpSocket(other));
-        Ok(MyUdpSocket(udp_socket).into_dyn())
+        Ok(MyUdpSocket(udp_socket, inner2).into_dyn())
     }
 
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
@@ -137,9 +139,9 @@ pub struct UdpData {
 }
 pub type MyTcpStream = Pipe<Vec<u8>, TcpData>;
 #[derive(Debug)]
-pub struct MyTcpListener(Mutex<Pipe<MyTcpStream, Port>>);
+pub struct MyTcpListener(Mutex<Pipe<MyTcpStream, Port>>, Arc<Mutex<Inner>>);
 #[derive(Debug)]
-pub struct MyUdpSocket(Pipe<(Vec<u8>, SocketAddr), UdpData>);
+pub struct MyUdpSocket(Pipe<(Vec<u8>, SocketAddr), UdpData>, Arc<Mutex<Inner>>);
 
 #[derive(Debug, PartialOrd, PartialEq, Ord, Eq, Copy, Clone, Hash)]
 enum Protocol {
@@ -248,6 +250,16 @@ impl ITcpStream for MyTcpStream {
     }
 }
 
+impl Drop for MyTcpListener {
+    fn drop(&mut self) {
+        let inner = self.1.clone();
+        let port = self.0.get_mut().data;
+        tokio::spawn(async move {
+            inner.lock().await.ports.remove(&port);
+        });
+    }
+}
+
 #[async_trait]
 impl ITcpListener for MyTcpListener {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
@@ -266,6 +278,16 @@ impl ITcpListener for MyTcpListener {
 
 fn map_err<T>(_e: SendError<T>) -> io::Error {
     ErrorKind::BrokenPipe.into()
+}
+
+impl Drop for MyUdpSocket {
+    fn drop(&mut self) {
+        let inner = self.1.clone();
+        let port = self.0.data.local_addr;
+        tokio::spawn(async move {
+            inner.lock().await.ports.remove(&port);
+        });
+    }
 }
 
 impl MyUdpSocket {
@@ -397,7 +419,8 @@ mod tests {
     use crate::tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp};
 
     use super::*;
-    use rd_interface::Context;
+    use rd_interface::{Context, IntoAddress};
+    use tokio::task::yield_now;
 
     #[tokio::test]
     async fn test_tcp() {
@@ -464,5 +487,55 @@ mod tests {
         let net = TestNet::new().into_dyn();
         spawn_echo_server_udp(&net, &addr).await;
         assert_echo_udp(&net, &addr).await;
+    }
+
+    #[tokio::test]
+    async fn test_reuse_listener() {
+        let net = TestNet::new().into_dyn();
+
+        let listener = net
+            .tcp_bind(
+                &mut Context::new(),
+                &"127.0.0.1:12345".into_address().unwrap(),
+            )
+            .await
+            .unwrap();
+        drop(listener);
+
+        yield_now().await;
+
+        let listener = net
+            .tcp_bind(
+                &mut Context::new(),
+                &"127.0.0.1:12345".into_address().unwrap(),
+            )
+            .await
+            .unwrap();
+        drop(listener);
+    }
+
+    #[tokio::test]
+    async fn test_reuse_udp() {
+        let net = TestNet::new().into_dyn();
+
+        let socket = net
+            .udp_bind(
+                &mut Context::new(),
+                &"127.0.0.1:12345".into_address().unwrap(),
+            )
+            .await
+            .unwrap();
+        drop(socket);
+
+        yield_now().await;
+
+        let socket = net
+            .udp_bind(
+                &mut Context::new(),
+                &"127.0.0.1:12345".into_address().unwrap(),
+            )
+            .await
+            .unwrap();
+        drop(socket);
     }
 }
