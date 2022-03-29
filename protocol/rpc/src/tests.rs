@@ -5,7 +5,10 @@ use rd_std::tests::{
     assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet,
 };
 use std::time::Duration;
-use tokio::{task::yield_now, time::sleep};
+use tokio::{
+    task::yield_now,
+    time::{sleep, timeout},
+};
 
 #[tokio::test]
 async fn test_rpc_server_client() {
@@ -59,14 +62,25 @@ async fn test_broken_session() {
         .await
         .is_err());
 
+    let mut accept_fut = listener.accept();
+
+    // timeout
+    assert!(timeout(Duration::from_millis(10), &mut accept_fut)
+        .await
+        .is_err());
+
     client.get_sess().await.unwrap().close().await.unwrap();
 
-    assert!(listener.accept().await.is_err());
+    // shouldn't timeout
+    let result = timeout(Duration::from_millis(10), accept_fut)
+        .await
+        .unwrap();
+    assert!(result.is_err());
 
     yield_now().await;
 
     assert!(client
-        .tcp_bind(&mut Context::new(), &bind_addr,)
+        .tcp_bind(&mut Context::new(), &bind_addr)
         .await
         .is_err());
 
