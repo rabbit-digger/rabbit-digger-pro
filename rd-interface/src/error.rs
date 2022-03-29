@@ -34,7 +34,7 @@ pub enum Error {
     AbortedByUser,
     #[error("Context error: {0:?}")]
     Context(#[from] crate::context::Error),
-    #[error("Not found")]
+    #[error("Not found: {0}")]
     NotFound(String),
     #[error("{0:?}")]
     Other(Box<dyn StdError + Send + Sync + 'static>),
