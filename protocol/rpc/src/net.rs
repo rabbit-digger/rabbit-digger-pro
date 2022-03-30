@@ -34,8 +34,18 @@ impl RpcNet {
                 .get_or_init(|| ClientSession::new(&self.net, &self.endpoint))
                 .await
                 .as_ref()
-                .map_err(|e| rd_interface::Error::other(e.to_string()))
-                .cloned()?;
+                .cloned();
+            let client_sess = match client_sess {
+                Ok(s) => s,
+                Err(e) => {
+                    if !self.auto_reconnect {
+                        return Err(rd_interface::Error::other(e.to_string()));
+                    }
+                    tracing::error!("Connection error: {:?}", e);
+                    *sess = OnceCell::new();
+                    continue;
+                }
+            };
             if !self.auto_reconnect || !client_sess.is_closed() {
                 break client_sess;
             } else {
@@ -49,7 +59,7 @@ impl RpcNet {
 #[async_trait]
 impl INet for RpcNet {
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        let conn = self.get_sess().await?.clone();
+        let conn = self.get_sess().await?;
         let (resp, _) = conn
             .send(Command::TcpConnect(ctx.to_value(), addr.clone()), None)
             .await?
@@ -66,7 +76,7 @@ impl INet for RpcNet {
         ctx: &mut Context,
         addr: &Address,
     ) -> Result<rd_interface::TcpListener> {
-        let conn = self.get_sess().await?.clone();
+        let conn = self.get_sess().await?;
         let (resp, _) = conn
             .send(Command::TcpBind(ctx.to_value(), addr.clone()), None)
             .await?
@@ -79,7 +89,7 @@ impl INet for RpcNet {
     }
 
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<rd_interface::UdpSocket> {
-        let conn = self.get_sess().await?.clone();
+        let conn = self.get_sess().await?;
         let (resp, _) = conn
             .send(Command::UdpBind(ctx.to_value(), addr.clone()), None)
             .await?
@@ -92,7 +102,7 @@ impl INet for RpcNet {
     }
 
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<std::net::SocketAddr>> {
-        let conn = self.get_sess().await?.clone();
+        let conn = self.get_sess().await?;
         let getter = conn.send(Command::LookupHost(addr.clone()), None).await?;
 
         let (resp, _) = getter.wait().await?;

@@ -8,6 +8,10 @@ use tokio::{
     sync::Mutex,
 };
 
+// 1MB
+const MAX_ITEM_SIZE: u32 = 1 * 1024 * 1024;
+const MAX_DATA_SIZE: u32 = 1 * 1024 * 1024;
+
 pub struct Connection<Item, SinkSink> {
     read: Mutex<ReadHalf<TcpStream>>,
     write: Mutex<WriteHalf<TcpStream>>,
@@ -57,6 +61,17 @@ where
 
         let item_size = reader.read_u32().await?;
         let data_size = reader.read_u32().await?;
+
+        if item_size > MAX_ITEM_SIZE || data_size > MAX_DATA_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "item size {} or data size {} is too big",
+                    item_size, data_size
+                ),
+            ));
+        }
+
         let mut item_buf = vec![0; item_size as usize];
         reader.read_exact(&mut item_buf).await?;
         let mut data_buf = vec![0; data_size as usize];
