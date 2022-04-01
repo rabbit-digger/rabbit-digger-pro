@@ -20,7 +20,7 @@ impl Display for ErrorWithContext {
 /// Errors in this crate.
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("IO error")]
+    #[error("IO error: {0:?}")]
     IO(#[from] io::Error),
     #[error("Not matched")]
     NotMatched,
