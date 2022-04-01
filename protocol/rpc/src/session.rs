@@ -53,7 +53,7 @@ impl ClientSession {
         Ok(())
     }
 
-    pub async fn send(&self, cmd: Command, data: Option<&[u8]>) -> Result<ResponseGetter> {
+    pub async fn send(&self, cmd: Command, data: Option<Vec<u8>>) -> Result<ResponseGetter> {
         let seq_id = self.state.next_seq_id();
         match self.conn.send(Request { cmd, seq_id }, data).await {
             Ok(_) => {}
@@ -208,7 +208,7 @@ impl RequestGetter {
     pub async fn response(
         mut self,
         result: Result<RpcValue, String>,
-        data: Option<&[u8]>,
+        data: Option<Vec<u8>>,
     ) -> Result<()> {
         self.conn
             .send(

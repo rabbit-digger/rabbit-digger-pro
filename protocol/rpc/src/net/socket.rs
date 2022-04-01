@@ -149,7 +149,7 @@ impl IUdpSocket for UdpWrapper {
             let data = buf.to_vec();
             Box::pin(async move {
                 let (resp, _) = conn
-                    .send(Command::SendTo(obj, addr), Some(&data))
+                    .send(Command::SendTo(obj, addr), Some(data))
                     .await?
                     .wait()
                     .await?;
@@ -199,7 +199,7 @@ impl AsyncFnRead for TcpAsyncFn {
 #[async_trait]
 impl AsyncFnWrite for TcpAsyncFn {
     async fn write(&mut self, buf: Vec<u8>) -> io::Result<usize> {
-        let getter = self.conn.send(Command::Write(self.obj), Some(&buf)).await?;
+        let getter = self.conn.send(Command::Write(self.obj), Some(buf)).await?;
 
         let (resp, _) = getter.wait().await?;
         let size = resp.into_value::<u32>()?;

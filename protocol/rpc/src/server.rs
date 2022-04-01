@@ -254,11 +254,8 @@ impl RpcServer {
         handshake_req.response(Ok(RpcValue::Null), None).await?;
 
         let notify = Arc::new(Notify::new());
-        let _guard = Guard::new(|| {
-            let sess = sess.clone();
-            tokio::spawn(async move { sess.close().await });
-            notify.notify_waiters()
-        });
+        let on_close = close_callback(sess.clone(), notify.clone());
+        let _guard = Guard::new(on_close.clone());
 
         let e = loop {
             let req = match sess.recv().await {
@@ -267,6 +264,7 @@ impl RpcServer {
             };
             let this = self.clone();
             let notify = notify.clone();
+            let on_close = on_close.clone();
             tokio::spawn(async move {
                 let result = select! {
                     r = this.handle_req(&req) => r,
@@ -277,10 +275,17 @@ impl RpcServer {
                     Err(e) => (Err(e.to_string()), None),
                 };
 
-                match data {
-                    Some(data) => req.response(result, Some(&data[..])).await,
+                let result = match data {
+                    Some(data) => req.response(result, Some(data)).await,
                     None => req.response(result, None).await,
+                };
+
+                if let Err(e) = result {
+                    tracing::error!("Server send error: {:?}", e);
+                    on_close();
                 }
+
+                Ok(())
             });
         };
 
@@ -288,4 +293,12 @@ impl RpcServer {
 
         Ok(())
     }
+}
+
+fn close_callback(sess: ServerSession, notify: Arc<Notify>) -> impl Fn() + Clone {
+    return move || {
+        let sess = sess.clone();
+        tokio::spawn(async move { sess.close().await });
+        notify.notify_waiters()
+    };
 }
