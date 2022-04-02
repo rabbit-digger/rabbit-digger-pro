@@ -16,6 +16,12 @@ use tokio::{
 const MAX_ITEM_SIZE: u32 = 1 * 1024 * 1024;
 const MAX_DATA_SIZE: u32 = 1 * 1024 * 1024;
 
+#[derive(Copy, Clone)]
+pub enum Codec {
+    Json,
+    Cbor,
+}
+
 pub struct Connection<Item, SinkItem> {
     read_rx: Mutex<Receiver<(Item, Vec<u8>)>>,
     write_tx: Sender<(SinkItem, Option<Vec<u8>>)>,
@@ -38,7 +44,7 @@ where
     Item: Serialize + DeserializeOwned + Unpin + Debug + Send + 'static,
     SinkItem: Serialize + DeserializeOwned + Unpin + Debug + Send + Sync + 'static,
 {
-    pub fn new(tcp: TcpStream) -> Connection<Item, SinkItem> {
+    pub fn new(tcp: TcpStream, codec: Codec) -> Connection<Item, SinkItem> {
         let (mut reader, mut writer) = split(tcp);
         let (read_tx, read_rx) = channel::<(Item, Vec<u8>)>(1);
         let (write_tx, mut write_rx) = channel::<(SinkItem, Option<Vec<u8>>)>(1);
@@ -65,7 +71,10 @@ where
                     reader.read_exact(&mut data_buf).await?;
                 }
 
-                let item = serde_json::from_slice(&item_buf).map_err(map_err)?;
+                let item = match codec {
+                    Codec::Cbor => cbor4ii::serde::from_slice(&item_buf).map_err(map_err)?,
+                    Codec::Json => serde_json::from_slice(&item_buf).map_err(map_err)?,
+                };
 
                 // No receiver, exit normally
                 if let Err(_) = read_tx.send((item, data_buf)).await {
@@ -77,7 +86,10 @@ where
 
         let write_task = tokio::spawn(async move {
             while let Some((item, data)) = write_rx.recv().await {
-                let item_buf = serde_json::to_vec(&item).map_err(map_err)?;
+                let item_buf = match codec {
+                    Codec::Cbor => cbor4ii::serde::to_vec(Vec::new(), &item).map_err(map_err)?,
+                    Codec::Json => serde_json::to_vec(&item).map_err(map_err)?,
+                };
                 let data_size = data.as_ref().map(|d| d.len() as u32).unwrap_or(0);
                 let item_size = item_buf.len() as u32;
 

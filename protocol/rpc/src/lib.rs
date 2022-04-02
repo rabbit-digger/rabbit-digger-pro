@@ -14,10 +14,34 @@ mod tests;
 mod types;
 
 #[rd_config]
+#[derive(Clone, Copy)]
+pub enum Codec {
+    Json,
+    Cbor,
+}
+
+impl Default for Codec {
+    fn default() -> Self {
+        Codec::Cbor
+    }
+}
+
+impl From<Codec> for connection::Codec {
+    fn from(this: Codec) -> Self {
+        match this {
+            Codec::Json => connection::Codec::Json,
+            Codec::Cbor => connection::Codec::Cbor,
+        }
+    }
+}
+
+#[rd_config]
 pub struct RpcNetConfig {
     #[serde(default)]
     net: NetRef,
-    endpoint: Address,
+    server: Address,
+    #[serde(default)]
+    codec: Codec,
 }
 
 #[rd_config]
@@ -28,6 +52,8 @@ pub struct RpcServerConfig {
     net: NetRef,
     #[serde(default)]
     listen: NetRef,
+    #[serde(default)]
+    codec: Codec,
 }
 
 impl Builder<Net> for RpcNet {
@@ -36,7 +62,12 @@ impl Builder<Net> for RpcNet {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        Ok(RpcNet::new((*config.net).clone(), config.endpoint, true))
+        Ok(RpcNet::new(
+            (*config.net).clone(),
+            config.server,
+            true,
+            config.codec.into(),
+        ))
     }
 }
 
@@ -45,8 +76,20 @@ impl Builder<Server> for RpcServer {
     type Config = RpcServerConfig;
     type Item = Self;
 
-    fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
-        Ok(RpcServer::new((*listen).clone(), (*net).clone(), bind))
+    fn build(
+        Self::Config {
+            listen,
+            net,
+            bind,
+            codec,
+        }: Self::Config,
+    ) -> Result<Self> {
+        Ok(RpcServer::new(
+            (*listen).clone(),
+            (*net).clone(),
+            bind,
+            codec.into(),
+        ))
     }
 }
 

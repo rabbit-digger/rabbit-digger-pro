@@ -9,6 +9,7 @@ use serde_json::to_value;
 use tokio::{select, sync::Notify};
 
 use crate::{
+    connection::Codec,
     session::{Obj, RequestGetter, ServerSession},
     types::{Command, RpcValue},
 };
@@ -19,14 +20,16 @@ pub struct RpcServer {
     net: Net,
     bind: Address,
     stopper: Arc<Notify>,
+    codec: Codec,
 }
 impl RpcServer {
-    pub fn new(listen: Net, net: Net, bind: Address) -> RpcServer {
+    pub fn new(listen: Net, net: Net, bind: Address, codec: Codec) -> RpcServer {
         RpcServer {
             listen,
             net,
             bind,
             stopper: Arc::new(Notify::new()),
+            codec,
         }
     }
 }
@@ -84,35 +87,32 @@ impl RpcServer {
     async fn handle_req(&self, req: &RequestGetter) -> Result<(RpcValue, Option<Vec<u8>>)> {
         match req.cmd() {
             Command::TcpConnect(ctx, addr) => {
-                let tcp = self
-                    .net
-                    .tcp_connect(&mut Context::from_value(ctx.clone())?, addr)
-                    .await?;
+                let mut ctx = Context::from_value(ctx.clone())?;
+                let tcp = self.net.tcp_connect(&mut ctx, addr).await?;
 
                 Ok((
-                    RpcValue::Object(req.insert_object(Obj::TcpStream(tcp))),
+                    RpcValue::ObjectValue(req.insert_object(Obj::TcpStream(tcp)), ctx.to_value()),
                     None,
                 ))
             }
             Command::TcpBind(ctx, addr) => {
-                let listener = self
-                    .net
-                    .tcp_bind(&mut Context::from_value(ctx.clone())?, addr)
-                    .await?;
+                let mut ctx = Context::from_value(ctx.clone())?;
+                let listener = self.net.tcp_bind(&mut ctx, addr).await?;
 
                 Ok((
-                    RpcValue::Object(req.insert_object(Obj::TcpListener(listener))),
+                    RpcValue::ObjectValue(
+                        req.insert_object(Obj::TcpListener(listener)),
+                        ctx.to_value(),
+                    ),
                     None,
                 ))
             }
             Command::UdpBind(ctx, addr) => {
-                let udp = self
-                    .net
-                    .udp_bind(&mut Context::from_value(ctx.clone())?, addr)
-                    .await?;
+                let mut ctx = Context::from_value(ctx.clone())?;
+                let udp = self.net.udp_bind(&mut ctx, addr).await?;
 
                 Ok((
-                    RpcValue::Object(req.insert_object(Obj::UdpSocket(udp))),
+                    RpcValue::ObjectValue(req.insert_object(Obj::UdpSocket(udp)), ctx.to_value()),
                     None,
                 ))
             }
@@ -244,7 +244,7 @@ impl RpcServer {
         }
     }
     async fn handle_conn(&self, tcp: TcpStream) -> Result<()> {
-        let sess = ServerSession::new(tcp);
+        let sess = ServerSession::new(tcp, self.codec);
         let handshake_req = sess.recv().await?;
         // TODO: handle session_id
         let _session_id = match handshake_req.cmd() {

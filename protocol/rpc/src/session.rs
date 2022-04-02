@@ -12,7 +12,7 @@ use tokio::sync::oneshot;
 mod state;
 
 use crate::{
-    connection::{ClientConnection, ServerConnection},
+    connection::{ClientConnection, Codec, ServerConnection},
     types::{Command, Object, Request, Response, RpcValue},
 };
 
@@ -26,11 +26,11 @@ pub struct ClientSession {
 }
 
 impl ClientSession {
-    pub async fn new(net: &Net, endpoint: &Address) -> Result<Self> {
+    pub async fn new(net: &Net, endpoint: &Address, codec: Codec) -> Result<Self> {
         let tcp = net.tcp_connect(&mut Context::new(), endpoint).await?;
 
         let t = Self {
-            conn: Arc::new(ClientConnection::new(tcp)),
+            conn: Arc::new(ClientConnection::new(tcp, codec)),
             state: Arc::new(ClientSessionState::new()),
             closed: Arc::new(AtomicBool::new(false)),
         };
@@ -148,9 +148,9 @@ pub struct ServerSession {
 }
 
 impl ServerSession {
-    pub fn new(tcp: TcpStream) -> Self {
+    pub fn new(tcp: TcpStream, codec: Codec) -> Self {
         Self {
-            conn: Arc::new(ServerConnection::new(tcp)),
+            conn: Arc::new(ServerConnection::new(tcp, codec)),
             state: Arc::new(ServerSessionState::new()),
         }
     }

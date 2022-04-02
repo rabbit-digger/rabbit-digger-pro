@@ -1,5 +1,5 @@
-use crate::session::ClientSession;
 use crate::types::Command;
+use crate::{connection::Codec, session::ClientSession};
 
 use self::socket::TcpListenerWrapper;
 
@@ -16,22 +16,24 @@ pub struct RpcNet {
     auto_reconnect: bool,
 
     sess: Mutex<OnceCell<Result<ClientSession>>>,
+    codec: Codec,
 }
 
 impl RpcNet {
-    pub fn new(net: Net, endpoint: Address, auto_reconnect: bool) -> Self {
+    pub fn new(net: Net, endpoint: Address, auto_reconnect: bool, codec: Codec) -> Self {
         RpcNet {
             net,
             endpoint,
             auto_reconnect,
             sess: Mutex::new(OnceCell::new()),
+            codec,
         }
     }
     pub async fn get_sess(&self) -> Result<ClientSession> {
         let mut sess = self.sess.lock().await;
         Ok(loop {
             let client_sess = sess
-                .get_or_init(|| ClientSession::new(&self.net, &self.endpoint))
+                .get_or_init(|| ClientSession::new(&self.net, &self.endpoint, self.codec))
                 .await
                 .as_ref()
                 .cloned();
@@ -66,7 +68,10 @@ impl INet for RpcNet {
             .wait()
             .await?;
 
-        let tcp = TcpWrapper::new(conn, resp.into_object()?);
+        let (obj, ctx_value) = resp.into_object_value()?;
+
+        *ctx = Context::from_value(ctx_value)?;
+        let tcp = TcpWrapper::new(conn, obj);
 
         Ok(tcp.into_dyn())
     }
@@ -83,7 +88,10 @@ impl INet for RpcNet {
             .wait()
             .await?;
 
-        let listener = TcpListenerWrapper::new(conn, resp.into_object()?);
+        let (obj, ctx_value) = resp.into_object_value()?;
+
+        *ctx = Context::from_value(ctx_value)?;
+        let listener = TcpListenerWrapper::new(conn, obj);
 
         Ok(listener.into_dyn())
     }
@@ -96,7 +104,10 @@ impl INet for RpcNet {
             .wait()
             .await?;
 
-        let udp = UdpWrapper::new(conn, resp.into_object()?);
+        let (obj, ctx_value) = resp.into_object_value()?;
+
+        *ctx = Context::from_value(ctx_value)?;
+        let udp = UdpWrapper::new(conn, obj);
 
         Ok(udp.into_dyn())
     }

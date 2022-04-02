@@ -14,7 +14,6 @@ impl Object {
 #[derive(Debug, Deserialize, Serialize)]
 pub enum RpcValue {
     Null,
-    Object(Object),
     Value(Value),
     ObjectValue(Object, Value),
 }
@@ -73,14 +72,6 @@ impl Response {
 
         match val {
             RpcValue::Value(v) => Ok(serde_json::from_value(v)?),
-            _ => Err(rd_interface::Error::other("invalid response")),
-        }
-    }
-    pub fn into_object(self) -> rd_interface::Result<Object> {
-        let val = self.result.map_err(rd_interface::Error::other)?;
-
-        match val {
-            RpcValue::Object(o) => Ok(o),
             _ => Err(rd_interface::Error::other("invalid response")),
         }
     }
