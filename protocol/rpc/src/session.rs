@@ -1,7 +1,10 @@
 use core::fmt;
 use std::{
     io,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Weak,
+    },
 };
 
 use futures::TryFutureExt;
@@ -80,7 +83,12 @@ impl ClientSession {
                 )
             }
         });
-        Ok(ResponseGetter { rx })
+
+        Ok(ResponseGetter {
+            state: Arc::downgrade(&self.state),
+            seq_id,
+            rx: Some(rx),
+        })
     }
 
     pub fn close_object(&self, obj: Object) {
@@ -103,12 +111,30 @@ impl ClientSession {
 }
 
 pub struct ResponseGetter {
-    rx: oneshot::Receiver<(Response, Vec<u8>)>,
+    state: Weak<ClientSessionState>,
+    seq_id: u32,
+    rx: Option<oneshot::Receiver<(Response, Vec<u8>)>>,
+}
+
+impl Drop for ResponseGetter {
+    fn drop(&mut self) {
+        if let Some(state) = self.state.upgrade() {
+            state.send_response(
+                Response {
+                    seq_id: self.seq_id,
+                    result: Err("Aborted".to_string()),
+                },
+                Vec::new(),
+            );
+        }
+    }
 }
 
 impl ResponseGetter {
-    pub async fn wait(self) -> Result<(Response, Vec<u8>)> {
+    pub async fn wait(mut self) -> Result<(Response, Vec<u8>)> {
         self.rx
+            .take()
+            .unwrap()
             .await
             .map_err(|_| rd_interface::Error::other("channel closed"))
     }

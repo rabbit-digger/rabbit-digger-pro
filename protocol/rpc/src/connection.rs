@@ -125,7 +125,6 @@ where
             .await
             .ok_or_else(|| io::ErrorKind::BrokenPipe.into())
     }
-    #[allow(dead_code)]
     pub async fn close(&self) -> io::Result<()> {
         self.read_task.abort();
         self.write_task.abort();
