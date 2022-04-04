@@ -207,7 +207,9 @@ impl LocalNet {
 
         self.set_socket(&udp, addr, false)?;
 
-        udp.bind(&addr.into())?;
+        if self.cfg.bind_addr.is_none() {
+            udp.bind(&addr.into())?;
+        }
 
         let udp = net::UdpSocket::from_std(udp.into())?;
 
