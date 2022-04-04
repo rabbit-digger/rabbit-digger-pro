@@ -18,8 +18,8 @@ thiserror = "1.0"
 anyhow = "1.0"
 tokio = { version = "1.5.0", features = ["net", "rt", "macros"] }
 parking_lot = "0.12.0"
-tokio-util = { version = "0.6", features = ["codec", "net"] }
-dashmap = "4.0.2"
+tokio-util = { version = "0.7.1", features = ["codec", "net"] }
+dashmap = "5.2.0"
 pin-project-lite = "0.2.8"
 
 # socks5
@@ -42,7 +42,7 @@ smoltcp = { version = "0.8.0", default-features = false, features = [
 ] }
 lru_time_cache = "0.11"
 serde_with = "1.8.1"
-maxminddb = "0.21.0"
+maxminddb = "0.23.0"
 flate2 = "1.0.20"
 tar = "0.4.35"
 once_cell = "1.7.2"

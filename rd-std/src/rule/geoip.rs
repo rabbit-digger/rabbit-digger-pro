@@ -41,7 +41,7 @@ impl GeoIpMatcher {
         match result {
             Ok(geoip2::Country {
                 country:
-                    Some(geoip2::model::Country {
+                    Some(geoip2::country::Country {
                         iso_code: Some(country),
                         ..
                     }),

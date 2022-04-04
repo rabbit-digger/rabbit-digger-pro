@@ -14,7 +14,7 @@ use rd_interface::{
     async_trait, Address, Arc, Context, Error, INet, ITcpListener, ITcpStream, IUdpSocket, IntoDyn,
     ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
 };
-use tokio::sync::mpsc::error::SendError;
+use tokio_util::sync::PollSendError;
 
 #[derive(Debug)]
 struct Inner {
@@ -286,7 +286,7 @@ impl ITcpListener for MyTcpListener {
     }
 }
 
-fn map_err<T>(_e: SendError<T>) -> io::Error {
+fn map_err<T>(_e: PollSendError<T>) -> io::Error {
     ErrorKind::BrokenPipe.into()
 }
 

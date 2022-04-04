@@ -5,8 +5,8 @@ use std::{
 
 use futures::{Sink, SinkExt, Stream};
 use pin_project_lite::pin_project;
-use tokio::sync::mpsc::{channel, error::SendError, Receiver};
-use tokio_util::sync::PollSender;
+use tokio::sync::mpsc::{channel, Receiver};
+use tokio_util::sync::{PollSendError, PollSender};
 
 pin_project! {
     #[derive(Debug)]
@@ -52,7 +52,7 @@ impl<T> Stream for Channel<T> {
 }
 
 impl<T: Send + 'static> Sink<T> for Channel<T> {
-    type Error = SendError<T>;
+    type Error = PollSendError<T>;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let this = self.project();
@@ -61,7 +61,7 @@ impl<T: Send + 'static> Sink<T> for Channel<T> {
 
     fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
         let this = self.project();
-        this.sender.start_send(item)
+        this.sender.start_send_unpin(item)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
