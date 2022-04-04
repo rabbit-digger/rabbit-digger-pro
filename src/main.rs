@@ -2,15 +2,15 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use cfg_if::cfg_if;
+use clap::Parser;
 use futures::{pin_mut, stream::TryStreamExt};
 use rabbit_digger_pro::{config::ImportSource, schema, ApiServer, App};
-use structopt::StructOpt;
 use tracing_subscriber::filter::dynamic_filter_fn;
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct ApiServerArgs {
     /// HTTP endpoint bind address.
-    #[structopt(short, long, env = "RD_BIND")]
+    #[clap(short, long, env = "RD_BIND")]
     bind: Option<String>,
 
     /// Access token.
@@ -22,10 +22,10 @@ struct ApiServerArgs {
     web_ui: Option<String>,
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Args {
     /// Path to config file
-    #[structopt(
+    #[clap(
         short,
         long,
         env = "RD_CONFIG",
@@ -34,27 +34,27 @@ struct Args {
     )]
     config: PathBuf,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     api_server: ApiServerArgs,
 
     /// Write generated config to path
-    #[structopt(long, parse(from_os_str))]
+    #[clap(long, parse(from_os_str))]
     write_config: Option<PathBuf>,
 
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: Option<Command>,
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 enum Command {
     /// Generate schema to path, if not present, output to stdout
     GenerateSchema {
-        #[structopt(parse(from_os_str))]
+        #[clap(parse(from_os_str))]
         path: Option<PathBuf>,
     },
     /// Run in server mode
     Server {
-        #[structopt(flatten)]
+        #[clap(flatten)]
         api_server: ApiServerArgs,
     },
 }
@@ -103,9 +103,10 @@ async fn real_main(args: Args) -> Result<()> {
     Ok(())
 }
 
-#[paw::main]
 #[tokio::main]
-async fn main(args: Args) -> Result<()> {
+async fn main() -> Result<()> {
+    let args = Args::parse();
+
     use tracing_subscriber::{layer::SubscriberExt, prelude::*, EnvFilter};
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var(

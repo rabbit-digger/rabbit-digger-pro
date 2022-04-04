@@ -12,8 +12,12 @@ license = "MIT OR Apache-2.0"
 anyhow = "1.0.38"
 tokio = { version = "1.15.0", features = ["full"] }
 tokio-stream = { version = "0.1.6", features = ["net", "sync", "time"] }
-structopt = { version = "0.3.21", default-features = false, features = ["paw"] }
-paw = "1.0.0"
+clap = { version = "3.1.8", default-features = false, features = [
+    "std",
+    "color",
+    "derive",
+    "env",
+] }
 tracing = "0.1.26"
 tracing-subscriber = { version = "0.3.7", features = [
     "registry",
@@ -37,7 +41,7 @@ fs2 = "0.4.3"
 async-stream = "0.3.0"
 once_cell = "1.7.2"
 
-axum = { version = "0.4.8", features = ["ws"], optional = true }
+axum = { version = "0.5.1", features = ["ws"], optional = true }
 serde_urlencoded = { version = "0.7.1", optional = true }
 tower-http = { version = "0.2.3", features = [
     "fs",
