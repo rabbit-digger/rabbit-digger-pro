@@ -105,8 +105,8 @@ where
 
             let UdpEndpoint { from, to } = item;
             let udp = self.get(from);
-            if let Err(e) = udp.send((buf, to)) {
-                tracing::warn!("udp send buffer full. {}", e);
+            if let Err(_e) = udp.send((buf, to)) {
+                tracing::trace!("udp send buffer full");
             }
         }
     }
