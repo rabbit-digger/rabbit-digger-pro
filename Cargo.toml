@@ -16,8 +16,12 @@ futures = "0.3.5"
 serde = { version = "1.0.119", features = ["rc"] }
 serde_with = "1.8.1"
 tokio = { version = "1.12.0", features = ["full"] }
-structopt = { version = "0.3.21", default-features = false, features = ["paw"] }
-paw = "1.0.0"
+clap = { version = "3.1.8", optional = true, default-features = false, features = [
+    "std",
+    "color",
+    "derive",
+    "env",
+] }
 tracing = "0.1.26"
 tracing-subscriber = { version = "0.3.7", optional = true }
 dotenv = "0.15.0"
@@ -43,6 +47,7 @@ tokio = { version = "1.5.0", features = ["macros"] }
 
 [features]
 default = ["rd-std"]
+bin = ["tracing-subscriber", "clap"]
 
 [workspace]
 members = ["rd-interface", "rd-std", "rd-derive"]
@@ -54,4 +59,4 @@ panic = 'abort'
 
 [[bin]]
 name = "rabbit-digger"
-required-features = ["tracing-subscriber"]
+required-features = ["bin"]

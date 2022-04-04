@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use clap::Parser;
 use rabbit_digger::{config::Config, RabbitDigger, Registry};
-use structopt::StructOpt;
 use tokio::fs::read_to_string;
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Args {
     /// Path to config file
-    #[structopt(
+    #[clap(
         short,
         long,
         env = "RD_CONFIG",
@@ -35,9 +35,10 @@ async fn real_main(args: Args) -> Result<()> {
     Ok(())
 }
 
-#[paw::main]
 #[tokio::main]
-async fn main(args: Args) -> Result<()> {
+async fn main() -> Result<()> {
+    let args = Args::parse();
+
     match real_main(args).await {
         Ok(()) => {}
         Err(e) => tracing::error!("Process exit: {:?}", e),
