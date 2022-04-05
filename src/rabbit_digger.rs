@@ -16,7 +16,12 @@ use rd_interface::{
     registry::NetGetter,
     Arc, Error, IntoDyn, Net, Server, Value,
 };
-use tokio::{pin, sync::RwLock, time::timeout};
+use tokio::{
+    pin,
+    sync::RwLock,
+    task::{yield_now, JoinError},
+    time::timeout,
+};
 use uuid::Uuid;
 
 use self::connection_manager::{ConnectionManager, ConnectionState};
@@ -137,8 +142,11 @@ impl RabbitDigger {
                 }
 
                 while let Some((name, r)) = race.next().await {
-                    if let Err(e) = r {
-                        tracing::warn!("Server {} stopped with error: {:?}", name, e);
+                    match r {
+                        Err(e) if !e.is::<JoinError>() => {
+                            tracing::warn!("Server {} stopped with error: {:?}", name, e);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -244,7 +252,7 @@ impl RabbitDigger {
             }
         };
 
-        loop {
+        let reason = loop {
             tracing::info!("rabbit digger is starting...");
 
             self.start(config).await?;
@@ -270,13 +278,32 @@ impl RabbitDigger {
                 }
             };
 
-            config = match new_config? {
-                Some(v) => v,
-                None => break,
+            config = match new_config {
+                Ok(Some(v)) => v,
+                Ok(None) => break Ok(()),
+                Err(e) => break Err(e),
             };
 
             self.stop().await?;
+        };
+
+        tracing::info!(
+            "rabbit digger is exiting... reason: {:?} active connections: {}",
+            reason,
+            self.inner.conn_mgr.borrow_state(|s| s.connection_count())
+        );
+
+        self.stop().await?;
+
+        let mut close_count = 0;
+
+        while self.inner.conn_mgr.borrow_state(|s| s.connection_count()) > 0 {
+            close_count += self.inner.conn_mgr.stop_connections();
+            // Wait connections to exit.
+            yield_now().await;
         }
+
+        tracing::info!("{} connections are closed.", close_count);
 
         Ok(())
     }

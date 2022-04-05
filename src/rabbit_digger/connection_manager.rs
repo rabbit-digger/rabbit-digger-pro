@@ -143,6 +143,9 @@ impl ConnectionState {
             };
         }
     }
+    pub fn connection_count(&self) -> usize {
+        self.connections.len()
+    }
 }
 
 struct ManagerInner {
