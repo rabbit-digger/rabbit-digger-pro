@@ -4,12 +4,13 @@ use std::{
 };
 
 use crate::{stream::IOStream, websocket::WebSocketStream};
-use once_cell::sync::OnceCell;
 use rd_interface::{
-    async_trait, prelude::*, registry::NetRef, Address as RdAddress, Address, Error, INet, IntoDyn,
-    Net, Result, TcpStream, UdpSocket,
+    async_trait,
+    prelude::*,
+    registry::{Builder, NetRef},
+    Address as RdAddress, Address, INet, IntoDyn, Result, TcpStream, UdpSocket,
 };
-use rd_std::tls::{TlsConnector, TlsConnectorConfig};
+use rd_std::tls::{TlsNet, TlsNetConfig};
 use sha2::{Digest, Sha224};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
 use tokio::time::timeout;
@@ -18,32 +19,28 @@ mod tcp;
 mod udp;
 
 pub struct TrojanNet {
-    net: Net,
     server: RdAddress,
-    connector: OnceCell<Result<TlsConnector>>,
     password: String,
     websocket: Option<WebSocket>,
-    tls_config: TlsConnectorConfig,
-    sni: String,
+    tls_net: TlsNet,
     handshake_timeout: Option<u64>,
 }
 
 impl TrojanNet {
     pub fn new(config: TrojanNetConfig) -> Result<Self> {
-        let tls_config = TlsConnectorConfig {
+        let tls_config = TlsNetConfig {
             skip_cert_verify: config.skip_cert_verify,
+            sni: config.sni,
+            net: config.net,
         };
         let server = config.server.clone();
 
         let password = hex::encode(Sha224::digest(config.password.as_bytes()));
         Ok(TrojanNet {
-            net: (*config.net).clone(),
+            tls_net: TlsNet::build(tls_config)?,
             server,
-            connector: OnceCell::new(),
             password,
             websocket: config.websocket,
-            tls_config,
-            sni: config.sni.unwrap_or_else(|| config.server.host()),
             handshake_timeout: config.handshake_timeout,
         })
     }
@@ -83,14 +80,6 @@ pub struct TrojanNetConfig {
 }
 
 impl TrojanNet {
-    fn get_connecter(&self) -> Result<&TlsConnector> {
-        let connector = self
-            .connector
-            .get_or_init(|| TlsConnector::new(self.tls_config.clone()))
-            .as_ref()
-            .map_err(|e| Error::other(format!("Failed to create tls connector: {:?}", e)))?;
-        Ok(&connector)
-    }
     // cmd 1 for Connect, 3 for Udp associate
     fn make_head(&self, cmd: u8, addr: S5Addr) -> Result<Vec<u8>> {
         let head = Vec::<u8>::new();
@@ -105,9 +94,8 @@ impl TrojanNet {
 
         Ok(writer.into_inner())
     }
-    async fn connect_stream(&self, stream: impl IOStream + 'static) -> Result<Box<dyn IOStream>> {
-        let stream = self.get_connecter()?.connect(&self.sni, stream).await?;
-
+    async fn connect_stream(&self, ctx: &mut rd_interface::Context) -> Result<Box<dyn IOStream>> {
+        let stream = self.tls_net.tcp_connect(ctx, &self.server).await?;
         Ok(match &self.websocket {
             Some(ws) => Box::new(WebSocketStream::connect(stream, &ws.host, &ws.path).await?),
             None => Box::new(stream),
@@ -116,12 +104,7 @@ impl TrojanNet {
     async fn get_stream(&self, ctx: &mut rd_interface::Context) -> Result<Box<dyn IOStream>> {
         let timeout_sec = self.handshake_timeout.unwrap_or(10);
 
-        let stream = self.net.tcp_connect(ctx, &self.server).await?;
-        timeout(
-            Duration::from_secs(timeout_sec),
-            self.connect_stream(stream),
-        )
-        .await?
+        timeout(Duration::from_secs(timeout_sec), self.connect_stream(ctx)).await?
     }
 }
 
