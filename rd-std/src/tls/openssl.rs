@@ -12,7 +12,7 @@ pub struct TlsConnector {
 }
 
 impl TlsConnector {
-    pub fn new(config: TlsConnectorConfig) -> Result<TlsConnector> {
+    pub(crate) fn new(config: TlsConnectorConfig) -> Result<TlsConnector> {
         let mut builder = SslConnector::builder(SslMethod::tls()).map_err(map_other)?;
 
         if config.skip_cert_verify {

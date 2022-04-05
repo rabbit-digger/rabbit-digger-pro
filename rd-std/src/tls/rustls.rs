@@ -37,7 +37,7 @@ pub struct TlsConnector {
 }
 
 impl TlsConnector {
-    pub fn new(config: TlsConnectorConfig) -> Result<TlsConnector> {
+    pub(crate) fn new(config: TlsConnectorConfig) -> Result<TlsConnector> {
         let mut root_cert_store = RootCertStore::empty();
         root_cert_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(
             |ta| {

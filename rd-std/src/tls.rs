@@ -1,4 +1,4 @@
-pub use backend::*;
+use backend::*;
 use rd_interface::{
     async_trait, config::NetRef, prelude::*, rd_config, registry::Builder, Address, INet, Net,
     Registry, Result, TcpStream,
@@ -17,7 +17,7 @@ mod backend;
 mod backend;
 
 #[derive(Clone)]
-pub struct TlsConnectorConfig {
+pub(crate) struct TlsConnectorConfig {
     pub skip_cert_verify: bool,
 }
 

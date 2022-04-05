@@ -9,7 +9,7 @@ pub struct TlsConnector {
 }
 
 impl TlsConnector {
-    pub fn new(config: TlsConnectorConfig) -> Result<TlsConnector> {
+    pub(crate) fn new(config: TlsConnectorConfig) -> Result<TlsConnector> {
         let mut builder = native_tls::TlsConnector::builder();
         if config.skip_cert_verify {
             builder.danger_accept_invalid_certs(true);
