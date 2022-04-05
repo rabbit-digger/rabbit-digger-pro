@@ -9,6 +9,7 @@ pub mod rule;
 pub mod sniffer;
 pub mod socks5;
 pub mod tests;
+pub mod tls;
 pub mod transparent;
 pub mod util;
 
@@ -17,6 +18,7 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     sniffer::init(registry)?;
     http::init(registry)?;
     mixed::init(registry)?;
+    tls::init(registry)?;
     transparent::init(registry)?;
     rule::init(registry)?;
     socks5::init(registry)?;
