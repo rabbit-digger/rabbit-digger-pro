@@ -11,7 +11,7 @@ pub mod log;
 pub mod schema;
 mod select;
 pub mod storage;
-mod util;
+pub mod util;
 
 pub fn get_registry() -> Result<Registry> {
     let mut registry = Registry::new_with_builtin()?;
