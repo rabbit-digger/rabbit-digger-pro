@@ -3,8 +3,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use cfg_if::cfg_if;
 use clap::Parser;
-use futures::{pin_mut, stream::TryStreamExt};
-use rabbit_digger_pro::{config::ImportSource, schema, ApiServer, App};
+use futures::{
+    pin_mut,
+    stream::{select, TryStreamExt},
+    StreamExt,
+};
+use rabbit_digger_pro::{config::ImportSource, schema, util::exit_stream, ApiServer, App};
 use tracing_subscriber::filter::dynamic_filter_fn;
 
 #[derive(Parser)]
@@ -93,10 +97,19 @@ async fn real_main(args: Args) -> Result<()> {
             };
             Ok(c)
         });
+    let exit_stream = exit_stream().map(|i| {
+        let r: Result<rabbit_digger::Config> = match i {
+            Ok(_) => Err(rd_interface::Error::AbortedByUser.into()),
+            Err(e) => Err(e.into()),
+        };
+        r
+    });
 
-    pin_mut!(config_stream);
+    let stream = select(config_stream, exit_stream);
+
+    pin_mut!(stream);
     app.rd
-        .start_stream(config_stream)
+        .start_stream(stream)
         .await
         .context("Failed to run RabbitDigger")?;
 

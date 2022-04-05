@@ -1,4 +1,7 @@
-use std::io::{Cursor, Write};
+use std::{
+    io::{Cursor, Write},
+    time::Duration,
+};
 
 use crate::{
     stream::IOStream,
@@ -12,6 +15,7 @@ use rd_interface::{
 };
 use sha2::{Digest, Sha224};
 use socks5_protocol::{sync::FromIO, Address as S5Addr};
+use tokio::time::timeout;
 
 mod tcp;
 mod udp;
@@ -23,6 +27,10 @@ pub struct TrojanNet {
     password: String,
     websocket: Option<WebSocket>,
     tls_config: TlsConnectorConfig,
+
+    /// timeout of TLS handshake, in seconds.
+    /// default value is 10
+    handshake_timeout: Option<u64>,
 }
 
 impl TrojanNet {
@@ -41,6 +49,7 @@ impl TrojanNet {
             password,
             websocket: config.websocket,
             tls_config,
+            handshake_timeout: config.handshake_timeout,
         })
     }
 }
@@ -73,6 +82,9 @@ pub struct TrojanNetConfig {
     /// enabled websocket support
     #[serde(default)]
     websocket: Option<WebSocket>,
+
+    /// timeout of TLS handshake, in seconds.
+    handshake_timeout: Option<u64>,
 }
 
 impl TrojanNet {
@@ -98,14 +110,23 @@ impl TrojanNet {
 
         Ok(writer.into_inner())
     }
-    async fn get_stream(&self, ctx: &mut rd_interface::Context) -> Result<Box<dyn IOStream>> {
-        let stream = self.net.tcp_connect(ctx, &self.server).await?;
+    async fn connect_stream(&self, stream: impl IOStream + 'static) -> Result<Box<dyn IOStream>> {
         let stream = self.get_connecter()?.connect(stream).await?;
 
         Ok(match &self.websocket {
             Some(ws) => Box::new(WebSocketStream::connect(stream, &ws.host, &ws.path).await?),
             None => Box::new(stream),
         })
+    }
+    async fn get_stream(&self, ctx: &mut rd_interface::Context) -> Result<Box<dyn IOStream>> {
+        let timeout_sec = self.handshake_timeout.unwrap_or(10);
+
+        let stream = self.net.tcp_connect(ctx, &self.server).await?;
+        timeout(
+            Duration::from_secs(timeout_sec),
+            self.connect_stream(stream),
+        )
+        .await?
     }
 }
 
