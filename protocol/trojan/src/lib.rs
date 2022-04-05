@@ -3,7 +3,6 @@ use rd_interface::{registry::Builder, Net, Registry, Result};
 
 mod client;
 mod stream;
-mod tls;
 mod websocket;
 
 impl Builder<Net> for TrojanNet {
