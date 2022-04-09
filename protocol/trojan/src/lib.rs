@@ -1,4 +1,4 @@
-use client::{TrojanNet, TrojanNetConfig};
+use client::{TrojanNet, TrojanNetConfig, TrojancNetConfig};
 use rd_interface::{registry::Builder, Net, Registry, Result};
 
 mod client;
@@ -11,12 +11,24 @@ impl Builder<Net> for TrojanNet {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        TrojanNet::new(config)
+        TrojanNet::new_trojan(config)
+    }
+}
+
+pub struct TrojancNet;
+impl Builder<Net> for TrojancNet {
+    const NAME: &'static str = "trojanc";
+    type Config = TrojancNetConfig;
+    type Item = TrojanNet;
+
+    fn build(config: Self::Config) -> Result<TrojanNet> {
+        TrojanNet::new_trojanc(config)
     }
 }
 
 pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_net::<TrojanNet>();
+    registry.add_net::<TrojancNet>();
 
     Ok(())
 }

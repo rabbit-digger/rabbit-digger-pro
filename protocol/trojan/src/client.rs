@@ -19,15 +19,15 @@ mod tcp;
 mod udp;
 
 pub struct TrojanNet {
+    net: Net,
     server: RdAddress,
     password: String,
     websocket: Option<WebSocket>,
-    tls_net: Net,
     handshake_timeout: Option<u64>,
 }
 
 impl TrojanNet {
-    pub fn new(config: TrojanNetConfig) -> Result<Self> {
+    pub fn new_trojan(config: TrojanNetConfig) -> Result<Self> {
         let tls_config = TlsNetConfig {
             skip_cert_verify: config.skip_cert_verify,
             sni: config.sni,
@@ -36,9 +36,22 @@ impl TrojanNet {
         let server = config.server.clone();
 
         let password = hex::encode(Sha224::digest(config.password.as_bytes()));
+        let net = TlsNet::build(tls_config)?.into_dyn();
+
         Ok(TrojanNet {
-            tls_net: TlsNet::build(tls_config)?.into_dyn(),
+            net,
             server,
+            password,
+            websocket: config.websocket,
+            handshake_timeout: config.handshake_timeout,
+        })
+    }
+    pub fn new_trojanc(config: TrojancNetConfig) -> Result<Self> {
+        let password = hex::encode(Sha224::digest(config.password.as_bytes()));
+
+        Ok(TrojanNet {
+            net: (*config.net).clone(),
+            server: config.server,
             password,
             websocket: config.websocket,
             handshake_timeout: config.handshake_timeout,
@@ -79,6 +92,24 @@ pub struct TrojanNetConfig {
     handshake_timeout: Option<u64>,
 }
 
+#[rd_config]
+pub struct TrojancNetConfig {
+    #[serde(default)]
+    net: NetRef,
+
+    /// hostname:port
+    server: RdAddress,
+    /// password in plain text
+    password: String,
+
+    /// enabled websocket support
+    #[serde(default)]
+    websocket: Option<WebSocket>,
+
+    /// timeout of TLS handshake, in seconds.
+    handshake_timeout: Option<u64>,
+}
+
 impl TrojanNet {
     // cmd 1 for Connect, 3 for Udp associate
     fn make_head(&self, cmd: u8, addr: S5Addr) -> Result<Vec<u8>> {
@@ -95,7 +126,7 @@ impl TrojanNet {
         Ok(writer.into_inner())
     }
     async fn connect_stream(&self, ctx: &mut rd_interface::Context) -> Result<Box<dyn IOStream>> {
-        let stream = self.tls_net.tcp_connect(ctx, &self.server).await?;
+        let stream = self.net.tcp_connect(ctx, &self.server).await?;
         Ok(match &self.websocket {
             Some(ws) => Box::new(WebSocketStream::connect(stream, &ws.host, &ws.path).await?),
             None => Box::new(stream),
@@ -167,7 +198,7 @@ mod tests {
     fn test_provider() {
         let net = TestNet::new().into_dyn();
 
-        let trojan = TrojanNet::new(TrojanNetConfig {
+        let trojan = TrojanNet::new_trojan(TrojanNetConfig {
             net: NetRef::new_with_value("test".into(), net),
             server: "127.0.0.1:1234".into_address().unwrap(),
             password: "password".to_string(),
