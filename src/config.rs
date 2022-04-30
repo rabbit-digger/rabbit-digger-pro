@@ -15,7 +15,7 @@ use std::{
     path::PathBuf,
     time::{Duration, SystemTime},
 };
-use tokio::{fs::read_to_string, time::sleep};
+use tokio::{fs::read_to_string, sync::OnceCell, time::sleep};
 
 use crate::{
     storage::{FileStorage, FolderType, Storage},
@@ -25,6 +25,9 @@ use crate::{
 mod importer;
 mod manager;
 mod select_map;
+
+static CONFIG_STORAGE: OnceCell<FileStorage> = OnceCell::const_new();
+const POLL_VISIT_PREFIX: &str = "poll_visit";
 
 #[rd_config]
 #[derive(Debug, Clone)]
@@ -48,6 +51,16 @@ pub enum ImportSource {
     Poll(ImportUrl),
     Storage(ImportStorage),
     Text(String),
+}
+
+async fn config_storage() -> &'static FileStorage {
+    CONFIG_STORAGE
+        .get_or_init(|| async {
+            FileStorage::new(FolderType::Cache, POLL_VISIT_PREFIX)
+                .await
+                .unwrap()
+        })
+        .await
 }
 
 async fn fetch(url: &str) -> Result<String> {
@@ -116,8 +129,16 @@ impl ImportSource {
         Ok(match self {
             ImportSource::Path(path) => read_to_string(path).await?,
             ImportSource::Poll(ImportUrl { url, .. }) => {
+                config_storage().await.set(&key, "").await?;
                 tracing::info!("Fetching {}", url);
-                let content = retry(3, || fetch(&url)).await?;
+                let content = match retry(3, || fetch(&url)).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::warn!("Failed to fetch {}: {:?}, try to use cache", url, e);
+                        // Don't set cache, let it expired
+                        return Ok(cache.get(&key).await?.ok_or(e)?.content);
+                    }
+                };
                 tracing::info!("Done");
                 cache.set(&key, &content).await?;
                 content
@@ -149,12 +170,22 @@ impl ImportSource {
                 stream.next().await;
             }
             ImportSource::Poll(ImportUrl { interval, .. }) => {
+                let visited_at = config_storage()
+                    .await
+                    .get_updated_at(&self.cache_key())
+                    .await
+                    .unwrap();
                 let updated_at = cache.get_updated_at(&self.cache_key()).await?;
-                match (updated_at, interval) {
+                let time = match (visited_at, updated_at) {
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                    (Some(t), None) | (None, Some(t)) => Some(t),
+                    _ => None,
+                };
+                match (time, interval) {
                     (None, _) => {}
                     (Some(_), None) => pending().await,
-                    (Some(updated_at), Some(interval)) => {
-                        let expired_at = updated_at + Duration::from_secs(*interval);
+                    (Some(time), Some(interval)) => {
+                        let expired_at = time + Duration::from_secs(*interval);
                         let tts = expired_at
                             .duration_since(SystemTime::now())
                             .unwrap_or(Duration::ZERO);

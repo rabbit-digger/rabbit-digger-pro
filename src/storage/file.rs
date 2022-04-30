@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
+    io::Write,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -12,6 +13,7 @@ use rd_interface::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::{
     fs::{create_dir_all, read_to_string, remove_file, write},
+    sync::RwLock,
     task::spawn_blocking,
 };
 use uuid::Uuid;
@@ -40,6 +42,8 @@ impl FolderType {
 pub struct FileStorage {
     storage_dir: PathBuf,
     index_path: PathBuf,
+    lock_path: PathBuf,
+    lock: RwLock<()>,
 }
 
 impl FileStorage {
@@ -49,10 +53,20 @@ impl FileStorage {
             .await
             .context("Failed to create cache dir")?;
         let index_path = storage_dir.join("index.json");
+        let lock_path = storage_dir.join("index.lock");
+        File::create(&lock_path).context("create index lock")?;
         let cache = FileStorage {
             storage_dir,
             index_path: index_path.clone(),
+            lock_path,
+            lock: RwLock::new(()),
         };
+        if tokio::fs::metadata(&index_path).await.is_ok() && cache.get_index().await.is_err() {
+            tracing::warn!("Index file is corrupted, try to remove it");
+            remove_file(&index_path)
+                .await
+                .context("Failed to remove index file")?;
+        }
         if tokio::fs::metadata(index_path).await.is_err() {
             cache
                 .set_index(Index {
@@ -74,11 +88,13 @@ impl FileStorage {
     }
     async fn get_index(&self) -> Result<Index> {
         let index_path = self.index_path.clone();
+        let lock_path = self.lock_path.clone();
         let index = spawn_blocking(move || {
+            let lock = File::open(&lock_path).context("open cache index")?;
+            lock.lock_shared().context("lock cache index")?;
             let file = File::open(&index_path).context("open cache index")?;
-            file.lock_shared().context("lock cache index")?;
             let result = serde_json::from_reader(&file).context("deserial cache index");
-            file.unlock().context("unlock cache index")?;
+            lock.unlock().context("unlock cache index")?;
             Result::<Index>::Ok(result?)
         })
         .await??;
@@ -86,11 +102,14 @@ impl FileStorage {
     }
     async fn set_index(&self, index: Index) -> Result<()> {
         let index_path = self.index_path.clone();
+        let lock_path = self.lock_path.clone();
         spawn_blocking(move || {
+            let mut lock = File::open(&lock_path).context("open cache index")?;
+            lock.lock_exclusive().context("lock cache index mut")?;
             let file = File::create(&index_path).context("open cache index")?;
-            file.lock_exclusive().context("lock cache index mut")?;
             let result = serde_json::to_writer(&file, &index).context("serialize cache index");
-            file.unlock().context("unlock cache index")?;
+            lock.flush()?;
+            lock.unlock().context("unlock cache index")?;
             Result::<()>::Ok(result?)
         })
         .await??;
@@ -107,10 +126,12 @@ struct Index {
 #[async_trait]
 impl Storage for FileStorage {
     async fn get_updated_at(&self, key: &str) -> Result<Option<SystemTime>> {
+        let _ = self.lock.read().await;
         let index = self.get_index().await?;
         Ok(index.index.get(key).map(|item| item.updated_at))
     }
     async fn get(&self, key: &str) -> Result<Option<StorageItem>> {
+        let _ = self.lock.read().await;
         let index = self.get_index().await?;
         Ok(match index.index.get(key) {
             Some(item) => Some(StorageItem {
@@ -122,6 +143,7 @@ impl Storage for FileStorage {
     }
 
     async fn set(&self, key: &str, value: &str) -> Result<()> {
+        let _ = self.lock.write().await;
         let mut index = self.get_index().await?;
 
         let filename = index
@@ -144,6 +166,7 @@ impl Storage for FileStorage {
         Ok(())
     }
     async fn keys(&self) -> Result<Vec<StorageKey>> {
+        let _ = self.lock.read().await;
         let index = self.get_index().await?;
         Ok(index
             .index
@@ -156,6 +179,7 @@ impl Storage for FileStorage {
     }
 
     async fn remove(&self, key: &str) -> Result<()> {
+        let _ = self.lock.write().await;
         let mut index = self.get_index().await?;
 
         let filename = index
