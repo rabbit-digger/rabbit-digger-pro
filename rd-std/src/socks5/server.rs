@@ -3,8 +3,8 @@ use crate::ContextExt;
 use anyhow::Context as AnyhowContext;
 use futures::ready;
 use rd_interface::{
-    async_trait, constant::UDP_BUFFER_SIZE, Address as RdAddr, Address as RDAddr, Context, IServer,
-    IUdpChannel, IntoDyn, Net, ReadBuf, Result, TcpStream, UdpSocket,
+    async_trait, constant::UDP_BUFFER_SIZE, Address as RdAddr, Address as RDAddr, AsyncRead,
+    Context, IServer, IUdpChannel, IntoDyn, Net, ReadBuf, Result, TcpStream, UdpSocket,
 };
 use socks5_protocol::{
     Address, AuthMethod, AuthRequest, AuthResponse, Command, CommandReply, CommandRequest,
@@ -13,6 +13,7 @@ use socks5_protocol::{
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    pin::Pin,
     sync::Arc,
     task::{self, Poll},
 };
@@ -123,11 +124,9 @@ impl Socks5Server {
                 CommandResponse::success(addr).write(&mut socket).await?;
                 socket.flush().await.context("command response")?;
 
-                let socket = socket.into_inner();
-
                 let udp_channel = Socks5UdpSocket {
                     udp,
-                    _tcp: socket,
+                    tcp: socket.into_inner(),
                     endpoint: None,
                     send_buf: Vec::with_capacity(UDP_BUFFER_SIZE),
                 };
@@ -152,9 +151,17 @@ impl Socks5Server {
 pub struct Socks5UdpSocket {
     udp: UdpSocket,
     // keep connection
-    _tcp: TcpStream,
+    tcp: TcpStream,
     endpoint: Option<SocketAddr>,
     send_buf: Vec<u8>,
+}
+
+impl Socks5UdpSocket {
+    fn poll_tcp_close(&mut self, cx: &mut task::Context<'_>) -> Poll<bool> {
+        let mut buf = [0; 1];
+        let mut buf = ReadBuf::new(&mut buf);
+        Poll::Ready(ready!(Pin::new(&mut self.tcp).poll_read(cx, &mut buf)).is_err())
+    }
 }
 
 impl IUdpChannel for Socks5UdpSocket {
@@ -179,6 +186,12 @@ impl IUdpChannel for Socks5UdpSocket {
         buf: &[u8],
         target: &SocketAddr,
     ) -> Poll<io::Result<usize>> {
+        if let Poll::Ready(true) = self.poll_tcp_close(cx) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "connection closed",
+            )));
+        }
         let Socks5UdpSocket {
             udp,
             endpoint,
