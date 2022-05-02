@@ -1,4 +1,5 @@
 use super::TlsConnectorConfig;
+use native_tls_crate as _;
 use rd_interface::{error::map_other, AsyncRead, AsyncWrite, Result};
 use tokio_native_tls::native_tls;
 
