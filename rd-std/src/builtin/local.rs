@@ -6,14 +6,18 @@ use std::{
     time::Duration,
 };
 
-use futures::{ready, Future, FutureExt};
+use futures::{ready, stream::FuturesUnordered, Future, FutureExt, StreamExt};
+use itertools::Itertools;
 use parking_lot::Mutex;
 use rd_interface::{
     async_trait, config::NetRef, impl_async_read_write, prelude::*, registry::Builder, Address,
     INet, IntoDyn, Net, ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
 };
 use socket2::{Domain, Socket, Type};
-use tokio::{net, time::timeout};
+use tokio::{
+    net,
+    time::{sleep, timeout},
+};
 use tracing::instrument;
 
 /// A local network.
@@ -194,6 +198,41 @@ impl LocalNet {
 
         Ok(tcp)
     }
+    async fn tcp_connect_happy_eyeballs(&self, addr: &Address) -> Result<TcpStream> {
+        // TODO: resolve A, AAAA separately
+        let addrs = addr
+            .resolve(|d, p| self.resolver.clone().lookup_host(d, p))
+            .await?;
+        let mut last_err = None;
+
+        // interleave the addresses, v6 first
+        let v4_addrs = addrs.iter().filter(|addr| addr.is_ipv4());
+        let v6_addrs = addrs.iter().filter(|addr| addr.is_ipv6());
+        let addrs = v6_addrs.interleave(v4_addrs);
+
+        let mut unordered = addrs
+            .enumerate()
+            .map(|(i, addr)| async move {
+                sleep(Duration::from_millis(i as u64 * 250)).await;
+                self.tcp_connect_single(*addr).await
+            })
+            .collect::<FuturesUnordered<_>>();
+
+        while let Some(res) = unordered.next().await {
+            match res {
+                Ok(stream) => return Ok(CompatTcp::new(stream).into_dyn()),
+                Err(err) => last_err = Some(err),
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "could not resolve to any address",
+            )
+            .into()
+        }))
+    }
     async fn tcp_bind_single(&self, addr: SocketAddr) -> Result<net::TcpListener> {
         let listener = net::TcpListener::bind(addr).await?;
 
@@ -341,25 +380,7 @@ impl INet for LocalNet {
         _ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<TcpStream> {
-        let addrs = addr
-            .resolve(|d, p| self.resolver.clone().lookup_host(d, p))
-            .await?;
-        let mut last_err = None;
-
-        for addr in addrs {
-            match self.tcp_connect_single(addr).await {
-                Ok(stream) => return Ok(CompatTcp::new(stream).into_dyn()),
-                Err(e) => last_err = Some(e),
-            }
-        }
-
-        Err(last_err.unwrap_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "could not resolve to any address",
-            )
-            .into()
-        }))
+        self.tcp_connect_happy_eyeballs(addr).await
     }
 
     #[instrument(err)]
