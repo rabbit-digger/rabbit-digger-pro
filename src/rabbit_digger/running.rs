@@ -401,6 +401,7 @@ mod tests {
         tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet},
         util::NotImplementedNet,
     };
+    use tokio::task::JoinError;
 
     use crate::rabbit_digger::event::EventType;
 
@@ -564,7 +565,7 @@ mod tests {
         server.stop().await.unwrap();
         assert!(matches!(*server.state.read().await, State::Finished { .. }));
 
-        let result = server.take_result().await.unwrap();
-        assert_eq!(format!("{:?}", result), "Err(cancelled)");
+        let err = server.take_result().await.unwrap().unwrap_err();
+        assert!(err.downcast_ref::<JoinError>().unwrap().is_cancelled());
     }
 }

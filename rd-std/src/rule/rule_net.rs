@@ -225,7 +225,7 @@ mod tests {
         let mut tcp = rule_net
             .tcp_connect(
                 &mut Context::from_socketaddr("127.0.0.1:1".parse().unwrap()),
-                &"localhost:12345".into_address().unwrap(),
+                &"127.0.0.1:12345".into_address().unwrap(),
             )
             .await
             .unwrap();

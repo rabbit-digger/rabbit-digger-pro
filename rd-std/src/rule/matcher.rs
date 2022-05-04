@@ -64,6 +64,7 @@ impl MatchContext {
     pub fn address(&self) -> &Address {
         &self.address
     }
+    #[allow(dead_code)]
     pub fn src_ip_addr(&self) -> Option<&IpAddr> {
         self.src_ip_addr.as_ref()
     }
