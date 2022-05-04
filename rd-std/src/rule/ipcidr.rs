@@ -29,9 +29,9 @@ impl SrcIpCidrMatcher {
 
 impl Matcher for SrcIpCidrMatcher {
     fn match_rule(&self, match_context: &MatchContext) -> MaybeAsync<bool> {
-        match match_context.address() {
-            Address::SocketAddr(addr) => self.test(addr.ip()),
-            _ => false,
+        match match_context.src_ip_addr() {
+            Some(addr) => self.test(*addr),
+            None => false,
         }
         .into()
     }
