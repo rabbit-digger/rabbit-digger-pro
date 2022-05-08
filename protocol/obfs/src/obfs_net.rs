@@ -70,3 +70,31 @@ impl ITcpListener for ObfsTcpListener {
         self.0.local_addr().await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_std::tests::{assert_net_provider, ProviderCapability, TestNet};
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let net = TestNet::new().into_dyn();
+
+        let obfs = ObfsNet::new(ObfsNetConfig {
+            net: NetRef::new_with_value("test".into(), net.clone()),
+            obfs_type: ObfsType::Plain(Default::default()),
+        })
+        .unwrap()
+        .into_dyn();
+
+        assert_net_provider(
+            &obfs,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                ..Default::default()
+            },
+        );
+    }
+}

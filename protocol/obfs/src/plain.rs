@@ -2,7 +2,7 @@ use crate::Obfs;
 use rd_interface::{prelude::*, Address, Result, TcpStream};
 
 #[rd_config]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Plain;
 
 impl Obfs for Plain {

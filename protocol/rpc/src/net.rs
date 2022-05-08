@@ -148,3 +148,34 @@ impl INet for RpcNet {
         Some(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::IntoAddress;
+    use rd_std::tests::{assert_net_provider, ProviderCapability, TestNet};
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let net = TestNet::new().into_dyn();
+
+        let rpc = RpcNet::new(
+            net,
+            "127.0.0.1:1234".into_address().unwrap(),
+            true,
+            Codec::Cbor,
+        )
+        .into_dyn();
+
+        assert_net_provider(
+            &rpc,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
+    }
+}

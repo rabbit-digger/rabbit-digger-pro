@@ -107,3 +107,34 @@ impl INet for SSNet {
         Some(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::IntoAddress;
+    use rd_std::tests::{assert_net_provider, ProviderCapability, TestNet};
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let net = TestNet::new().into_dyn();
+
+        let ss = SSNet::new(SSNetConfig {
+            server: "127.0.0.1:1234".into_address().unwrap(),
+            password: "password".to_string(),
+            udp: false,
+            cipher: Cipher::AES_128_CCM,
+            net: NetRef::new_with_value("test".into(), net),
+        })
+        .into_dyn();
+
+        assert_net_provider(
+            &ss,
+            ProviderCapability {
+                tcp_connect: true,
+                udp_bind: true,
+                ..Default::default()
+            },
+        );
+    }
+}

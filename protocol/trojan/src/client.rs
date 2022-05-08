@@ -155,3 +155,37 @@ impl INet for TrojanNet {
         Some(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::IntoAddress;
+    use rd_std::tests::{assert_net_provider, ProviderCapability, TestNet};
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let net = TestNet::new().into_dyn();
+
+        let trojan = TrojanNet::new(TrojanNetConfig {
+            net: NetRef::new_with_value("test".into(), net),
+            server: "127.0.0.1:1234".into_address().unwrap(),
+            password: "password".to_string(),
+            sni: None,
+            skip_cert_verify: false,
+            websocket: None,
+            handshake_timeout: None,
+        })
+        .unwrap()
+        .into_dyn();
+
+        assert_net_provider(
+            &trojan,
+            ProviderCapability {
+                tcp_connect: true,
+                udp_bind: true,
+                ..Default::default()
+            },
+        );
+    }
+}

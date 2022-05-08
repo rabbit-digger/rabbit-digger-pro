@@ -64,3 +64,33 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_net::<SelectNet>();
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use rd_interface::IntoDyn;
+    use rd_std::tests::{assert_net_provider, ProviderCapability, TestNet};
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let net = NetRef::new_with_value("test".into(), TestNet::new().into_dyn());
+
+        let select = SelectNet::new(SelectNetConfig {
+            selected: net.clone(),
+            list: vec![net],
+        })
+        .unwrap()
+        .into_dyn();
+
+        assert_net_provider(
+            &select,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
+    }
+}
