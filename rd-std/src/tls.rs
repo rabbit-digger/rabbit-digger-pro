@@ -42,7 +42,7 @@ pub struct TlsNet {
 }
 
 #[async_trait]
-impl INet for TlsNet {
+impl rd_interface::TcpConnect for TlsNet {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
@@ -55,6 +55,12 @@ impl INet for TlsNet {
         };
 
         Ok(TcpStream::from(tls_stream))
+    }
+}
+
+impl INet for TlsNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
     }
 }
 

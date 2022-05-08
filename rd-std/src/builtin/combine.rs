@@ -1,9 +1,4 @@
-use std::net::SocketAddr;
-
-use rd_interface::{
-    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, INet, Net,
-    Result, TcpListener, TcpStream, UdpSocket,
-};
+use rd_interface::{config::NetRef, prelude::*, registry::Builder, INet, Net, Result};
 
 pub struct CombineNet {
     tcp_connect: Net,
@@ -12,22 +7,21 @@ pub struct CombineNet {
     lookup_host: Net,
 }
 
-#[async_trait]
 impl INet for CombineNet {
-    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        self.tcp_connect.tcp_connect(ctx, addr).await
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        self.tcp_connect.provide_tcp_connect()
     }
 
-    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-        self.tcp_bind.tcp_bind(ctx, addr).await
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        self.tcp_bind.provide_tcp_bind()
     }
 
-    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        self.udp_bind.udp_bind(ctx, addr).await
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        self.udp_bind.provide_udp_bind()
     }
 
-    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.lookup_host.lookup_host(addr).await
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        self.lookup_host.provide_lookup_host()
     }
 }
 

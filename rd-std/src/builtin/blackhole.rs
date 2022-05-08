@@ -2,7 +2,7 @@ use std::{future::pending, io, net::SocketAddr, task::Poll};
 
 use rd_interface::{
     async_trait, config::EmptyConfig, registry::Builder, Address, INet, ITcpListener, ITcpStream,
-    IUdpSocket, IntoDyn, Net, ReadBuf, Result, NOT_IMPLEMENTED,
+    IUdpSocket, IntoDyn, Net, ReadBuf, Result, TcpBind, TcpConnect, UdpBind, NOT_IMPLEMENTED,
 };
 pub struct BlackholeNet;
 
@@ -88,36 +88,47 @@ impl IUdpSocket for BlackItem {
     }
 }
 
-#[async_trait]
 impl INet for BlackholeNet {
-    async fn tcp_connect(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &rd_interface::Address,
-    ) -> Result<rd_interface::TcpStream> {
-        Ok(BlackItem.into_dyn())
-    }
+    fn provide_tcp_connect(&self) -> Option<&dyn TcpConnect> {
+        #[async_trait]
+        impl TcpConnect for BlackholeNet {
+            async fn tcp_connect(
+                &self,
+                _ctx: &mut rd_interface::Context,
+                _addr: &Address,
+            ) -> Result<rd_interface::TcpStream> {
+                Ok(BlackItem.into_dyn())
+            }
+        }
 
-    async fn tcp_bind(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &rd_interface::Address,
-    ) -> Result<rd_interface::TcpListener> {
-        Ok(BlackItem.into_dyn())
+        Some(self)
     }
+    fn provide_tcp_bind(&self) -> Option<&dyn TcpBind> {
+        #[async_trait]
+        impl TcpBind for BlackholeNet {
+            async fn tcp_bind(
+                &self,
+                _ctx: &mut rd_interface::Context,
+                _addr: &Address,
+            ) -> Result<rd_interface::TcpListener> {
+                Ok(BlackItem.into_dyn())
+            }
+        }
 
-    async fn udp_bind(
-        &self,
-        _ctx: &mut rd_interface::Context,
-        _addr: &rd_interface::Address,
-    ) -> Result<rd_interface::UdpSocket> {
-        Ok(BlackItem.into_dyn())
+        Some(self)
     }
+    fn provide_udp_bind(&self) -> Option<&dyn UdpBind> {
+        #[async_trait]
+        impl UdpBind for BlackholeNet {
+            async fn udp_bind(
+                &self,
+                _ctx: &mut rd_interface::Context,
+                _addr: &Address,
+            ) -> Result<rd_interface::UdpSocket> {
+                Ok(BlackItem.into_dyn())
+            }
+        }
 
-    async fn lookup_host(
-        &self,
-        _addr: &rd_interface::Address,
-    ) -> Result<Vec<std::net::SocketAddr>> {
-        Err(rd_interface::NOT_IMPLEMENTED)
+        Some(self)
     }
 }

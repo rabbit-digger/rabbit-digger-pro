@@ -5,7 +5,7 @@ use rd_interface::{
     async_trait,
     prelude::*,
     registry::{Builder, NetRef},
-    Address, Arc, INet, Net, Result, TcpListener, TcpStream, UdpSocket,
+    Address, Arc, INet, Net, Result, TcpStream, UdpSocket,
 };
 
 type Resolver =
@@ -51,54 +51,69 @@ impl ResolveNet {
     }
 }
 
-#[async_trait]
 impl INet for ResolveNet {
-    async fn tcp_connect(
-        &self,
-        ctx: &mut rd_interface::Context,
-        addr: &Address,
-    ) -> Result<TcpStream> {
-        let addrs = addr.resolve(&*self.resolver).await?;
-        let mut last_err = None;
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        #[async_trait]
+        impl rd_interface::TcpConnect for ResolveNet {
+            async fn tcp_connect(
+                &self,
+                ctx: &mut rd_interface::Context,
+                addr: &Address,
+            ) -> Result<TcpStream> {
+                let addrs = addr.resolve(&*self.resolver).await?;
+                let mut last_err = None;
 
-        for addr in addrs {
-            match self.net.tcp_connect(ctx, &addr.into()).await {
-                Ok(stream) => return Ok(stream),
-                Err(e) => last_err = Some(e),
+                for addr in addrs {
+                    match self.net.tcp_connect(ctx, &addr.into()).await {
+                        Ok(stream) => return Ok(stream),
+                        Err(e) => last_err = Some(e),
+                    }
+                }
+
+                Err(last_err.unwrap_or_else(|| {
+                    io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address")
+                        .into()
+                }))
             }
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address").into()
-        }))
+        Some(self)
     }
 
-    async fn tcp_bind(
-        &self,
-        ctx: &mut rd_interface::Context,
-        addr: &Address,
-    ) -> Result<TcpListener> {
-        self.net.tcp_bind(ctx, addr).await
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        self.net.provide_tcp_bind()
     }
 
-    async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
-        let addrs = addr.resolve(&*self.resolver).await?;
-        let mut last_err = None;
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        #[async_trait]
+        impl rd_interface::UdpBind for ResolveNet {
+            async fn udp_bind(
+                &self,
+                ctx: &mut rd_interface::Context,
+                addr: &Address,
+            ) -> Result<UdpSocket> {
+                let addrs = addr.resolve(&*self.resolver).await?;
+                let mut last_err = None;
 
-        for addr in addrs {
-            match self.net.udp_bind(ctx, &addr.into()).await {
-                Ok(udp) => return Ok(udp),
-                Err(e) => last_err = Some(e),
+                for addr in addrs {
+                    match self.net.udp_bind(ctx, &addr.into()).await {
+                        Ok(udp) => return Ok(udp),
+                        Err(e) => last_err = Some(e),
+                    }
+                }
+
+                Err(last_err.unwrap_or_else(|| {
+                    io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address")
+                        .into()
+                }))
             }
         }
 
-        Err(last_err.unwrap_or_else(|| {
-            io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address").into()
-        }))
+        Some(self)
     }
 
-    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.net.lookup_host(addr).await
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        self.net.provide_lookup_host()
     }
 }
 

@@ -373,7 +373,7 @@ impl rd_interface::IUdpSocket for Udp {
 }
 
 #[async_trait]
-impl INet for LocalNet {
+impl rd_interface::TcpConnect for LocalNet {
     #[instrument(err)]
     async fn tcp_connect(
         &self,
@@ -382,7 +382,10 @@ impl INet for LocalNet {
     ) -> Result<TcpStream> {
         self.tcp_connect_happy_eyeballs(addr).await
     }
+}
 
+#[async_trait]
+impl rd_interface::TcpBind for LocalNet {
     #[instrument(err)]
     async fn tcp_bind(
         &self,
@@ -409,7 +412,10 @@ impl INet for LocalNet {
             .into()
         }))
     }
+}
 
+#[async_trait]
+impl rd_interface::UdpBind for LocalNet {
     #[instrument(err)]
     async fn udp_bind(
         &self,
@@ -436,13 +442,34 @@ impl INet for LocalNet {
             .into()
         }))
     }
+}
 
+#[async_trait]
+impl rd_interface::LookupHost for LocalNet {
     #[instrument(err)]
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
         let addr = addr
             .resolve(|d, p| self.resolver.clone().lookup_host(d, p))
             .await?;
         Ok(addr)
+    }
+}
+
+impl INet for LocalNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        Some(self)
+    }
+
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        Some(self)
+    }
+
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        Some(self)
     }
 }
 

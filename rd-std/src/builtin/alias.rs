@@ -1,9 +1,4 @@
-use std::net::SocketAddr;
-
-use rd_interface::{
-    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, INet, Net,
-    Result, TcpListener, TcpStream, UdpSocket,
-};
+use rd_interface::{config::NetRef, prelude::*, registry::Builder, INet, Net, Result};
 
 pub struct AliasNet(rd_interface::Net);
 
@@ -13,22 +8,21 @@ impl AliasNet {
     }
 }
 
-#[async_trait]
 impl INet for AliasNet {
-    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        self.0.tcp_connect(ctx, addr).await
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        self.0.provide_tcp_connect()
     }
 
-    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-        self.0.tcp_bind(ctx, addr).await
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        self.0.provide_tcp_bind()
     }
 
-    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        self.0.udp_bind(ctx, addr).await
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        self.0.provide_udp_bind()
     }
 
-    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.0.lookup_host(addr).await
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        self.0.provide_lookup_host()
     }
 }
 

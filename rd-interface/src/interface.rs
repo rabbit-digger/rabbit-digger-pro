@@ -222,21 +222,53 @@ impl<T: Any + Send + Sync> Downcast for T {
     }
 }
 
+#[async_trait]
+pub trait TcpConnect: Sync {
+    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream>;
+}
+
+#[async_trait]
+pub trait TcpBind: Sync {
+    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener>;
+}
+
+#[async_trait]
+pub trait UdpBind: Sync {
+    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket>;
+}
+
+#[async_trait]
+pub trait LookupHost: Sync {
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>>;
+}
+
 /// A Net.
 #[async_trait]
 pub trait INet: Downcast + Unpin + Send + Sync {
-    async fn tcp_connect(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpStream> {
-        Err(NOT_IMPLEMENTED)
+    fn provide_tcp_connect(&self) -> Option<&dyn TcpConnect> {
+        None
     }
-    async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
-        Err(NOT_IMPLEMENTED)
+    fn provide_tcp_bind(&self) -> Option<&dyn TcpBind> {
+        None
     }
-    async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
-        Err(NOT_IMPLEMENTED)
+    fn provide_udp_bind(&self) -> Option<&dyn UdpBind> {
+        None
     }
-    async fn lookup_host(&self, _addr: &Address) -> Result<Vec<SocketAddr>> {
-        Err(NOT_IMPLEMENTED)
+    fn provide_lookup_host(&self) -> Option<&dyn LookupHost> {
+        None
     }
+    // async fn tcp_connect(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpStream> {
+    //     Err(NOT_IMPLEMENTED)
+    // }
+    // async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
+    //     Err(NOT_IMPLEMENTED)
+    // }
+    // async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
+    //     Err(NOT_IMPLEMENTED)
+    // }
+    // async fn lookup_host(&self, _addr: &Address) -> Result<Vec<SocketAddr>> {
+    //     Err(NOT_IMPLEMENTED)
+    // }
     // It's used to downcast. Don't implement it.
     fn get_inner(&self) -> Option<Net> {
         None
@@ -266,17 +298,50 @@ impl From<Arc<dyn INet>> for Net {
 }
 
 impl Net {
+    #[inline(always)]
+    pub fn provide_tcp_connect(&self) -> Option<&dyn TcpConnect> {
+        self.0.provide_tcp_connect()
+    }
+    #[inline(always)]
+    pub fn provide_tcp_bind(&self) -> Option<&dyn TcpBind> {
+        self.0.provide_tcp_bind()
+    }
+    #[inline(always)]
+    pub fn provide_udp_bind(&self) -> Option<&dyn UdpBind> {
+        self.0.provide_udp_bind()
+    }
+    #[inline(always)]
+    pub fn provide_lookup_host(&self) -> Option<&dyn LookupHost> {
+        self.0.provide_lookup_host()
+    }
+
     pub async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        self.0.tcp_connect(ctx, addr).await
+        self.0
+            .provide_tcp_connect()
+            .ok_or(Error::NotImplemented)?
+            .tcp_connect(ctx, addr)
+            .await
     }
     pub async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-        self.0.tcp_bind(ctx, addr).await
+        self.0
+            .provide_tcp_bind()
+            .ok_or(Error::NotImplemented)?
+            .tcp_bind(ctx, addr)
+            .await
     }
     pub async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        self.0.udp_bind(ctx, addr).await
+        self.0
+            .provide_udp_bind()
+            .ok_or(Error::NotImplemented)?
+            .udp_bind(ctx, addr)
+            .await
     }
     pub async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.0.lookup_host(addr).await
+        self.0
+            .provide_lookup_host()
+            .ok_or(Error::NotImplemented)?
+            .lookup_host(addr)
+            .await
     }
     pub fn get_inner_net_by<T: INet + 'static>(self) -> Option<Arc<T>> {
         let mut net = self.0;

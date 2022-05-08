@@ -50,7 +50,7 @@ impl DNSSnifferNet {
 }
 
 #[async_trait]
-impl INet for DNSSnifferNet {
+impl rd_interface::TcpConnect for DNSSnifferNet {
     async fn tcp_connect(
         &self,
         ctx: &mut Context,
@@ -59,18 +59,27 @@ impl INet for DNSSnifferNet {
         let addr = &self.reverse_lookup(ctx, addr);
         self.net.tcp_connect(ctx, addr).await
     }
+}
 
-    async fn tcp_bind(
-        &self,
-        ctx: &mut Context,
-        addr: &Address,
-    ) -> Result<rd_interface::TcpListener> {
-        self.net.tcp_bind(ctx, addr).await
-    }
-
+#[async_trait]
+impl rd_interface::UdpBind for DNSSnifferNet {
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
         let udp = self.net.udp_bind(ctx, addr).await?;
         Ok(MitmUdp(udp, self.rl.clone()).into_dyn())
+    }
+}
+
+impl INet for DNSSnifferNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        self.net.provide_tcp_bind()
+    }
+
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        Some(self)
     }
 }
 
@@ -124,10 +133,14 @@ mod tests {
 
         let mut ctx = Context::new();
         let mut dns_server = net
+            .provide_udp_bind()
+            .unwrap()
             .udp_bind(&mut ctx, &"127.0.0.1:53".into_address().unwrap())
             .await
             .unwrap();
         let mut client = net
+            .provide_udp_bind()
+            .unwrap()
             .udp_bind(&mut ctx, &"127.0.0.1:0".into_address().unwrap())
             .await
             .unwrap();
@@ -187,10 +200,14 @@ mod tests {
 
         let mut ctx = Context::new();
         let mut dns_server = net
+            .provide_udp_bind()
+            .unwrap()
             .udp_bind(&mut ctx, &"127.0.0.1:53".into_address().unwrap())
             .await
             .unwrap();
         let mut client = net
+            .provide_udp_bind()
+            .unwrap()
             .udp_bind(&mut ctx, &"127.0.0.1:0".into_address().unwrap())
             .await
             .unwrap();

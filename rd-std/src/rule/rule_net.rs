@@ -94,32 +94,45 @@ impl RuleNet {
     }
 }
 
-#[async_trait]
 impl INet for RuleNet {
-    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        self.rule
-            .get_rule(ctx, &addr)
-            .await?
-            .target
-            .tcp_connect(ctx, addr)
-            .await
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        #[async_trait]
+        impl rd_interface::TcpConnect for RuleNet {
+            async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
+                self.rule
+                    .get_rule(ctx, &addr)
+                    .await?
+                    .target
+                    .tcp_connect(ctx, addr)
+                    .await
+            }
+        }
+
+        Some(self)
     }
 
-    async fn udp_bind(&self, ctx: &mut Context, bind_addr: &Address) -> Result<UdpSocket> {
-        let rule = self.rule.clone();
-        let mut ctx = ctx.clone();
-        let bind_addr = bind_addr.clone();
-        let udp = UdpConnector::new(Box::new(move |buf: &[u8], target_addr: &Address| {
-            let buf = buf.to_vec();
-            let target_addr = target_addr.clone();
-            Box::pin(async move {
-                let rule_item = rule.get_rule(&ctx, &target_addr).await?;
-                let mut udp = rule_item.target.udp_bind(&mut ctx, &bind_addr).await?;
-                udp.send_to(&buf, &target_addr).await?;
-                Ok(udp)
-            })
-        }));
-        Ok(udp.into_dyn())
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        #[async_trait]
+        impl rd_interface::UdpBind for RuleNet {
+            async fn udp_bind(&self, ctx: &mut Context, bind_addr: &Address) -> Result<UdpSocket> {
+                let rule = self.rule.clone();
+                let mut ctx = ctx.clone();
+                let bind_addr = bind_addr.clone();
+                let udp = UdpConnector::new(Box::new(move |buf: &[u8], target_addr: &Address| {
+                    let buf = buf.to_vec();
+                    let target_addr = target_addr.clone();
+                    Box::pin(async move {
+                        let rule_item = rule.get_rule(&ctx, &target_addr).await?;
+                        let mut udp = rule_item.target.udp_bind(&mut ctx, &bind_addr).await?;
+                        udp.send_to(&buf, &target_addr).await?;
+                        Ok(udp)
+                    })
+                }));
+                Ok(udp.into_dyn())
+            }
+        }
+
+        Some(self)
     }
 }
 

@@ -92,7 +92,7 @@ impl ITcpStream for Socks5TcpStream {
 }
 
 #[async_trait]
-impl INet for Socks5Client {
+impl rd_interface::TcpConnect for Socks5Client {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
@@ -105,7 +105,10 @@ impl INet for Socks5Client {
 
         Ok(Socks5TcpStream(socket).into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::UdpBind for Socks5Client {
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
@@ -140,6 +143,16 @@ impl INet for Socks5Client {
             send_buf: Vec::with_capacity(UDP_BUFFER_SIZE),
         }
         .into_dyn())
+    }
+}
+
+impl INet for Socks5Client {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        Some(self)
     }
 }
 

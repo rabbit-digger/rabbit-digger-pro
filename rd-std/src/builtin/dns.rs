@@ -37,25 +37,31 @@ pub struct DnsNet {
     resolver: AsyncResolver<RDConnection, RDConnectionProvider>,
 }
 
-#[async_trait]
 impl INet for DnsNet {
-    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        // TODO: is it cheap?
-        let r = self.resolver.clone();
-        rd_runtime::NET
-            .scope(self.net.clone(), async move {
-                addr.resolve(move |host, port| async move {
-                    let response = r.lookup_ip(host).await?;
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        #[async_trait]
+        impl rd_interface::LookupHost for DnsNet {
+            async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+                // TODO: is it cheap?
+                let r = self.resolver.clone();
+                rd_runtime::NET
+                    .scope(self.net.clone(), async move {
+                        addr.resolve(move |host, port| async move {
+                            let response = r.lookup_ip(host).await?;
 
-                    Ok(response
-                        .into_iter()
-                        .map(|ip| SocketAddr::new(ip, port))
-                        .collect())
-                })
-                .await
-                .map_err(Into::into)
-            })
-            .await
+                            Ok(response
+                                .into_iter()
+                                .map(|ip| SocketAddr::new(ip, port))
+                                .collect())
+                        })
+                        .await
+                        .map_err(Into::into)
+                    })
+                    .await
+            }
+        }
+
+        Some(self)
     }
 }
 

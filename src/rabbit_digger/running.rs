@@ -54,29 +54,56 @@ impl Debug for RunningNet {
     }
 }
 
-#[async_trait]
 impl INet for RunningNet {
-    #[instrument(err)]
-    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        ctx.append_net(&self.name);
-        self.net().tcp_connect(ctx, addr).await
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        #[async_trait]
+        impl rd_interface::TcpConnect for RunningNet {
+            #[instrument(err)]
+            async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
+                ctx.append_net(&self.name);
+                self.net().tcp_connect(ctx, addr).await
+            }
+        }
+
+        Some(self)
     }
 
-    #[instrument(err)]
-    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-        ctx.append_net(&self.name);
-        self.net().tcp_bind(ctx, addr).await
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        #[async_trait]
+        impl rd_interface::TcpBind for RunningNet {
+            #[instrument(err)]
+            async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
+                ctx.append_net(&self.name);
+                self.net().tcp_bind(ctx, addr).await
+            }
+        }
+
+        Some(self)
     }
 
-    #[instrument(err)]
-    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        ctx.append_net(&self.name);
-        self.net().udp_bind(ctx, addr).await
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        #[async_trait]
+        impl rd_interface::UdpBind for RunningNet {
+            #[instrument(err)]
+            async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
+                ctx.append_net(&self.name);
+                self.net().udp_bind(ctx, addr).await
+            }
+        }
+
+        Some(self)
     }
 
-    #[instrument(err)]
-    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.net().lookup_host(addr).await
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        #[async_trait]
+        impl rd_interface::LookupHost for RunningNet {
+            #[instrument(err)]
+            async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+                self.net().lookup_host(addr).await
+            }
+        }
+
+        Some(self)
     }
 
     fn get_inner(&self) -> Option<Net> {
@@ -109,7 +136,7 @@ impl Debug for RunningServerNet {
 }
 
 #[async_trait]
-impl INet for RunningServerNet {
+impl rd_interface::TcpConnect for RunningServerNet {
     #[instrument(err, skip(ctx))]
     async fn tcp_connect(
         &self,
@@ -132,7 +159,10 @@ impl INet for RunningServerNet {
         let tcp = WrapTcpStream::new(tcp, &self.manager, addr.clone(), ctx);
         Ok(tcp.into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::TcpBind for RunningServerNet {
     // TODO: wrap TcpListener
     #[instrument(err)]
     async fn tcp_bind(
@@ -144,7 +174,10 @@ impl INet for RunningServerNet {
 
         self.net.tcp_bind(ctx, addr).await
     }
+}
 
+#[async_trait]
+impl rd_interface::UdpBind for RunningServerNet {
     #[instrument(err)]
     async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
         ctx.append_net(self.server_name.clone());
@@ -157,10 +190,23 @@ impl INet for RunningServerNet {
         );
         Ok(udp.into_dyn())
     }
+}
 
-    #[instrument(err)]
-    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-        self.net.lookup_host(addr).await
+impl INet for RunningServerNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        Some(self)
+    }
+
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        Some(self)
+    }
+
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        self.net.provide_lookup_host()
     }
 
     fn get_inner(&self) -> Option<Net> {
@@ -428,7 +474,7 @@ mod tests {
     #[tokio::test]
     async fn test_running_net_append() {
         let test_net = TestNet::new().into_dyn();
-        let running_net = RunningNet::new("test".to_string(), test_net);
+        let running_net = RunningNet::new("test".to_string(), test_net).as_net();
 
         let addr = "127.0.0.1:12345".into_address().unwrap();
         let expected_list = vec!["test".to_string()];
