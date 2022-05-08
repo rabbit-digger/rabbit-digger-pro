@@ -67,86 +67,86 @@ fn refused() -> Error {
     Error::IO(ErrorKind::ConnectionRefused.into())
 }
 
+#[async_trait]
+impl rd_interface::TcpConnect for TestNet {
+    async fn tcp_connect(&self, _ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
+        check_address(&addr)?;
+        let target_key = Port(Protocol::Tcp, addr.port());
+
+        let mut inner = self.inner.lock().await;
+        let key = inner.get_port(Protocol::Tcp, 0)?;
+
+        let (tcp_socket, mut other) = MyTcpStream::new(TcpData {
+            is_flushing: false,
+            buf: VecDeque::new(),
+            local_addr: key,
+            peer_addr: target_key,
+        });
+        other.data.swap();
+
+        match inner.ports.get_mut(&target_key) {
+            Some(v) => {
+                let listener = v.get_tcp_listener()?;
+                listener.channel.send(other).await.map_err(map_err)?;
+                Ok(tcp_socket.into_dyn())
+            }
+            None => Err(refused()),
+        }
+    }
+}
+
+#[async_trait]
+impl rd_interface::TcpBind for TestNet {
+    async fn tcp_bind(&self, _ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
+        check_address(&addr)?;
+        let inner2 = self.inner.clone();
+        let mut inner = self.inner.lock().await;
+        let key = inner.get_port(Protocol::Tcp, addr.port())?;
+        let (listener, sender) = Pipe::new(key);
+
+        inner.ports.insert(key, Value::TcpListener(sender));
+        Ok(MyTcpListener(Mutex::new(listener), inner2).into_dyn())
+    }
+}
+
+#[async_trait]
+impl rd_interface::UdpBind for TestNet {
+    async fn udp_bind(&self, _ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
+        check_address(&addr)?;
+        let inner2 = self.inner.clone();
+        let mut inner = self.inner.lock().await;
+        let key = inner.get_port(Protocol::Udp, addr.port())?;
+        let (udp_socket, other) = Pipe::new(UdpData {
+            inner: self.inner.clone(),
+            local_addr: key,
+            flushing: false,
+        });
+        inner.ports.insert(key, Value::UdpSocket(other));
+        Ok(MyUdpSocket(udp_socket, inner2).into_dyn())
+    }
+}
+
+#[async_trait]
+impl rd_interface::LookupHost for TestNet {
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        Ok(vec![make_sa(addr.port())])
+    }
+}
+
 impl INet for TestNet {
     fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
-        #[async_trait]
-        impl rd_interface::TcpConnect for TestNet {
-            async fn tcp_connect(&self, _ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-                check_address(&addr)?;
-                let target_key = Port(Protocol::Tcp, addr.port());
-
-                let mut inner = self.inner.lock().await;
-                let key = inner.get_port(Protocol::Tcp, 0)?;
-
-                let (tcp_socket, mut other) = MyTcpStream::new(TcpData {
-                    is_flushing: false,
-                    buf: VecDeque::new(),
-                    local_addr: key,
-                    peer_addr: target_key,
-                });
-                other.data.swap();
-
-                match inner.ports.get_mut(&target_key) {
-                    Some(v) => {
-                        let listener = v.get_tcp_listener()?;
-                        listener.channel.send(other).await.map_err(map_err)?;
-                        Ok(tcp_socket.into_dyn())
-                    }
-                    None => Err(refused()),
-                }
-            }
-        }
-
         Some(self)
     }
 
     fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
-        #[async_trait]
-        impl rd_interface::TcpBind for TestNet {
-            async fn tcp_bind(&self, _ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-                check_address(&addr)?;
-                let inner2 = self.inner.clone();
-                let mut inner = self.inner.lock().await;
-                let key = inner.get_port(Protocol::Tcp, addr.port())?;
-                let (listener, sender) = Pipe::new(key);
-
-                inner.ports.insert(key, Value::TcpListener(sender));
-                Ok(MyTcpListener(Mutex::new(listener), inner2).into_dyn())
-            }
-        }
-
         Some(self)
     }
 
     fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
-        #[async_trait]
-        impl rd_interface::UdpBind for TestNet {
-            async fn udp_bind(&self, _ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-                check_address(&addr)?;
-                let inner2 = self.inner.clone();
-                let mut inner = self.inner.lock().await;
-                let key = inner.get_port(Protocol::Udp, addr.port())?;
-                let (udp_socket, other) = Pipe::new(UdpData {
-                    inner: self.inner.clone(),
-                    local_addr: key,
-                    flushing: false,
-                });
-                inner.ports.insert(key, Value::UdpSocket(other));
-                Ok(MyUdpSocket(udp_socket, inner2).into_dyn())
-            }
-        }
-
         Some(self)
     }
 
     fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
-        #[async_trait]
-        impl rd_interface::LookupHost for TestNet {
-            async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-                Ok(vec![make_sa(addr.port())])
-            }
-        }
-
         Some(self)
     }
 }

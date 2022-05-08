@@ -120,7 +120,6 @@ mod tests {
     }
 
     struct NotImplementedNet;
-    #[async_trait]
     impl INet for NotImplementedNet {}
 
     #[test]

@@ -51,32 +51,50 @@ impl ResolveNet {
     }
 }
 
-impl INet for ResolveNet {
-    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
-        #[async_trait]
-        impl rd_interface::TcpConnect for ResolveNet {
-            async fn tcp_connect(
-                &self,
-                ctx: &mut rd_interface::Context,
-                addr: &Address,
-            ) -> Result<TcpStream> {
-                let addrs = addr.resolve(&*self.resolver).await?;
-                let mut last_err = None;
+#[async_trait]
+impl rd_interface::TcpConnect for ResolveNet {
+    async fn tcp_connect(
+        &self,
+        ctx: &mut rd_interface::Context,
+        addr: &Address,
+    ) -> Result<TcpStream> {
+        let addrs = addr.resolve(&*self.resolver).await?;
+        let mut last_err = None;
 
-                for addr in addrs {
-                    match self.net.tcp_connect(ctx, &addr.into()).await {
-                        Ok(stream) => return Ok(stream),
-                        Err(e) => last_err = Some(e),
-                    }
-                }
-
-                Err(last_err.unwrap_or_else(|| {
-                    io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address")
-                        .into()
-                }))
+        for addr in addrs {
+            match self.net.tcp_connect(ctx, &addr.into()).await {
+                Ok(stream) => return Ok(stream),
+                Err(e) => last_err = Some(e),
             }
         }
 
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address").into()
+        }))
+    }
+}
+
+#[async_trait]
+impl rd_interface::UdpBind for ResolveNet {
+    async fn udp_bind(&self, ctx: &mut rd_interface::Context, addr: &Address) -> Result<UdpSocket> {
+        let addrs = addr.resolve(&*self.resolver).await?;
+        let mut last_err = None;
+
+        for addr in addrs {
+            match self.net.udp_bind(ctx, &addr.into()).await {
+                Ok(udp) => return Ok(udp),
+                Err(e) => last_err = Some(e),
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address").into()
+        }))
+    }
+}
+
+impl INet for ResolveNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
         Some(self)
     }
 
@@ -85,30 +103,6 @@ impl INet for ResolveNet {
     }
 
     fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
-        #[async_trait]
-        impl rd_interface::UdpBind for ResolveNet {
-            async fn udp_bind(
-                &self,
-                ctx: &mut rd_interface::Context,
-                addr: &Address,
-            ) -> Result<UdpSocket> {
-                let addrs = addr.resolve(&*self.resolver).await?;
-                let mut last_err = None;
-
-                for addr in addrs {
-                    match self.net.udp_bind(ctx, &addr.into()).await {
-                        Ok(udp) => return Ok(udp),
-                        Err(e) => last_err = Some(e),
-                    }
-                }
-
-                Err(last_err.unwrap_or_else(|| {
-                    io::Error::new(io::ErrorKind::NotFound, "could not resolve to any address")
-                        .into()
-                }))
-            }
-        }
-
         Some(self)
     }
 

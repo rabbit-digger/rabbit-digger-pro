@@ -54,55 +54,55 @@ impl Debug for RunningNet {
     }
 }
 
+#[async_trait]
+impl rd_interface::TcpConnect for RunningNet {
+    #[instrument(err)]
+    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
+        ctx.append_net(&self.name);
+        self.net().tcp_connect(ctx, addr).await
+    }
+}
+
+#[async_trait]
+impl rd_interface::TcpBind for RunningNet {
+    #[instrument(err)]
+    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
+        ctx.append_net(&self.name);
+        self.net().tcp_bind(ctx, addr).await
+    }
+}
+
+#[async_trait]
+impl rd_interface::UdpBind for RunningNet {
+    #[instrument(err)]
+    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
+        ctx.append_net(&self.name);
+        self.net().udp_bind(ctx, addr).await
+    }
+}
+
+#[async_trait]
+impl rd_interface::LookupHost for RunningNet {
+    #[instrument(err)]
+    async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
+        self.net().lookup_host(addr).await
+    }
+}
+
 impl INet for RunningNet {
     fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
-        #[async_trait]
-        impl rd_interface::TcpConnect for RunningNet {
-            #[instrument(err)]
-            async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-                ctx.append_net(&self.name);
-                self.net().tcp_connect(ctx, addr).await
-            }
-        }
-
         Some(self)
     }
 
     fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
-        #[async_trait]
-        impl rd_interface::TcpBind for RunningNet {
-            #[instrument(err)]
-            async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-                ctx.append_net(&self.name);
-                self.net().tcp_bind(ctx, addr).await
-            }
-        }
-
         Some(self)
     }
 
     fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
-        #[async_trait]
-        impl rd_interface::UdpBind for RunningNet {
-            #[instrument(err)]
-            async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-                ctx.append_net(&self.name);
-                self.net().udp_bind(ctx, addr).await
-            }
-        }
-
         Some(self)
     }
 
     fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
-        #[async_trait]
-        impl rd_interface::LookupHost for RunningNet {
-            #[instrument(err)]
-            async fn lookup_host(&self, addr: &Address) -> Result<Vec<SocketAddr>> {
-                self.net().lookup_host(addr).await
-            }
-        }
-
         Some(self)
     }
 
