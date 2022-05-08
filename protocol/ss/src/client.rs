@@ -44,7 +44,7 @@ impl SSNet {
                 config.cipher.into(),
             ),
             udp: config.udp,
-            net: (*config.net).clone(),
+            net: config.net.value_cloned(),
         }
     }
 }

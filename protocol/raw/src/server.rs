@@ -38,8 +38,8 @@ impl IServer for RawServer {
 
 impl RawServer {
     fn new(config: RawServerConfig) -> Result<Self> {
-        let net = (*config.net).clone();
-        let listen = (*config.listen).clone();
+        let net = config.net.value_cloned();
+        let listen = config.listen.value_cloned();
         let raw_net = listen
             .get_inner_net_by::<RawNet>()
             .ok_or_else(|| Error::other("net must be `raw` type."))?;

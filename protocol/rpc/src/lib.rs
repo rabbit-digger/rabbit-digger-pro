@@ -63,7 +63,7 @@ impl Builder<Net> for RpcNet {
 
     fn build(config: Self::Config) -> Result<Self> {
         Ok(RpcNet::new(
-            (*config.net).clone(),
+            config.net.value_cloned(),
             config.server,
             true,
             config.codec.into(),
@@ -85,8 +85,8 @@ impl Builder<Server> for RpcServer {
         }: Self::Config,
     ) -> Result<Self> {
         Ok(RpcServer::new(
-            (*listen).clone(),
-            (*net).clone(),
+            listen.value_cloned(),
+            net.value_cloned(),
             bind,
             codec.into(),
         ))

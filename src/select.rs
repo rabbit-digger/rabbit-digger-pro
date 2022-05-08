@@ -23,7 +23,7 @@ impl SelectNet {
         }
 
         Ok(SelectNet {
-            selected: (*config.selected).clone(),
+            selected: config.selected.value_cloned(),
         })
     }
     fn net(&self) -> Option<&Net> {

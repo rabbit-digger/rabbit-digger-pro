@@ -57,8 +57,8 @@ impl SSServer {
             bind: cfg.bind,
             context,
             cfg: Arc::new(svr_cfg),
-            listen: (*cfg.listen).clone(),
-            net: (*cfg.net).clone(),
+            listen: cfg.listen.value_cloned(),
+            net: cfg.net.value_cloned(),
         }
     }
     async fn serve_udp(&self) -> Result<()> {
