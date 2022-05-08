@@ -50,7 +50,7 @@ impl SSNet {
 }
 
 #[async_trait]
-impl INet for SSNet {
+impl rd_interface::TcpConnect for SSNet {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
@@ -66,7 +66,10 @@ impl INet for SSNet {
         );
         Ok(WrapSSTcp(client).into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::UdpBind for SSNet {
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
@@ -92,5 +95,15 @@ impl INet for SSNet {
             .await?;
         let udp = WrapSSUdp::new(socket, &self.cfg, server_addr);
         Ok(udp.into_dyn())
+    }
+}
+
+impl INet for SSNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        Some(self)
     }
 }

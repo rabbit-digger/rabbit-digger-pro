@@ -77,6 +77,8 @@ async fn test_broken_session_codec(codec: Codec) {
     yield_now().await;
 
     let listener = client
+        .provide_tcp_bind()
+        .unwrap()
         .tcp_bind(&mut Context::new(), &bind_addr)
         .await
         .unwrap();
@@ -104,6 +106,8 @@ async fn test_broken_session_codec(codec: Codec) {
     yield_now().await;
 
     assert!(client
+        .provide_tcp_bind()
+        .unwrap()
         .tcp_bind(&mut Context::new(), &bind_addr)
         .await
         .is_err());
@@ -142,6 +146,8 @@ async fn test_client_reconnect_codec(codec: Codec) {
     yield_now().await;
 
     let listener = client
+        .provide_tcp_bind()
+        .unwrap()
         .tcp_bind(&mut Context::new(), &bind_addr)
         .await
         .unwrap();
@@ -159,6 +165,8 @@ async fn test_client_reconnect_codec(codec: Codec) {
     assert!(!client.get_sess().await.unwrap().is_closed());
 
     client
+        .provide_tcp_bind()
+        .unwrap()
         .tcp_bind(&mut Context::new(), &bind_addr)
         .await
         .unwrap();

@@ -32,15 +32,28 @@ impl ObfsNet {
 }
 
 #[async_trait]
-impl INet for ObfsNet {
+impl rd_interface::TcpConnect for ObfsNet {
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         let tcp = self.net.tcp_connect(ctx, addr).await?;
         Ok(self.obfs.tcp_connect(tcp, ctx, addr)?)
     }
+}
 
+#[async_trait]
+impl rd_interface::TcpBind for ObfsNet {
     async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
         let listener = self.net.tcp_bind(ctx, addr).await?;
         Ok(ObfsTcpListener(listener, self.obfs.clone()).into_dyn())
+    }
+}
+
+impl INet for ObfsNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        Some(self)
     }
 }
 

@@ -8,7 +8,7 @@ use rd_interface::{
     async_trait,
     prelude::*,
     registry::{Builder, NetRef},
-    Address as RdAddress, Address, INet, IntoDyn, Result, TcpStream, UdpSocket,
+    Address as RdAddress, Address, INet, IntoDyn, Net, Result, TcpStream, UdpSocket,
 };
 use rd_std::tls::{TlsNet, TlsNetConfig};
 use sha2::{Digest, Sha224};
@@ -22,7 +22,7 @@ pub struct TrojanNet {
     server: RdAddress,
     password: String,
     websocket: Option<WebSocket>,
-    tls_net: TlsNet,
+    tls_net: Net,
     handshake_timeout: Option<u64>,
 }
 
@@ -37,7 +37,7 @@ impl TrojanNet {
 
         let password = hex::encode(Sha224::digest(config.password.as_bytes()));
         Ok(TrojanNet {
-            tls_net: TlsNet::build(tls_config)?,
+            tls_net: TlsNet::build(tls_config)?.into_dyn(),
             server,
             password,
             websocket: config.websocket,
@@ -116,7 +116,7 @@ pub(crate) fn ra2sa(addr: RdAddress) -> S5Addr {
 }
 
 #[async_trait]
-impl INet for TrojanNet {
+impl rd_interface::TcpConnect for TrojanNet {
     async fn tcp_connect(
         &self,
         ctx: &mut rd_interface::Context,
@@ -128,7 +128,10 @@ impl INet for TrojanNet {
         let tcp = tcp::TrojanTcp::new(stream, head);
         Ok(tcp.into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::UdpBind for TrojanNet {
     async fn udp_bind(
         &self,
         ctx: &mut rd_interface::Context,
@@ -140,5 +143,15 @@ impl INet for TrojanNet {
         let udp = udp::TrojanUdp::new(stream, head);
 
         Ok(udp.into_dyn())
+    }
+}
+
+impl INet for TrojanNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        Some(self)
     }
 }

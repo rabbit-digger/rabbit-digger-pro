@@ -59,7 +59,7 @@ impl RpcNet {
 }
 
 #[async_trait]
-impl INet for RpcNet {
+impl rd_interface::TcpConnect for RpcNet {
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         let conn = self.get_sess().await?;
         let (resp, _) = conn
@@ -75,7 +75,10 @@ impl INet for RpcNet {
 
         Ok(tcp.into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::TcpBind for RpcNet {
     async fn tcp_bind(
         &self,
         ctx: &mut Context,
@@ -95,7 +98,10 @@ impl INet for RpcNet {
 
         Ok(listener.into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::UdpBind for RpcNet {
     async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<rd_interface::UdpSocket> {
         let conn = self.get_sess().await?;
         let (resp, _) = conn
@@ -111,7 +117,10 @@ impl INet for RpcNet {
 
         Ok(udp.into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::LookupHost for RpcNet {
     async fn lookup_host(&self, addr: &Address) -> Result<Vec<std::net::SocketAddr>> {
         let conn = self.get_sess().await?;
         let getter = conn.send(Command::LookupHost(addr.clone()), None).await?;
@@ -119,5 +128,23 @@ impl INet for RpcNet {
         let (resp, _) = getter.wait().await?;
 
         resp.into_value()
+    }
+}
+
+impl INet for RpcNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        Some(self)
+    }
+
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        Some(self)
+    }
+
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        Some(self)
     }
 }

@@ -2,7 +2,7 @@ use rd_interface::{
     async_trait,
     prelude::*,
     registry::{Builder, NetRef},
-    Address, Context, Error, INet, Net, Registry, Result, TcpListener, TcpStream, UdpSocket,
+    Error, INet, Net, Registry, Result,
 };
 
 #[rd_config]
@@ -26,27 +26,27 @@ impl SelectNet {
             selected: (*config.selected).clone(),
         })
     }
-    fn net(&self) -> Result<&Net> {
-        Ok(&self.selected)
+    fn net(&self) -> Option<&Net> {
+        Some(&self.selected)
     }
 }
 
 #[async_trait]
 impl INet for SelectNet {
-    async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        self.net()?.tcp_connect(ctx, addr).await
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        self.net()?.provide_tcp_connect()
     }
 
-    async fn tcp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-        self.net()?.tcp_bind(ctx, addr).await
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        self.net()?.provide_tcp_bind()
     }
 
-    async fn udp_bind(&self, ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        self.net()?.udp_bind(ctx, addr).await
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        self.net()?.provide_udp_bind()
     }
 
-    async fn lookup_host(&self, addr: &Address) -> Result<Vec<std::net::SocketAddr>> {
-        self.net()?.lookup_host(addr).await
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        self.net()?.provide_lookup_host()
     }
 }
 

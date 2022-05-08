@@ -101,7 +101,7 @@ impl Builder<Net> for RawNet {
 }
 
 #[async_trait]
-impl INet for RawNet {
+impl rd_interface::TcpConnect for RawNet {
     async fn tcp_connect(
         &self,
         _ctx: &mut Context,
@@ -111,7 +111,10 @@ impl INet for RawNet {
 
         Ok(tcp.into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::TcpBind for RawNet {
     async fn tcp_bind(
         &self,
         _ctx: &mut Context,
@@ -122,7 +125,10 @@ impl INet for RawNet {
 
         Ok(listener.into_dyn())
     }
+}
 
+#[async_trait]
+impl rd_interface::UdpBind for RawNet {
     async fn udp_bind(
         &self,
         _ctx: &mut Context,
@@ -131,5 +137,19 @@ impl INet for RawNet {
         let udp = UdpSocketWrap::new(self.smoltcp_net.udp_bind(addr.to_socket_addr()?).await?);
 
         Ok(udp.into_dyn())
+    }
+}
+
+impl INet for RawNet {
+    fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
+        Some(self)
+    }
+
+    fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
+        Some(self)
+    }
+
+    fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
+        Some(self)
     }
 }
