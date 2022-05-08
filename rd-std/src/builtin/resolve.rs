@@ -130,7 +130,9 @@ impl Builder<Net> for ResolveNet {
 mod tests {
     use rd_interface::IntoDyn;
 
-    use crate::tests::{assert_echo, spawn_echo_server, TestNet};
+    use crate::tests::{
+        assert_echo, assert_net_provider, spawn_echo_server, ProviderCapability, TestNet,
+    };
 
     use super::*;
 
@@ -147,5 +149,21 @@ mod tests {
 
         spawn_echo_server(&net, "127.0.0.1:1234").await;
         assert_echo(&net, "localhost:1234").await;
+    }
+
+    #[test]
+    fn test_provider() {
+        let test_net = TestNet::new().into_dyn();
+        let net = ResolveNet::new(test_net.clone(), test_net, true, true).into_dyn();
+
+        assert_net_provider(
+            &net,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
     }
 }

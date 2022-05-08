@@ -86,3 +86,18 @@ pub async fn assert_echo(net: &Net, addr: impl IntoAddress) {
 
     assert_eq!(buf, BUF);
 }
+
+#[derive(Default, Debug)]
+pub struct ProviderCapability {
+    pub tcp_connect: bool,
+    pub tcp_bind: bool,
+    pub udp_bind: bool,
+    pub lookup_host: bool,
+}
+
+pub fn assert_net_provider(net: &Net, capability: ProviderCapability) {
+    assert_eq!(net.provide_tcp_connect().is_some(), capability.tcp_connect);
+    assert_eq!(net.provide_tcp_bind().is_some(), capability.tcp_bind);
+    assert_eq!(net.provide_udp_bind().is_some(), capability.udp_bind);
+    assert_eq!(net.provide_lookup_host().is_some(), capability.lookup_host);
+}

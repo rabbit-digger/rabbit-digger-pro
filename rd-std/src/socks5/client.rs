@@ -187,3 +187,27 @@ impl Socks5Client {
         Ok(command_resp)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::{assert_net_provider, ProviderCapability, TestNet};
+    use rd_interface::{IntoAddress, IntoDyn};
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let net = TestNet::new().into_dyn();
+
+        let socks5 = Socks5Client::new(net, "127.0.0.1:12345".into_address().unwrap()).into_dyn();
+
+        assert_net_provider(
+            &socks5,
+            ProviderCapability {
+                tcp_connect: true,
+                udp_bind: true,
+                ..Default::default()
+            },
+        );
+    }
+}

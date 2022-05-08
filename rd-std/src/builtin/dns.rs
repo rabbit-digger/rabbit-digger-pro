@@ -222,3 +222,29 @@ mod rd_runtime {
     pub type RDConnection = GenericConnection;
     pub type RDConnectionProvider = GenericConnectionProvider<RDRuntime>;
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::{assert_net_provider, ProviderCapability};
+    use rd_interface::IntoDyn;
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let dns = DnsNet::build(DnsConfig {
+            server: DnsServer::Google,
+            net: None,
+        })
+        .unwrap()
+        .into_dyn();
+
+        assert_net_provider(
+            &dns,
+            ProviderCapability {
+                lookup_host: true,
+                ..Default::default()
+            },
+        );
+    }
+}

@@ -444,7 +444,10 @@ impl RunningServer {
 mod tests {
     use rd_interface::{context::common_field, IServer, IntoAddress};
     use rd_std::{
-        tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet},
+        tests::{
+            assert_echo, assert_echo_udp, assert_net_provider, spawn_echo_server,
+            spawn_echo_server_udp, ProviderCapability, TestNet,
+        },
         util::NotImplementedNet,
     };
     use tokio::task::JoinError;
@@ -452,6 +455,40 @@ mod tests {
     use crate::rabbit_digger::event::EventType;
 
     use super::*;
+
+    #[test]
+    fn test_running_net_provider() {
+        let test_net = TestNet::new().into_dyn();
+        let net = RunningNet::new("test".to_string(), test_net).as_net();
+
+        assert_net_provider(
+            &net,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn test_running_server_net_provider() {
+        let test_net = TestNet::new().into_dyn();
+        let manager = ConnectionManager::new();
+        let server_net =
+            RunningServerNet::new("server_name".to_string(), test_net.clone(), manager).into_dyn();
+
+        assert_net_provider(
+            &server_net,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
+    }
 
     #[tokio::test]
     async fn test_running_net_update() {

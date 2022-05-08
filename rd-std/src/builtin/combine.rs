@@ -63,8 +63,33 @@ mod tests {
 
     use super::*;
     use crate::tests::{
-        assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet,
+        assert_echo, assert_echo_udp, assert_net_provider, spawn_echo_server,
+        spawn_echo_server_udp, ProviderCapability, TestNet,
     };
+
+    #[test]
+    fn test_provider() {
+        let net1 = TestNet::new().into_dyn();
+        let net2 = TestNet::new().into_dyn();
+        let net3 = TestNet::new().into_dyn();
+        let net = CombineNet {
+            tcp_connect: net1.clone(),
+            tcp_bind: net2.clone(),
+            udp_bind: net3.clone(),
+            lookup_host: net1.clone(),
+        }
+        .into_dyn();
+
+        assert_net_provider(
+            &net,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
+    }
 
     #[tokio::test]
     async fn test_combine_net() {

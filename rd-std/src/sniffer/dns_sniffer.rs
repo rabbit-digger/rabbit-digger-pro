@@ -81,6 +81,10 @@ impl INet for DNSSnifferNet {
     fn provide_udp_bind(&self) -> Option<&dyn rd_interface::UdpBind> {
         Some(self)
     }
+
+    fn provide_lookup_host(&self) -> Option<&dyn rd_interface::LookupHost> {
+        self.net.provide_lookup_host()
+    }
 }
 
 struct MitmUdp(UdpSocket, ReverseLookup);
@@ -122,9 +126,25 @@ mod tests {
 
     use rd_interface::{IntoAddress, ReadBuf};
 
-    use crate::tests::TestNet;
+    use crate::tests::{assert_net_provider, ProviderCapability, TestNet};
 
     use super::*;
+
+    #[test]
+    fn test_provider() {
+        let test_net = TestNet::new().into_dyn();
+        let net = DNSSnifferNet::new(test_net.clone()).into_dyn();
+
+        assert_net_provider(
+            &net,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
+    }
 
     #[tokio::test]
     async fn test_dns_sniffer() {

@@ -142,11 +142,32 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use crate::{
-        tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet},
+        tests::{
+            assert_echo, assert_echo_udp, assert_net_provider, spawn_echo_server,
+            spawn_echo_server_udp, ProviderCapability, TestNet,
+        },
         util::NotImplementedNet,
     };
 
     use super::*;
+
+    #[test]
+    fn test_provider() {
+        let rule_config = config::RuleNetConfig {
+            rule: vec![],
+            lru_cache_size: 10,
+        };
+        let rule_net = RuleNet::new(rule_config).unwrap().into_dyn();
+
+        assert_net_provider(
+            &rule_net,
+            ProviderCapability {
+                tcp_connect: true,
+                udp_bind: true,
+                ..Default::default()
+            },
+        );
+    }
 
     #[tokio::test]
     async fn test_rule_net() {

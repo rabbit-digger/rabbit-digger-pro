@@ -37,10 +37,37 @@ mod tests {
     use tokio::task::yield_now;
 
     use crate::tests::{
-        assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet,
+        assert_echo, assert_echo_udp, assert_net_provider, spawn_echo_server,
+        spawn_echo_server_udp, ProviderCapability, TestNet,
     };
 
     use super::*;
+
+    #[test]
+    fn test_provider() {
+        let tcp_connect = TestNet::new().into_dyn();
+        let tcp_bind = TestNet::new().into_dyn();
+        let udp_bind = TestNet::new().into_dyn();
+        let lookup_host = TestNet::new().into_dyn();
+
+        let net = CombineNet {
+            tcp_connect,
+            tcp_bind,
+            udp_bind,
+            lookup_host,
+        }
+        .into_dyn();
+
+        assert_net_provider(
+            &net,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
+    }
 
     #[tokio::test]
     async fn test_combine_net() {

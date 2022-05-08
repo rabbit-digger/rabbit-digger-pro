@@ -49,8 +49,26 @@ mod tests {
 
     use super::*;
     use crate::tests::{
-        assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp, TestNet,
+        assert_echo, assert_echo_udp, assert_net_provider, spawn_echo_server,
+        spawn_echo_server_udp, ProviderCapability, TestNet,
     };
+
+    #[test]
+    fn test_provider() {
+        let net = TestNet::new().into_dyn();
+
+        let alias = AliasNet::new(net).into_dyn();
+
+        assert_net_provider(
+            &alias,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
+    }
 
     #[tokio::test]
     async fn test_alias_net() {

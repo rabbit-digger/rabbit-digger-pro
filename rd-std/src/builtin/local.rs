@@ -486,7 +486,10 @@ impl Builder<Net> for LocalNet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{assert_echo, assert_echo_udp, spawn_echo_server, spawn_echo_server_udp};
+    use crate::tests::{
+        assert_echo, assert_echo_udp, assert_net_provider, spawn_echo_server,
+        spawn_echo_server_udp, ProviderCapability,
+    };
 
     #[tokio::test]
     async fn test_local_net() {
@@ -497,5 +500,20 @@ mod tests {
 
         spawn_echo_server_udp(&net, "127.0.0.1:26666").await;
         assert_echo_udp(&net, "127.0.0.1:26666").await;
+    }
+
+    #[test]
+    fn test_provider() {
+        let net = LocalNet::new(LocalNetConfig::default()).into_dyn();
+
+        assert_net_provider(
+            &net,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                lookup_host: true,
+            },
+        );
     }
 }

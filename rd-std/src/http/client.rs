@@ -65,3 +65,26 @@ impl HttpClient {
         Self { server, net }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::{assert_net_provider, ProviderCapability, TestNet};
+    use rd_interface::{IntoAddress, IntoDyn};
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let net = TestNet::new().into_dyn();
+
+        let http = HttpClient::new(net, "127.0.0.1:12345".into_address().unwrap()).into_dyn();
+
+        assert_net_provider(
+            &http,
+            ProviderCapability {
+                tcp_connect: true,
+                ..Default::default()
+            },
+        );
+    }
+}

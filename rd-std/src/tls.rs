@@ -86,3 +86,34 @@ pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_net::<TlsNet>();
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::{assert_net_provider, ProviderCapability, TestNet};
+    use rd_interface::IntoDyn;
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let net = TestNet::new().into_dyn();
+
+        let tls = TlsNet {
+            connector: TlsConnector::new(TlsConnectorConfig {
+                skip_cert_verify: false,
+            })
+            .unwrap(),
+            sni: None,
+            net,
+        }
+        .into_dyn();
+
+        assert_net_provider(
+            &tls,
+            ProviderCapability {
+                tcp_connect: true,
+                ..Default::default()
+            },
+        );
+    }
+}

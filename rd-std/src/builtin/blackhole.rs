@@ -132,3 +132,26 @@ impl INet for BlackholeNet {
         Some(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::{assert_net_provider, ProviderCapability};
+    use rd_interface::IntoDyn;
+
+    use super::*;
+
+    #[test]
+    fn test_provider() {
+        let bh = BlackholeNet.into_dyn();
+
+        assert_net_provider(
+            &bh,
+            ProviderCapability {
+                tcp_connect: true,
+                tcp_bind: true,
+                udp_bind: true,
+                ..Default::default()
+            },
+        );
+    }
+}
