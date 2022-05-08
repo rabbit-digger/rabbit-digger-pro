@@ -59,6 +59,18 @@ where
     }
 }
 
+impl<S> Resolvable<S>
+where
+    S: ResolvableSchema,
+    S::Value: Clone,
+{
+    /// Returns a clone of the value.
+    /// Panic if the value is not set
+    pub fn value_cloned(&self) -> S::Value {
+        self.value.clone().expect("value not set")
+    }
+}
+
 impl<S> Deref for Resolvable<S>
 where
     S: ResolvableSchema,

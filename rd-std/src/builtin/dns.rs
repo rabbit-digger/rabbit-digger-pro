@@ -73,7 +73,7 @@ impl Builder<Net> for DnsNet {
     fn build(config: Self::Config) -> Result<Self> {
         let net = config
             .net
-            .map(|i| (*i).clone())
+            .map(|i| i.value_cloned())
             .unwrap_or_else(|| LocalNet::new(LocalNetConfig::default()).into_dyn());
         let resolver_config = match config.server {
             DnsServer::Google => ResolverConfig::google(),

@@ -49,10 +49,10 @@ impl Builder<Net> for CombineNet {
         }: Self::Config,
     ) -> Result<Self> {
         Ok(CombineNet {
-            tcp_connect: (*tcp_connect).clone(),
-            tcp_bind: (*tcp_bind).clone(),
-            udp_bind: (*udp_bind).clone(),
-            lookup_host: (*lookup_host).clone(),
+            tcp_connect: tcp_connect.value_cloned(),
+            tcp_bind: tcp_bind.value_cloned(),
+            udp_bind: udp_bind.value_cloned(),
+            lookup_host: lookup_host.value_cloned(),
         })
     }
 }

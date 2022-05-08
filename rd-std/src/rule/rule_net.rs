@@ -44,7 +44,7 @@ impl Rule {
                     matcher.shrink_to_fit();
                     Ok(RuleItem {
                         matcher,
-                        target: (*target).clone(),
+                        target: target.value_cloned(),
                         target_name: target.represent().to_string(),
                     })
                 },

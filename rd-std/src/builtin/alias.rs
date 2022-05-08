@@ -39,7 +39,7 @@ impl Builder<Net> for AliasNet {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        Ok(AliasNet::new((*config.net).clone()))
+        Ok(AliasNet::new(config.net.value_cloned()))
     }
 }
 

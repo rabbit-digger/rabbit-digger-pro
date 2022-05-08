@@ -68,6 +68,6 @@ impl Builder<Server> for RedirServer {
     type Item = Self;
 
     fn build(Self::Config { bind, net }: Self::Config) -> Result<Self> {
-        Ok(RedirServer::new(bind, (*net).clone()))
+        Ok(RedirServer::new(bind, net.value_cloned()))
     }
 }

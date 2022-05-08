@@ -61,7 +61,7 @@ impl TProxyServer {
         TProxyServer {
             bind,
             mark,
-            net: (*net).clone(),
+            net: net.value_cloned(),
         }
     }
 

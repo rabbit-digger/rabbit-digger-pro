@@ -39,8 +39,8 @@ pub struct ForwardServer {
 impl ForwardServer {
     fn new(cfg: ForwardServerConfig) -> ForwardServer {
         ForwardServer {
-            listen_net: (*cfg.listen).clone(),
-            net: (*cfg.net).clone(),
+            listen_net: cfg.listen.value_cloned(),
+            net: cfg.net.value_cloned(),
             bind: cfg.bind,
             target: cfg.target,
             udp: cfg.udp,

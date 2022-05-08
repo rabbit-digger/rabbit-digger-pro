@@ -22,7 +22,7 @@ impl Builder<Net> for DNSSnifferNet {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        Ok(DNSSnifferNet::new((*config.net).clone()))
+        Ok(DNSSnifferNet::new(config.net.value_cloned()))
     }
 }
 

@@ -21,7 +21,7 @@ pub struct EchoServer {
 
 impl EchoServer {
     fn new(EchoServerConfig { bind, listen }: EchoServerConfig) -> EchoServer {
-        let listen = (*listen).clone();
+        let listen = listen.value_cloned();
         EchoServer { listen, bind }
     }
 }

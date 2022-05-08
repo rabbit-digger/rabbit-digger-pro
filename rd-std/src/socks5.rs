@@ -38,7 +38,7 @@ impl Builder<Net> for Socks5Client {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        Ok(Socks5Client::new((*config.net).clone(), config.server))
+        Ok(Socks5Client::new(config.net.value_cloned(), config.server))
     }
 }
 
@@ -48,7 +48,11 @@ impl Builder<Server> for server::Socks5 {
     type Item = Self;
 
     fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
-        Ok(server::Socks5::new((*listen).clone(), (*net).clone(), bind))
+        Ok(server::Socks5::new(
+            listen.value_cloned(),
+            net.value_cloned(),
+            bind,
+        ))
     }
 }
 

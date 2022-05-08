@@ -102,7 +102,11 @@ impl Builder<Server> for HttpSocks5 {
     type Item = Self;
 
     fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
-        Ok(HttpSocks5::new((*listen).clone(), (*net).clone(), bind))
+        Ok(HttpSocks5::new(
+            listen.value_cloned(),
+            net.value_cloned(),
+            bind,
+        ))
     }
 }
 

@@ -36,7 +36,7 @@ impl Builder<Net> for HttpClient {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        Ok(HttpClient::new((*config.net).clone(), config.server))
+        Ok(HttpClient::new(config.net.value_cloned(), config.server))
     }
 }
 
@@ -46,7 +46,11 @@ impl Builder<Server> for server::Http {
     type Item = Self;
 
     fn build(Self::Config { listen, net, bind }: Self::Config) -> Result<Self> {
-        Ok(server::Http::new((*listen).clone(), (*net).clone(), bind))
+        Ok(server::Http::new(
+            listen.value_cloned(),
+            net.value_cloned(),
+            bind,
+        ))
     }
 }
 

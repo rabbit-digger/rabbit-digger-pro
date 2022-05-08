@@ -118,8 +118,8 @@ impl Builder<Net> for ResolveNet {
 
     fn build(config: Self::Config) -> Result<Self> {
         Ok(ResolveNet::new(
-            (*config.net).clone(),
-            (*config.resolve_net).clone(),
+            config.net.value_cloned(),
+            config.resolve_net.value_cloned(),
             config.ipv4,
             config.ipv6,
         ))

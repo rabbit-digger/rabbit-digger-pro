@@ -77,7 +77,7 @@ impl Builder<Net> for TlsNet {
                 skip_cert_verify: cfg.skip_cert_verify,
             })?,
             sni: cfg.sni,
-            net: (*cfg.net).clone(),
+            net: cfg.net.value_cloned(),
         })
     }
 }

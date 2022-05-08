@@ -110,7 +110,7 @@ pub fn resolve_net(config: &mut dyn Config, getter: NetGetter) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{self as rd_interface, async_trait, rd_config, Error, INet, IntoDyn};
+    use crate::{self as rd_interface, rd_config, Error, INet, IntoDyn};
     use std::collections::HashMap;
 
     #[test]

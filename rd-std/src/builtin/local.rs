@@ -100,7 +100,7 @@ impl Resolver {
 
 impl LocalNet {
     pub fn new(cfg: LocalNetConfig) -> LocalNet {
-        let net = cfg.lookup_host.as_ref().map(|n| (**n).clone());
+        let net = cfg.lookup_host.as_ref().map(|n| n.value_cloned());
         LocalNet {
             cfg,
             resolver: Resolver::new(net),
