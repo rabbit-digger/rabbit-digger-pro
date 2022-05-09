@@ -48,6 +48,12 @@ services:
     volumes:
       - ./config/vector.toml:/etc/vector/vector.toml
     ports:
-      - "9000:9000"
+      - "9000"
     depends_on:
       - loki
+
+  websocat:
+    image: mtilson/websocat:latest
+    entrypoint: sh -c "websocat ws://192.168.233.1:8030/api/stream/logs | nc vector 9000"
+    depends_on:
+      - vector
