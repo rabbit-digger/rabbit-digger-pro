@@ -1,0 +1,20 @@
+[sources.logs]
+type = "socket"
+address = "0.0.0.0:9000"
+mode = "tcp"
+decoding.codec = "json"
+
+[transforms.extract]
+type = "remap"
+inputs = ["logs"]
+source = """
+.ctx = .fields.ctx
+.message = .fields.message
+"""
+
+[sinks.loki]
+type = "loki"
+inputs = ["extract"]
+endpoint = "http://loki:3100"
+encoding.codec = "json"
+labels.type = "{{ type }}"
