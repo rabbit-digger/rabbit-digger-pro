@@ -11,6 +11,9 @@ use futures::{
 use rabbit_digger_pro::{config::ImportSource, schema, util::exit_stream, ApiServer, App};
 use tracing_subscriber::filter::dynamic_filter_fn;
 
+#[cfg(feature = "telemetry")]
+mod tracing_helper;
+
 #[derive(Parser)]
 struct ApiServerArgs {
     /// HTTP endpoint bind address.
@@ -159,6 +162,15 @@ async fn main() -> Result<()> {
     let log_writer_filter = EnvFilter::new(
         "rabbit_digger=debug,rabbit_digger_pro=debug,rd_std=debug,raw=debug,ss=debug",
     );
+    let json_layer = tracing_subscriber::fmt::layer().json();
+    #[cfg(feature = "telemetry")]
+    let json_layer = json_layer.event_format(tracing_helper::TraceIdFormat);
+    let json_layer = json_layer
+        .with_writer(rabbit_digger_pro::log::LogWriter::new)
+        .with_filter(dynamic_filter_fn(move |metadata, ctx| {
+            log_writer_filter.enabled(metadata, ctx.clone())
+        }));
+
     tr.with(
         tracing_subscriber::fmt::layer()
             .with_writer(std::io::stdout)
@@ -166,14 +178,7 @@ async fn main() -> Result<()> {
                 log_filter.enabled(metadata, ctx.clone())
             })),
     )
-    .with(
-        tracing_subscriber::fmt::layer()
-            .json()
-            .with_writer(rabbit_digger_pro::log::LogWriter::new)
-            .with_filter(dynamic_filter_fn(move |metadata, ctx| {
-                log_writer_filter.enabled(metadata, ctx.clone())
-            })),
-    )
+    .with(json_layer)
     .init();
 
     match &args.cmd {
