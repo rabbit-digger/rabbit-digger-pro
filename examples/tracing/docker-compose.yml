@@ -57,3 +57,4 @@ services:
     entrypoint: sh -c "websocat ws://192.168.233.1:8030/api/stream/logs | nc vector 9000"
     depends_on:
       - vector
+    restart: unless-stopped
