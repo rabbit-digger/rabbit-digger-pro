@@ -169,9 +169,9 @@ where
 }
 
 /// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
-#[instrument(err, skip(a, b), fields(ctx = ?_ctx))]
+#[instrument(err, skip(a, b))]
 pub async fn connect_tcp<A, B>(
-    _ctx: &mut rd_interface::Context,
+    ctx: &mut rd_interface::Context,
     a: A,
     b: B,
 ) -> Result<(), std::io::Error>
@@ -179,6 +179,7 @@ where
     A: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     B: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
+    let _ = ctx;
     DropAbort::new(tokio::spawn(CopyBidirectional {
         a,
         b,

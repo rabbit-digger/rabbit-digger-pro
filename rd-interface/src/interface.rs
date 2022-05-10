@@ -257,18 +257,6 @@ pub trait INet: Downcast + Unpin + Send + Sync {
     fn provide_lookup_host(&self) -> Option<&dyn LookupHost> {
         None
     }
-    // async fn tcp_connect(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpStream> {
-    //     Err(NOT_IMPLEMENTED)
-    // }
-    // async fn tcp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<TcpListener> {
-    //     Err(NOT_IMPLEMENTED)
-    // }
-    // async fn udp_bind(&self, _ctx: &mut Context, _addr: &Address) -> Result<UdpSocket> {
-    //     Err(NOT_IMPLEMENTED)
-    // }
-    // async fn lookup_host(&self, _addr: &Address) -> Result<Vec<SocketAddr>> {
-    //     Err(NOT_IMPLEMENTED)
-    // }
     // It's used to downcast. Don't implement it.
     fn get_inner(&self) -> Option<Net> {
         None

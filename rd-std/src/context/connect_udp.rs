@@ -195,12 +195,13 @@ impl Future for CopyBidirectional {
 }
 
 /// Connect two `TcpStream`. Unlike `copy_bidirectional`, it closes the other side once one side is done.
-#[instrument(err, skip(a, b), fields(ctx = ?_ctx))]
+#[instrument(err, skip(a, b))]
 pub async fn connect_udp(
-    _ctx: &mut rd_interface::Context,
+    ctx: &mut rd_interface::Context,
     a: UdpChannel,
     b: UdpSocket,
 ) -> io::Result<()> {
+    let _ = ctx;
     DropAbort::new(tokio::spawn(CopyBidirectional {
         a,
         b,

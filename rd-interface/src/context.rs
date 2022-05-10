@@ -1,7 +1,9 @@
 use crate::{config::CompactVecString, Value};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, ser::SerializeMap, Serialize, Serializer};
 use serde_json::Map;
-use std::{collections::HashMap, fmt, iter::FromIterator, mem::replace, net::SocketAddr};
+use std::{
+    collections::HashMap, fmt, io::Cursor, iter::FromIterator, mem::replace, net::SocketAddr,
+};
 use thiserror::Error;
 
 /// Context error
@@ -31,11 +33,26 @@ pub struct Context {
 
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = f.debug_struct("Context");
-        for (key, value) in &self.data {
-            s.field(key, value);
-        }
-        s.finish()
+        let buf = Cursor::new(Vec::new());
+        let mut serializer = serde_json::Serializer::new(buf);
+        let mut visit = || {
+            let mut serializer = serializer.serialize_map(None)?;
+
+            for (k, v) in self.data.iter() {
+                serializer.serialize_entry(&k, &v)?;
+            }
+            serializer.serialize_entry("net_list", self.net_list())?;
+
+            serializer.end()
+        };
+
+        visit().map_err(|_| std::fmt::Error)?;
+
+        f.write_str(
+            String::from_utf8(serializer.into_inner().into_inner())
+                .unwrap_or_default()
+                .as_str(),
+        )
     }
 }
 
