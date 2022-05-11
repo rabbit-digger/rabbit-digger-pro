@@ -1,20 +1,63 @@
-[sources.logs]
+[sources.all]
 type = "socket"
 address = "0.0.0.0:9000"
 mode = "tcp"
 decoding.codec = "json"
+host_key = ""
 
-[transforms.extract]
+[transforms.logs-input]
+type = "filter"
+inputs = ["all"]
+condition = "!exists(.full)"
+
+[transforms.traffic-input]
+type = "filter"
+inputs = ["all"]
+condition = "exists(.full)"
+
+[transforms.logs]
 type = "remap"
-inputs = ["logs"]
+inputs = ["logs-input"]
 source = """
-.ctx = .fields.ctx
-.message = .fields.message
+del(.source_type)
+.type = "logs"
+
+if exists(.fields.message) {
+    .message = .fields.message
+    del(.fields.message)
+}
+
+if exists(.fields.ctx) {
+    .ctx = parse_json!(.fields.ctx)
+    del(.fields.ctx)
+
+    if exists(.ctx.src_socket_addr) {
+        .ctx.src_socket_addr = parse_regex!(.ctx.src_socket_addr, r'(?P<host>.*?):(?P<port>\\d+)$')
+    }
+    if exists(.ctx.dest_socket_addr) {
+        .ctx.dest_socket_addr = parse_regex!(.ctx.dest_socket_addr, r'(?P<host>.*?):(?P<port>\\d+)$')
+    }
+    if exists(.ctx.dest_domain) {
+        .ctx.dest_domain = parse_regex!(.ctx.dest_domain, r'(?P<host>.*?):(?P<port>\\d+)$')
+    }
+}
+"""
+
+[transforms.traffic]
+type = "remap"
+inputs = ["traffic-input"]
+source = """
+del(.source_type)
+.type = "traffic"
+.total_download = .full.total_download
+.total_upload = .full.total_upload
+.connection_count = length!(.full.connections)
+del(.full)
 """
 
 [sinks.loki]
 type = "loki"
-inputs = ["extract"]
+inputs = ["logs", "traffic"]
 endpoint = "http://loki:3100"
 encoding.codec = "json"
 labels.type = "{{ type }}"
