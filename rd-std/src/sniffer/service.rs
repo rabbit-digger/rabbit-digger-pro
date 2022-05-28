@@ -56,7 +56,7 @@ impl ReverseLookup {
                 }
                 RData::CNAME(cname) => {
                     let cname = cname.to_utf8().trim_end_matches('.').to_string();
-                    cname_map.insert(domain.to_string(), cname);
+                    cname_map.insert(cname, domain.to_string());
                 }
                 _ => {}
             }
