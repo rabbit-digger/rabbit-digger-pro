@@ -1,14 +1,15 @@
-use ::std::{io, pin::Pin, task};
-use std::net::SocketAddr;
+use std::{io, net::SocketAddr, pin::Pin, task, time::Duration};
 
 use crate::stream::IOStream;
-use futures::ready;
-use rd_interface::{async_trait, impl_async_read, AsyncWrite, ITcpStream, NOT_IMPLEMENTED};
+use futures::{ready, FutureExt};
+use rd_interface::{async_trait, AsyncRead, AsyncWrite, ITcpStream, ReadBuf, NOT_IMPLEMENTED};
+use tokio::time::{sleep, Sleep};
 
 pub(super) struct TrojanTcp {
     stream: Box<dyn IOStream>,
     head: Option<Vec<u8>>,
     is_first: bool,
+    sleep: Pin<Box<Sleep>>,
 }
 
 impl TrojanTcp {
@@ -17,6 +18,7 @@ impl TrojanTcp {
             stream,
             head: Some(head),
             is_first: true,
+            sleep: Box::pin(sleep(Duration::from_millis(100))),
         }
     }
 }
@@ -31,7 +33,43 @@ impl ITcpStream for TrojanTcp {
         Err(NOT_IMPLEMENTED)
     }
 
-    impl_async_read!(stream);
+    fn poll_read(
+        &mut self,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> task::Poll<io::Result<()>> {
+        loop {
+            let Self {
+                stream,
+                head,
+                is_first,
+                sleep,
+            } = &mut *self;
+            let stream = Pin::new(stream);
+
+            if sleep.is_elapsed() {
+                *is_first = false;
+
+                let len = match head {
+                    Some(head) => {
+                        let sent = ready!(stream.poll_write(cx, head))?;
+                        head.drain(..sent);
+                        head.len()
+                    }
+                    None => break,
+                };
+                if len == 0 {
+                    *head = None;
+                    break;
+                }
+            }
+            if let task::Poll::Pending = sleep.poll_unpin(cx) {
+                break;
+            }
+        }
+
+        Pin::new(&mut self.stream).poll_read(cx, buf)
+    }
 
     fn poll_write(
         &mut self,
@@ -43,6 +81,7 @@ impl ITcpStream for TrojanTcp {
                 stream,
                 head,
                 is_first,
+                ..
             } = &mut *self;
             let stream = Pin::new(stream);
             let len = match head {
