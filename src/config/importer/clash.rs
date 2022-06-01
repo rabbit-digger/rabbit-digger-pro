@@ -14,6 +14,7 @@ use rd_interface::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tokio::sync::Mutex;
 
 use crate::{config::ImportSource, storage::Storage};
 
@@ -219,6 +220,7 @@ impl Clash {
         r: String,
         cache: &dyn Storage,
         rule_providers: &BTreeMap<String, RuleProvider>,
+        oom_lock: &Mutex<()>,
     ) -> Result<rule_config::RuleItem> {
         let bad_rule = || anyhow!("Bad rule.");
         let mut ps = r.split(',');
@@ -291,7 +293,10 @@ impl Clash {
                     _ => return Err(bad_rule()),
                 };
 
-                let RuleSet { payload } = serde_yaml::from_str(&source.get_content(cache).await?)?;
+                let source_str = source.get_content(cache).await?;
+                let _guard = oom_lock.lock().await;
+
+                let RuleSet { payload } = serde_yaml::from_str(&source_str)?;
                 match rule_provider.behavior.as_ref() {
                     "domain" => rule_config::RuleItem {
                         target: target.clone(),
@@ -385,8 +390,9 @@ impl Importer for Clash {
         }
 
         if let Some(rule_name) = &self.rule_name {
+            let oom_lock = Mutex::new(());
             let rule = stream::iter(clash_config.rules)
-                .map(|r| self.rule_to_rule(r, cache, &clash_config.rule_providers))
+                .map(|r| self.rule_to_rule(r, cache, &clash_config.rule_providers, &oom_lock))
                 .buffered(10)
                 .flat_map(|r| stream::iter(r))
                 .fold(
