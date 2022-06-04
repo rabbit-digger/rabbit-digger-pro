@@ -1,17 +1,10 @@
-use std::{io, net::Ipv4Addr, str::FromStr};
+use std::{net::Ipv4Addr, str::FromStr};
 
 use crate::config::{DeviceConfig, RawNetConfig, TunTap, TunTapSetup};
 use boxed::BoxedAsyncDevice;
 pub use interface_info::get_interface_info;
-use pcap::{Capture, Device};
 use rd_interface::{Error, ErrorContext, Result};
-use tokio_smoltcp::{
-    device::{AsyncDevice, DeviceCapabilities},
-    smoltcp::{
-        phy::Checksum,
-        wire::{EthernetAddress, IpCidr},
-    },
-};
+use tokio_smoltcp::smoltcp::wire::{EthernetAddress, IpCidr};
 
 mod boxed;
 mod interface_info;
@@ -19,6 +12,9 @@ mod interface_info;
 mod unix;
 #[cfg(unix)]
 use crate::device::unix::get_tun;
+
+#[cfg(feature = "libpcap")]
+mod pcap_dev;
 
 #[cfg(windows)]
 mod windows;
@@ -30,6 +26,7 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
         .map_err(|_| Error::Other("Failed to parse server_addr".into()))?;
 
     let (ethernet_address, device) = match &config.device {
+        #[cfg(feature = "libpcap")]
         DeviceConfig::String(dev) => {
             let interface_info = match crate::device::get_interface_info(dev) {
                 Ok(info) => info,
@@ -39,7 +36,7 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
                         e
                     );
                     // find by friendly name
-                    let interface = Device::list()
+                    let interface = pcap::Device::list()
                         .context("Failed to get device list")?
                         .into_iter()
                         .map(|d| crate::device::get_interface_info(&d.name))
@@ -52,9 +49,9 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
                 }
             };
 
-            let device = Box::new(get_by_device(
-                pcap_device_by_name(&interface_info.name)?,
-                get_filter(&destination_addr),
+            let device = Box::new(pcap_dev::get_by_device(
+                pcap_dev::pcap_device_by_name(&interface_info.name)?,
+                pcap_dev::get_filter(&destination_addr),
                 config,
             )?);
 
@@ -89,69 +86,6 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
     };
 
     Ok((ethernet_address, device))
-}
-
-fn get_filter(ip_cidr: &IpCidr) -> Option<String> {
-    match ip_cidr {
-        IpCidr::Ipv4(v4) => Some(format!("net {}", v4.network())),
-        _ => None,
-    }
-}
-
-fn pcap_device_by_name(name: &str) -> Result<Device> {
-    let mut devices = Device::list().context("Failed to list device")?;
-
-    if let Some(id) = devices.iter().position(|d| d.name == name) {
-        Ok(devices.remove(id))
-    } else {
-        Err(Error::Other(
-            format!("Failed to find device: {}", name,).into(),
-        ))
-    }
-}
-
-#[cfg(unix)]
-fn get_by_device(
-    device: Device,
-    filter: Option<String>,
-    config: &RawNetConfig,
-) -> Result<impl AsyncDevice> {
-    use tokio_smoltcp::device::AsyncCapture;
-
-    let mut cap = Capture::from_device(device)
-        .context("Failed to capture device")?
-        .promisc(true)
-        .immediate_mode(true)
-        .timeout(500)
-        .open()
-        .context("Failed to open device")?;
-
-    if let Some(filter) = filter {
-        cap.filter(&filter, true).context("Failed to add filter")?;
-    }
-
-    fn map_err(e: pcap::Error) -> io::Error {
-        match e {
-            pcap::Error::IoError(e) => e.into(),
-            pcap::Error::TimeoutExpired => io::ErrorKind::WouldBlock.into(),
-            other => io::Error::new(io::ErrorKind::Other, other),
-        }
-    }
-    let mut caps = DeviceCapabilities::default();
-    caps.max_transmission_unit = config.mtu;
-    caps.checksum.ipv4 = Checksum::Tx;
-    caps.checksum.tcp = Checksum::Tx;
-    caps.checksum.udp = Checksum::Tx;
-    caps.checksum.icmpv4 = Checksum::Tx;
-    caps.checksum.icmpv6 = Checksum::Tx;
-
-    AsyncCapture::new(
-        cap.setnonblock().context("Failed to set nonblock")?,
-        |d| d.next().map_err(map_err).map(|p| p.to_vec()),
-        |d, pkt| d.sendpacket(pkt).map_err(map_err),
-        caps,
-    )
-    .context("Failed to create async capture")
 }
 
 #[cfg(windows)]
@@ -212,17 +146,4 @@ fn get_by_device(
 
     let capture = ChannelCapture::new(recv, send, caps);
     Ok(capture)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio_smoltcp::smoltcp::wire::Ipv4Address;
-
-    #[test]
-    fn test_get_filter() {
-        let filter = get_filter(&IpCidr::new(Ipv4Address::new(192, 168, 1, 1).into(), 24));
-
-        assert_eq!(filter, Some("net 192.168.1.0/24".to_string()));
-    }
 }

@@ -26,6 +26,7 @@ pub enum MaybeString<T>
 where
     T: Config,
 {
+    #[cfg(feature = "libpcap")]
     String(String),
     Other(T),
 }

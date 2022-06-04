@@ -87,7 +87,7 @@ mimalloc = { version = "0.1", optional = true }
 rusty-hook = "0.11.0"
 
 [features]
-default = ["ss", "trojan", "rpc", "obfs", "api_server", "rhai"]
+default = ["ss", "trojan", "rpc", "obfs", "api_server", "rhai", "raw"]
 api_server = [
     "axum",
     "serde_urlencoded",
