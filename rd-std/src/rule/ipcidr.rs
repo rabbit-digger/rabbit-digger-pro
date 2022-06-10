@@ -1,6 +1,5 @@
 use super::config::{IpCidrMatcher, SrcIpCidrMatcher};
 use super::matcher::{MatchContext, Matcher, MaybeAsync};
-use rd_interface::Address;
 use smoltcp::wire::IpAddress;
 
 impl IpCidrMatcher {
@@ -12,8 +11,8 @@ impl IpCidrMatcher {
 
 impl Matcher for IpCidrMatcher {
     fn match_rule(&self, match_context: &MatchContext) -> MaybeAsync<bool> {
-        match match_context.address() {
-            Address::SocketAddr(addr) => self.test(addr.ip()),
+        match match_context.get_socket_addr() {
+            Some(addr) => self.test(addr.ip()),
             _ => false,
         }
         .into()
