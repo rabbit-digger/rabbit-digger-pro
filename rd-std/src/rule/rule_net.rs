@@ -285,4 +285,26 @@ mod tests {
 
         assert_echo(&rule_net, "localhost:12345").await;
     }
+
+    #[tokio::test]
+    async fn test_normalize() {
+        let net = TestNet::new().into_dyn();
+
+        spawn_echo_server(&net, "127.0.0.1:12345").await;
+
+        let rule_net = RuleNet::new(config::RuleNetConfig {
+            rule: vec![config::RuleItem {
+                matcher: config::Matcher::IpCidr(config::IpCidrMatcher {
+                    ipcidr: vec!["127.0.0.1/32".parse().unwrap()].into(),
+                }),
+                target: NetRef::new_with_value("net".into(), net.clone()),
+            }],
+            lru_cache_size: 10,
+        })
+        .unwrap()
+        .into_dyn();
+
+        let addr = Address::Domain("127.0.0.1".to_string(), 12345);
+        assert_echo(&rule_net, addr).await;
+    }
 }
