@@ -55,7 +55,7 @@ impl MatchContext {
         addr: &Address,
     ) -> Result<MatchContext> {
         Ok(MatchContext {
-            address: addr.clone(),
+            address: addr.to_normalized(),
             src_ip_addr: ctx.get_common::<SrcSocketAddr>()?.map(|v| v.0.ip()),
             dest_socket_addr: ctx.get_common::<DestSocketAddr>()?.map(|v| v.0),
             dest_domain: ctx.get_common::<DestDomain>()?.map(|v| v.0),

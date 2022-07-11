@@ -247,6 +247,15 @@ impl Address {
             },
         }
     }
+
+    /// parse domain first, if it can be parsed as IP address,
+    /// then return it, otherwise return the original domain.
+    pub fn to_normalized(&self) -> Address {
+        match self.normalize() {
+            Either::Left(s) => Address::SocketAddr(s),
+            Either::Right((d, p)) => Address::Domain(d.to_string(), p),
+        }
+    }
 }
 
 enum Either<T, U> {
