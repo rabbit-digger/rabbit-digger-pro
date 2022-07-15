@@ -71,6 +71,66 @@ pub(super) fn get_by_device(
     .context("Failed to create async capture")
 }
 
+#[cfg(windows)]
+fn get_by_device(
+    device: Device,
+    filter: Option<String>,
+    config: &RawNetConfig,
+) -> Result<impl AsyncDevice> {
+    use tokio::sync::mpsc::{Receiver, Sender};
+    use tokio_smoltcp::device::ChannelCapture;
+
+    let mut cap = Capture::from_device(device.clone())
+        .context("Failed to capture device")?
+        .promisc(true)
+        .immediate_mode(true)
+        .timeout(5)
+        .open()
+        .context("Failed to open device")?;
+    let mut send = Capture::from_device(device)
+        .context("Failed to capture device")?
+        .promisc(true)
+        .immediate_mode(true)
+        .timeout(5)
+        .open()
+        .context("Failed to open device")?;
+
+    if let Some(filter) = filter {
+        cap.filter(&filter, true).context("Failed to add filter")?;
+    }
+    // don't accept any packets from the send device
+    send.filter("less 0", true)
+        .context("Failed to add filter")?;
+
+    let recv = move |tx: Sender<io::Result<Vec<u8>>>| loop {
+        let p = match cap.next().map(|p| p.to_vec()) {
+            Ok(p) => p,
+            Err(pcap::Error::TimeoutExpired) => continue,
+            Err(e) => {
+                eprintln!("Error: {:?}", e);
+                break;
+            }
+        };
+
+        tx.blocking_send(Ok(p)).unwrap();
+    };
+    let send = move |mut rx: Receiver<Vec<u8>>| {
+        while let Some(pkt) = rx.blocking_recv() {
+            send.sendpacket(pkt).unwrap();
+        }
+    };
+    let mut caps = DeviceCapabilities::default();
+    caps.max_transmission_unit = config.mtu;
+    caps.checksum.ipv4 = Checksum::Tx;
+    caps.checksum.tcp = Checksum::Tx;
+    caps.checksum.udp = Checksum::Tx;
+    caps.checksum.icmpv4 = Checksum::Tx;
+    caps.checksum.icmpv6 = Checksum::Tx;
+
+    let capture = ChannelCapture::new(recv, send, caps);
+    Ok(capture)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

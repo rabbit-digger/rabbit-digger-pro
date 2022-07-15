@@ -3,7 +3,7 @@ use std::{net::Ipv4Addr, str::FromStr};
 use crate::config::{DeviceConfig, RawNetConfig, TunTap, TunTapSetup};
 use boxed::BoxedAsyncDevice;
 pub use interface_info::get_interface_info;
-use rd_interface::{Error, ErrorContext, Result};
+use rd_interface::{Error, Result};
 use tokio_smoltcp::smoltcp::wire::{EthernetAddress, IpCidr};
 
 mod boxed;
@@ -28,6 +28,8 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
     let (ethernet_address, device) = match &config.device {
         #[cfg(feature = "libpcap")]
         DeviceConfig::String(dev) => {
+            use rd_interface::ErrorContext;
+
             let interface_info = match crate::device::get_interface_info(dev) {
                 Ok(info) => info,
                 Err(e) => {
@@ -73,6 +75,8 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
                 TunTap::Tun => EthernetAddress::BROADCAST,
                 #[cfg(unix)]
                 TunTap::Tap => {
+                    use rd_interface::ErrorContext;
+
                     crate::device::get_interface_info(device.name())
                         .context("Failed to get interface info")?
                         .ethernet_address
@@ -86,64 +90,4 @@ pub fn get_device(config: &RawNetConfig) -> Result<(EthernetAddress, BoxedAsyncD
     };
 
     Ok((ethernet_address, device))
-}
-
-#[cfg(windows)]
-fn get_by_device(
-    device: Device,
-    filter: Option<String>,
-    config: &RawNetConfig,
-) -> Result<impl AsyncDevice> {
-    use tokio::sync::mpsc::{Receiver, Sender};
-    use tokio_smoltcp::device::ChannelCapture;
-
-    let mut cap = Capture::from_device(device.clone())
-        .context("Failed to capture device")?
-        .promisc(true)
-        .immediate_mode(true)
-        .timeout(5)
-        .open()
-        .context("Failed to open device")?;
-    let mut send = Capture::from_device(device)
-        .context("Failed to capture device")?
-        .promisc(true)
-        .immediate_mode(true)
-        .timeout(5)
-        .open()
-        .context("Failed to open device")?;
-
-    if let Some(filter) = filter {
-        cap.filter(&filter, true).context("Failed to add filter")?;
-    }
-    // don't accept any packets from the send device
-    send.filter("less 0", true)
-        .context("Failed to add filter")?;
-
-    let recv = move |tx: Sender<io::Result<Vec<u8>>>| loop {
-        let p = match cap.next().map(|p| p.to_vec()) {
-            Ok(p) => p,
-            Err(pcap::Error::TimeoutExpired) => continue,
-            Err(e) => {
-                eprintln!("Error: {:?}", e);
-                break;
-            }
-        };
-
-        tx.blocking_send(Ok(p)).unwrap();
-    };
-    let send = move |mut rx: Receiver<Vec<u8>>| {
-        while let Some(pkt) = rx.blocking_recv() {
-            send.sendpacket(pkt).unwrap();
-        }
-    };
-    let mut caps = DeviceCapabilities::default();
-    caps.max_transmission_unit = config.mtu;
-    caps.checksum.ipv4 = Checksum::Tx;
-    caps.checksum.tcp = Checksum::Tx;
-    caps.checksum.udp = Checksum::Tx;
-    caps.checksum.icmpv4 = Checksum::Tx;
-    caps.checksum.icmpv6 = Checksum::Tx;
-
-    let capture = ChannelCapture::new(recv, send, caps);
-    Ok(capture)
 }
