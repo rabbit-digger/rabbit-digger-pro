@@ -35,29 +35,23 @@ pub trait Obfs {
 
 #[rd_config]
 #[derive(Debug)]
-#[serde(rename_all = "snake_case", tag = "obfs_type")]
+#[serde(rename_all = "snake_case")]
 pub enum ObfsType {
-    HttpSimple(http_simple::HttpSimple),
+    Http(http_simple::HttpSimple),
     Plain(plain::Plain),
-}
-
-impl Default for ObfsType {
-    fn default() -> Self {
-        ObfsType::Plain(plain::Plain)
-    }
 }
 
 impl Obfs for ObfsType {
     fn tcp_connect(&self, tcp: TcpStream, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         match self {
-            ObfsType::HttpSimple(i) => i.tcp_connect(tcp, ctx, addr),
+            ObfsType::Http(i) => i.tcp_connect(tcp, ctx, addr),
             ObfsType::Plain(i) => i.tcp_connect(tcp, ctx, addr),
         }
     }
 
     fn tcp_accept(&self, tcp: TcpStream, addr: SocketAddr) -> Result<TcpStream> {
         match self {
-            ObfsType::HttpSimple(i) => i.tcp_accept(tcp, addr),
+            ObfsType::Http(i) => i.tcp_accept(tcp, addr),
             ObfsType::Plain(i) => i.tcp_accept(tcp, addr),
         }
     }

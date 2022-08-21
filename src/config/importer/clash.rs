@@ -133,21 +133,15 @@ impl Clash {
 
                 if let (Some(plugin), Some(plugin_opts)) = (params.plugin, params.plugin_opts) {
                     if plugin == "obfs" {
-                        // only http is supported
-                        if let Some("http") = plugin_opts.get("mode").map(AsRef::as_ref) {
-                        } else {
-                            return Err(anyhow!("obfs only support http"));
-                        }
-                        // TODO: support other modes
-                        let mode_param = plugin_opts
-                            .get("host")
+                        let obfs_mode = plugin_opts
+                            .get("mode")
                             .map(|i| i.to_string())
                             .unwrap_or_default();
+
                         let obfs_net = Net::new(
                             "obfs",
                             json!({
-                                "obfs_type": "http_simple",
-                                "obfs_param": mode_param,
+                                obfs_mode: plugin_opts,
                             }),
                         );
 

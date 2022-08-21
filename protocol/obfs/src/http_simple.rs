@@ -15,10 +15,22 @@ use rd_interface::{
 };
 use tokio::io::AsyncRead;
 
+fn def_method() -> String {
+    "GET".to_string()
+}
+
+fn def_uri() -> String {
+    "/".to_string()
+}
+
 #[rd_config]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HttpSimple {
-    obfs_param: String,
+    #[serde(default = "def_method")]
+    method: String,
+    #[serde(default = "def_uri")]
+    uri: String,
+    host: String,
 }
 
 impl Obfs for HttpSimple {
@@ -28,7 +40,7 @@ impl Obfs for HttpSimple {
         _ctx: &mut rd_interface::Context,
         _addr: &Address,
     ) -> Result<TcpStream> {
-        Ok(Connect::new(tcp, &self.obfs_param).into_dyn())
+        Ok(Connect::new(tcp, self.clone()).into_dyn())
     }
 
     fn tcp_accept(&self, _tcp: TcpStream, _addr: std::net::SocketAddr) -> Result<TcpStream> {
@@ -53,17 +65,17 @@ pin_project! {
         inner: TcpStream,
         write: WriteState,
         read: ReadState,
-        obfs_param: String,
+        param: HttpSimple,
     }
 }
 
 impl Connect {
-    fn new(tcp: TcpStream, param: &str) -> Connect {
+    fn new(tcp: TcpStream, param: HttpSimple) -> Connect {
         Connect {
             inner: tcp,
             write: WriteState::Wait,
             read: ReadState::Read(vec![0u8; 8192], 0),
-            obfs_param: param.to_string(),
+            param,
         }
     }
 }
@@ -128,17 +140,28 @@ impl ITcpStream for Connect {
         loop {
             match &mut self.write {
                 WriteState::Wait => {
-                    let head_len = thread_rng().gen_range(0..64usize).min(buf.len());
-                    let head = &buf[..head_len];
-                    let body = &buf[head_len..];
+                    let major = thread_rng().next_u32() % 51;
+                    let minor = thread_rng().next_u32() % 2;
+
+                    let key_bytes: [u8; 16] = thread_rng().gen();
+                    let key = base64::encode(key_bytes);
 
                     let mut cursor = Cursor::new(Vec::<u8>::with_capacity(1024));
                     cursor.write_fmt(format_args!(
-                        "GET /{path} HTTP/1.1\r\nHost: {host}\r\n\r\n",
-                        path = UrlEncode(head),
-                        host = self.obfs_param
+                        "{method} {path} HTTP/1.1\r
+Host: {host}\r
+User-Agent: curl/7.{major}.{minor}\r
+Upgrade: websocket\r
+Connection: Upgrade\r
+Sec-WebSocket-Key: {key}\r
+Content-Length: {len}\r
+\r\n",
+                        method = self.param.method,
+                        path = self.param.uri,
+                        host = self.param.host,
+                        len = buf.len(),
                     ))?;
-                    cursor.write_all(body)?;
+                    cursor.write_all(buf)?;
 
                     let buf = cursor.into_inner();
 
