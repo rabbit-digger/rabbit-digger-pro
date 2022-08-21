@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, path::PathBuf, str::FromStr};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::PathBuf,
+    str::FromStr,
+};
 
 use anyhow::{anyhow, Result};
 use futures::{stream, StreamExt};
@@ -115,23 +119,62 @@ impl Clash {
         let net = match p.proxy_type.as_ref() {
             "ss" => {
                 #[derive(Debug, Deserialize)]
+                #[serde(rename_all = "kebab-case")]
                 struct Param {
                     server: String,
                     port: u16,
                     cipher: String,
                     password: String,
                     udp: Option<bool>,
+                    plugin: Option<String>,
+                    plugin_opts: Option<HashMap<String, String>>,
                 }
                 let params: Param = serde_json::from_value(p.opt)?;
-                Net::new(
-                    "shadowsocks",
-                    json!({
-                        "server": format!("{}:{}", params.server, params.port),
-                        "cipher": params.cipher,
-                        "password": params.password,
-                        "udp": params.udp.unwrap_or_default(),
-                    }),
-                )
+
+                if let (Some(plugin), Some(plugin_opts)) = (params.plugin, params.plugin_opts) {
+                    if plugin == "obfs" {
+                        // only http is supported
+                        if let Some("http") = plugin_opts.get("mode").map(AsRef::as_ref) {
+                        } else {
+                            return Err(anyhow!("obfs only support http"));
+                        }
+                        // TODO: support other modes
+                        let mode_param = plugin_opts
+                            .get("host")
+                            .map(|i| i.to_string())
+                            .unwrap_or_default();
+                        let obfs_net = Net::new(
+                            "obfs",
+                            json!({
+                                "obfs_type": "http_simple",
+                                "obfs_param": mode_param,
+                            }),
+                        );
+
+                        Net::new(
+                            "shadowsocks",
+                            json!({
+                                "server": format!("{}:{}", params.server, params.port),
+                                "cipher": params.cipher,
+                                "password": params.password,
+                                "udp": params.udp.unwrap_or_default(),
+                                "net": obfs_net,
+                            }),
+                        )
+                    } else {
+                        return Err(anyhow!("unsupported plugin: {}", plugin));
+                    }
+                } else {
+                    Net::new(
+                        "shadowsocks",
+                        json!({
+                            "server": format!("{}:{}", params.server, params.port),
+                            "cipher": params.cipher,
+                            "password": params.password,
+                            "udp": params.udp.unwrap_or_default(),
+                        }),
+                    )
+                }
             }
             "trojan" => {
                 #[derive(Debug, Deserialize)]
