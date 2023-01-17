@@ -17,7 +17,7 @@ use tun_crate::{create_as_async, Configuration, Device, TunPacket, TunPacketCode
 
 pub struct TunAsyncDevice {
     device_name: String,
-    dev: Framed<workaround::PatchAsyncDevice, TunPacketCodec>,
+    dev: Framed<tun_crate::AsyncDevice, TunPacketCodec>,
     caps: DeviceCapabilities,
 }
 
@@ -42,7 +42,7 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<TunAsyncDevice> {
 
     let dev = create_as_async(&config).map_err(map_other)?;
     let device_name = dev.get_ref().name().to_string();
-    let dev = workaround::PatchAsyncDevice(dev).into_framed();
+    let dev = dev.into_framed();
 
     tracing::info!("tun created: {}", device_name);
 
@@ -101,55 +101,5 @@ impl AsyncDevice for TunAsyncDevice {
 impl TunAsyncDevice {
     pub fn name(&self) -> &str {
         &self.device_name
-    }
-}
-
-mod workaround {
-    use std::{
-        io,
-        pin::Pin,
-        task::{Context, Poll},
-    };
-
-    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-    use tokio_util::codec::Framed;
-    use tun_crate::{r#async::AsyncDevice, Device, TunPacketCodec};
-
-    pub struct PatchAsyncDevice(pub AsyncDevice);
-
-    impl PatchAsyncDevice {
-        pub fn into_framed(mut self) -> Framed<Self, TunPacketCodec> {
-            let pi = self.0.get_mut().has_packet_information();
-            let codec = TunPacketCodec::new(pi, self.0.get_ref().mtu().unwrap_or(1504));
-            Framed::new(self, codec)
-        }
-    }
-
-    impl AsyncRead for PatchAsyncDevice {
-        fn poll_read(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            buf: &mut ReadBuf,
-        ) -> Poll<io::Result<()>> {
-            Pin::new(&mut self.0).poll_read(cx, buf)
-        }
-    }
-
-    impl AsyncWrite for PatchAsyncDevice {
-        fn poll_write(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            buf: &[u8],
-        ) -> Poll<io::Result<usize>> {
-            Pin::new(&mut self.0).poll_write(cx, buf)
-        }
-
-        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-            Pin::new(&mut self.0).poll_flush(cx)
-        }
-
-        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-            Pin::new(&mut self.0).poll_shutdown(cx)
-        }
     }
 }
