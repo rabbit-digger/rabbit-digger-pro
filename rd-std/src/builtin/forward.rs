@@ -21,6 +21,8 @@ pub struct ForwardServerConfig {
     bind: Address,
     target: Address,
     #[serde(default)]
+    tcp: Option<bool>,
+    #[serde(default)]
     udp: bool,
     #[serde(default)]
     net: NetRef,
@@ -33,6 +35,7 @@ pub struct ForwardServer {
     net: Net,
     bind: Address,
     target: Address,
+    tcp: bool,
     udp: bool,
 }
 
@@ -43,6 +46,7 @@ impl ForwardServer {
             net: cfg.net.value_cloned(),
             bind: cfg.bind,
             target: cfg.target,
+            tcp: cfg.tcp.unwrap_or(true),
             udp: cfg.udp,
         }
     }
@@ -81,6 +85,9 @@ impl ForwardServer {
         Ok(())
     }
     pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
+        if !self.tcp {
+            pending::<()>().await;
+        }
         loop {
             let (socket, addr) = listener.accept().await?;
             let net = self.net.clone();
@@ -181,6 +188,7 @@ mod tests {
             net: net.clone(),
             bind: "127.0.0.1:1234".into_address().unwrap(),
             target: "127.0.0.1:4321".into_address().unwrap(),
+            tcp: true,
             udp: true,
         };
         tokio::spawn(async move { server.start().await.unwrap() });
