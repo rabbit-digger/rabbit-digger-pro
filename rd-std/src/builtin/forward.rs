@@ -9,7 +9,7 @@ use crate::ContextExt;
 use futures::ready;
 use rd_interface::{
     async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, IServer,
-    IUdpChannel, IntoDyn, Net, Result, Server, TcpListener, TcpStream, UdpSocket,
+    IUdpChannel, IntoDyn, Net, Result, Server, TcpStream, UdpSocket,
 };
 use tokio::select;
 use tracing::instrument;
@@ -54,12 +54,7 @@ impl ForwardServer {
 #[async_trait]
 impl IServer for ForwardServer {
     async fn start(&self) -> Result<()> {
-        let listener = self
-            .listen_net
-            .tcp_bind(&mut Context::new(), &self.bind)
-            .await?;
-
-        let tcp_task = self.serve_listener(listener);
+        let tcp_task = self.serve_listener();
         let udp_task = self.serve_udp();
 
         select! {
@@ -84,10 +79,15 @@ impl ForwardServer {
         ctx.connect_tcp(socket, target).await?;
         Ok(())
     }
-    pub async fn serve_listener(&self, listener: TcpListener) -> Result<()> {
+    pub async fn serve_listener(&self) -> Result<()> {
         if !self.tcp {
             pending::<()>().await;
+            return Ok(())
         }
+        let listener = self
+            .listen_net
+            .tcp_bind(&mut Context::new(), &self.bind)
+            .await?;
         loop {
             let (socket, addr) = listener.accept().await?;
             let net = self.net.clone();
@@ -148,7 +148,14 @@ impl IUdpChannel for ListenUdpChannel {
         cx: &mut task::Context<'_>,
         buf: &mut rd_interface::ReadBuf,
     ) -> Poll<io::Result<Address>> {
-        let addr = ready!(self.udp.poll_recv_from(cx, buf))?;
+        let addr = loop {
+            match ready!(self.udp.poll_recv_from(cx, buf)) {
+                Ok(a) => break a,
+                Err(e) => {
+                    tracing::debug!("Error when poll_recv_from: {:?}", e);
+                },
+            }
+        };
         self.client = Some(addr);
         Poll::Ready(Ok(self.target.clone()))
     }
@@ -160,7 +167,15 @@ impl IUdpChannel for ListenUdpChannel {
         _: &SocketAddr,
     ) -> Poll<io::Result<usize>> {
         if let Some(client) = self.client {
-            self.udp.poll_send_to(cx, buf, &client.into())
+            let result = loop {
+                match ready!(self.udp.poll_send_to(cx, buf, &client.into())) {
+                    Ok(a) => break a,
+                    Err(e) => {
+                        tracing::debug!("Error when poll_send_to: {:?}", e);
+                    },
+                }
+            };
+            Poll::Ready(Ok(result))
         } else {
             Poll::Ready(Ok(0))
         }
