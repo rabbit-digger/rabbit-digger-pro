@@ -1,0 +1,4 @@
+[submodule "blob"]
+	path = rabbit-digger/blob
+	url = git@github.com:rabbit-digger/blob.git
+	branch = main
