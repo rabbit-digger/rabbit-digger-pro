@@ -5,8 +5,8 @@ authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-rd-interface = { path = "../../rabbit-digger/rd-interface/", version = "0.4" }
-rd-std = { path = "../../rabbit-digger/rd-std/", version = "0.1" }
+rd-interface = { path = "../../rd-interface/", version = "0.4" }
+rd-std = { path = "../../rd-std/", version = "0.1" }
 serde = "1.0"
 sha2 = "0.10.1"
 hex = "0.4.3"
