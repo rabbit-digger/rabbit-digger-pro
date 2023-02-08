@@ -9,8 +9,8 @@ use once_cell::sync::OnceCell;
 use tar::Archive;
 
 // Update this when blob is updated
-static GEOIP_TAR_GZ: &[u8] = include_bytes!("../../../blob/GeoLite2-Country_20210622.tar.gz");
-static MMDB_PATH: &str = "GeoLite2-Country_20210622/GeoLite2-Country.mmdb";
+static GEOIP_TAR_GZ: &[u8] = include_bytes!("../../../blob/GeoLite2-Country.tar.gz");
+static MMDB_FILE_NAME: &str = "GeoLite2-Country.mmdb";
 static GEOIP_DB: OnceCell<maxminddb::Reader<Box<[u8]>>> = OnceCell::new();
 
 pub fn get_reader() -> &'static maxminddb::Reader<Box<[u8]>> {
@@ -21,7 +21,13 @@ pub fn get_reader() -> &'static maxminddb::Reader<Box<[u8]>> {
         let entries = archive.entries().expect("Failed to read tar");
         let mut mmdb = entries
             .filter_map(|i| i.ok())
-            .find(|i| i.path().expect("Failed to read path").as_os_str() == MMDB_PATH)
+            .find(|i| {
+                i.path()
+                    .expect("Failed to read path")
+                    .as_os_str()
+                    .to_string_lossy()
+                    .ends_with(MMDB_FILE_NAME)
+            })
             .expect("Failed to find mmdb in .tar.gz");
         let mut mmdb_buf = Vec::new();
         mmdb.read_to_end(&mut mmdb_buf)
