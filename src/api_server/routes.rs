@@ -44,7 +44,7 @@ impl ApiServer {
                 |error: std::io::Error| async move {
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Unhandled internal error: {}", error),
+                        format!("Unhandled internal error: {error}"),
                     )
                 },
             ))

@@ -104,25 +104,22 @@ impl ImportSource {
     }
     pub fn cache_key(&self) -> String {
         match self {
-            ImportSource::Path(path) => format!("path:{:?}", path),
+            ImportSource::Path(path) => format!("path:{path:?}"),
             ImportSource::Poll(url) => format!("poll:{}", url.url),
             ImportSource::Storage(storage) => format!("storage:{}:{}", storage.folder, storage.key),
-            ImportSource::Text(_) => format!("text"),
+            ImportSource::Text(_) => "text".to_string(),
         }
     }
     pub async fn get_content(&self, cache: &dyn Storage) -> Result<String> {
         let key = self.cache_key();
         let content = cache.get(&key).await?;
 
-        if let Some(content) = content
-            .map(|c| {
-                self.get_expire_duration()
-                    .map(|d| SystemTime::now() < c.updated_at + d)
-                    .unwrap_or(true)
-                    .then(move || c.content)
-            })
-            .flatten()
-        {
+        if let Some(content) = content.and_then(|c| {
+            self.get_expire_duration()
+                .map(|d| SystemTime::now() < c.updated_at + d)
+                .unwrap_or(true)
+                .then_some(c.content)
+        }) {
             return Ok(content);
         }
 
@@ -131,7 +128,7 @@ impl ImportSource {
             ImportSource::Poll(ImportUrl { url, .. }) => {
                 config_storage().await.set(&key, "").await?;
                 tracing::info!("Fetching {}", url);
-                let content = match retry(3, || fetch(&url)).await {
+                let content = match retry(3, || fetch(url)).await {
                     Ok(c) => c,
                     Err(e) => {
                         tracing::warn!("Failed to fetch {}: {:?}, try to use cache", url, e);

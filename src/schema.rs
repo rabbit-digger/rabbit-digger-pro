@@ -111,7 +111,7 @@ fn merge_config<'a>(
 
     for (id, schema) in iter {
         let mut schema = append_type(schema, id);
-        let mut visitor = PrefixVisitor(format!("{}_{}_", prefix, id));
+        let mut visitor = PrefixVisitor(format!("{prefix}_{id}_"));
 
         visitor.visit_root_schema(&mut schema);
         schemas.push(schema.schema);

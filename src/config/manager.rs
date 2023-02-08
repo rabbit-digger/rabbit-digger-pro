@@ -110,7 +110,7 @@ impl Inner {
         for i in &imports {
             i.apply(&mut config.config, &self.file_cache)
                 .await
-                .context(format!("applying import: {:?}", i))?;
+                .context(format!("applying import: {i:?}"))?;
         }
 
         Ok((config.config, imports))

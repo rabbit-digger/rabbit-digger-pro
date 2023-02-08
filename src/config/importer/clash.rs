@@ -431,7 +431,7 @@ impl Importer for Clash {
             let rule = stream::iter(clash_config.rules)
                 .map(|r| self.rule_to_rule(r, cache, &clash_config.rule_providers, &oom_lock))
                 .buffered(10)
-                .flat_map(|r| stream::iter(r))
+                .flat_map(stream::iter)
                 .fold(
                     Vec::<rule_config::RuleItem>::new(),
                     |mut state, item| async move {

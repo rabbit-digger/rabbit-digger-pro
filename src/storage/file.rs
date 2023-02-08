@@ -95,7 +95,7 @@ impl FileStorage {
             let file = File::open(&index_path).context("open cache index")?;
             let result = serde_json::from_reader(&file).context("deserial cache index");
             lock.unlock().context("unlock cache index")?;
-            Result::<Index>::Ok(result?)
+            result
         })
         .await??;
         Ok(index)
@@ -110,7 +110,7 @@ impl FileStorage {
             let result = serde_json::to_writer(&file, &index).context("serialize cache index");
             lock.flush()?;
             lock.unlock().context("unlock cache index")?;
-            Result::<()>::Ok(result?)
+            result
         })
         .await??;
         Ok(())
