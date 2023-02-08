@@ -82,7 +82,7 @@ impl ForwardServer {
     pub async fn serve_listener(&self) -> Result<()> {
         if !self.tcp {
             pending::<()>().await;
-            return Ok(())
+            return Ok(());
         }
         let listener = self
             .listen_net
@@ -153,7 +153,7 @@ impl IUdpChannel for ListenUdpChannel {
                 Ok(a) => break a,
                 Err(e) => {
                     tracing::debug!("Error when poll_recv_from: {:?}", e);
-                },
+                }
             }
         };
         self.client = Some(addr);
@@ -172,7 +172,7 @@ impl IUdpChannel for ListenUdpChannel {
                     Ok(a) => break a,
                     Err(e) => {
                         tracing::debug!("Error when poll_send_to: {:?}", e);
-                    },
+                    }
                 }
             };
             Poll::Ready(Ok(result))
