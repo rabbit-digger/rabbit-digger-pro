@@ -1,8 +1,20 @@
 # rabbit-digger-pro
 
-All-in-one proxy written in Rust.
+> A picture shows a rabbit digging a wall.
 
-See also: [rabbit-digger/rabbit-digger](https://github.com/rabbit-digger/rabbit-digger)
+[![codecov][codecov-badge]][codecov-url]
+[![MIT licensed][mit-badge]][mit-url]
+[![Build Status][actions-badge]][actions-url]
+
+[codecov-badge]: https://codecov.io/gh/rabbit-digger/rabbit-digger-pro/branch/main/graph/badge.svg?token=VM9N0IGMWE
+[mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[actions-badge]: https://github.com/rabbit-digger/rabbit-digger-pro/workflows/Build/badge.svg
+
+[codecov-url]: https://codecov.io/gh/rabbit-digger/rabbit-digger-pro
+[mit-url]: https://github.com/rabbit-digger/rabbit-digger-pro/blob/master/LICENSE
+[actions-url]: https://github.com/rabbit-digger/rabbit-digger-pro/actions?query=workflow%3ABuild+branch%3Amain
+
+All-in-one proxy written in Rust.
 
 ## Features
 
@@ -24,6 +36,20 @@ See also: [rabbit-digger/rabbit-digger](https://github.com/rabbit-digger/rabbit-
 * HTTP
 * http+socks5 on the same port
 * Shadowsocks
+
+## crates
+
+* rd-derive
+
+Used to conveniently define the Config structure.
+
+* rd-std
+
+Some basic net and server, such as rule, HTTP and Socks5.
+
+* rd-interface
+
+Interface defines of rabbit-digger's plugin.
 
 ## Credits
 
