@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn test_provider() {
         let test_net = TestNet::new().into_dyn();
-        let net = DNSSnifferNet::new(test_net.clone()).into_dyn();
+        let net = DNSSnifferNet::new(test_net).into_dyn();
 
         assert_net_provider(
             &net,

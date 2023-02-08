@@ -32,7 +32,7 @@ pub fn resolve_mapped_socket_addr(addr: SocketAddr) -> SocketAddr {
         }
     }
 
-    return addr;
+    addr
 }
 
 /// If the given address is reserved.
@@ -82,10 +82,7 @@ mod tests {
                 [0, 0, 0, 0, 0, 0xfffc, 0x1122, 0x3344],
                 1
             ))),
-            SocketAddr::from(SocketAddr::from((
-                [0, 0, 0, 0, 0, 0xfffc, 0x1122, 0x3344],
-                1
-            )))
+            SocketAddr::from(([0, 0, 0, 0, 0, 0xfffc, 0x1122, 0x3344], 1))
         );
     }
 

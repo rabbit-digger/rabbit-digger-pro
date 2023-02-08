@@ -83,7 +83,7 @@ impl Builder<Net> for DnsNet {
                 vec![],
                 nameserver
                     .into_iter()
-                    .map(|s| nameserver_config(s))
+                    .map(nameserver_config)
                     .collect::<Vec<_>>(),
             ),
         };
@@ -92,7 +92,7 @@ impl Builder<Net> for DnsNet {
             ResolverOpts::default(),
             RDHandle(net.clone()),
         )
-        .map_err(|e| Error::other(format!("Failed to build resolver: {:?}", e)))?;
+        .map_err(|e| Error::other(format!("Failed to build resolver: {e:?}")))?;
 
         Ok(Self { resolver, net })
     }
@@ -205,7 +205,7 @@ mod rd_runtime {
             let net = self.0.clone();
             let _join = tokio::spawn(async move {
                 if let Err(e) = NET.scope(net, future).await {
-                    eprintln!("spawn return error {:?}", e);
+                    eprintln!("spawn return error {e:?}");
                 }
             });
         }

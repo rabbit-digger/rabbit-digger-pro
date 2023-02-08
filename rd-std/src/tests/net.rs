@@ -70,7 +70,7 @@ fn refused() -> Error {
 #[async_trait]
 impl rd_interface::TcpConnect for TestNet {
     async fn tcp_connect(&self, _ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
-        check_address(&addr)?;
+        check_address(addr)?;
         let target_key = Port(Protocol::Tcp, addr.port());
 
         let mut inner = self.inner.lock().await;
@@ -98,7 +98,7 @@ impl rd_interface::TcpConnect for TestNet {
 #[async_trait]
 impl rd_interface::TcpBind for TestNet {
     async fn tcp_bind(&self, _ctx: &mut Context, addr: &Address) -> Result<TcpListener> {
-        check_address(&addr)?;
+        check_address(addr)?;
         let inner2 = self.inner.clone();
         let mut inner = self.inner.lock().await;
         let key = inner.get_port(Protocol::Tcp, addr.port())?;
@@ -112,7 +112,7 @@ impl rd_interface::TcpBind for TestNet {
 #[async_trait]
 impl rd_interface::UdpBind for TestNet {
     async fn udp_bind(&self, _ctx: &mut Context, addr: &Address) -> Result<UdpSocket> {
-        check_address(&addr)?;
+        check_address(addr)?;
         let inner2 = self.inner.clone();
         let mut inner = self.inner.lock().await;
         let key = inner.get_port(Protocol::Udp, addr.port())?;
@@ -191,9 +191,9 @@ impl TcpData {
     }
 }
 
-impl Into<SocketAddr> for Port {
-    fn into(self) -> SocketAddr {
-        SocketAddr::from(([127, 0, 0, 1], self.1))
+impl From<Port> for SocketAddr {
+    fn from(val: Port) -> Self {
+        SocketAddr::from(([127, 0, 0, 1], val.1))
     }
 }
 
@@ -230,7 +230,7 @@ impl ITcpStream for MyTcpStream {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let (first, _) = self.data.buf.as_slices();
-        if first.len() > 0 {
+        if !first.is_empty() {
             let to_copy = first.len().min(buf.remaining());
             buf.initialize_unfilled_to(to_copy)
                 .copy_from_slice(&first[0..to_copy]);
@@ -302,7 +302,7 @@ impl ITcpListener for MyTcpListener {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
         match self.0.lock().await.channel.next().await {
             Some(t) => {
-                let addr = t.data.peer_addr.clone().into();
+                let addr = t.data.peer_addr.into();
                 Ok((t.into_dyn(), addr))
             }
             None => Err(refused()),
@@ -364,7 +364,7 @@ impl IUdpSocket for MyUdpSocket {
             .copy_from_slice(&vec[..to_copy]);
         buf.advance(to_copy);
 
-        Poll::Ready(Ok(addr.into()))
+        Poll::Ready(Ok(addr))
     }
 
     fn poll_send_to(
@@ -403,7 +403,7 @@ impl IUdpSocket for MyUdpSocket {
             .map_err(map_err)?;
 
             let b = buf.to_vec();
-            let from_addr: SocketAddr = local_addr.clone().into();
+            let from_addr: SocketAddr = (*local_addr).into();
             Self::poll_udp_port(
                 &mut inner,
                 port,

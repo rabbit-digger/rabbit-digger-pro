@@ -46,7 +46,7 @@ impl ReverseLookup {
         let domain = domain.trim_end_matches('.');
 
         let Inner { records, cname_map } = &mut *self.inner.lock();
-        for rdata in msg.answers().into_iter().flat_map(|i| i.data()) {
+        for rdata in msg.answers().iter().flat_map(|i| i.data()) {
             match rdata {
                 RData::A(addr) => {
                     records.insert((*addr).into(), domain.to_string());

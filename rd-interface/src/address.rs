@@ -130,8 +130,8 @@ impl FromStr for Address {
 impl fmt::Display for Address {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Address::Domain(domain, port) => write!(f, "{}:{}", domain, port),
-            Address::SocketAddr(s) => write!(f, "{}", s),
+            Address::Domain(domain, port) => write!(f, "{domain}:{port}"),
+            Address::SocketAddr(s) => write!(f, "{s}"),
         }
     }
 }
@@ -289,7 +289,7 @@ mod tests {
 
     const IPV4_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4));
     const IPV6_ADDR: IpAddr = IpAddr::V6(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-    const DOMAIN: &'static str = "example.com";
+    const DOMAIN: &str = "example.com";
     const IP_DOMAIN: &str = "[1:2:3:4:5:6:7:8]";
 
     #[test]

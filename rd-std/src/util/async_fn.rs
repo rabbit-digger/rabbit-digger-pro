@@ -147,7 +147,7 @@ where
             .copy_from_slice(&buf);
         read_buf.advance(buf.len());
 
-        return Poll::Ready(Ok(()));
+        Poll::Ready(Ok(()))
     }
 }
 

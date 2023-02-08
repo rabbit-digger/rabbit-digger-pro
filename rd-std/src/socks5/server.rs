@@ -57,7 +57,7 @@ impl Socks5Server {
     ) -> anyhow::Result<()> {
         CommandResponse::error(e).write(&mut socket).await?;
         socket.flush().await?;
-        return Ok(());
+        Ok(())
     }
     #[instrument(err, skip(self, socket))]
     pub async fn serve_connection(self, socket: TcpStream, addr: SocketAddr) -> anyhow::Result<()> {
@@ -200,12 +200,12 @@ impl IUdpChannel for Socks5UdpSocket {
         } = &mut *self;
 
         if send_buf.is_empty() {
-            pack_udp((*target).into(), &buf, send_buf)?;
+            pack_udp((*target).into(), buf, send_buf)?;
         }
 
         match endpoint {
             Some(endpoint) => {
-                ready!(udp.poll_send_to(cx, &send_buf, &(*endpoint).into()))?;
+                ready!(udp.poll_send_to(cx, send_buf, &(*endpoint).into()))?;
                 send_buf.clear();
             }
             None => {

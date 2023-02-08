@@ -68,10 +68,10 @@ impl IUdpSocket for Socks5UdpSocket {
         } = &mut *self;
 
         if send_buf.is_empty() {
-            pack_udp(target.clone().into(), &buf, send_buf)?;
+            pack_udp(target.clone(), buf, send_buf)?;
         }
 
-        ready!(udp.poll_send_to(cx, &send_buf, &(*server_addr).into()))?;
+        ready!(udp.poll_send_to(cx, send_buf, &(*server_addr).into()))?;
         send_buf.clear();
 
         Poll::Ready(Ok(buf.len()))

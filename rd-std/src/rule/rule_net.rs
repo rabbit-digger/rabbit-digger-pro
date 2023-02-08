@@ -27,8 +27,7 @@ impl Rule {
         if config
             .rule
             .iter()
-            .find(|i| matches!(i.matcher, config::Matcher::GeoIp(_)))
-            .is_some()
+            .any(|i| matches!(i.matcher, config::Matcher::GeoIp(_)))
         {
             // if used geoip, init reader first.
             super::geoip::get_reader();
@@ -73,7 +72,7 @@ impl Rule {
             if rule.matcher.match_rule(&match_context).await {
                 self.cache.lock().insert(match_context, i);
                 tracing::trace!(matcher = ?rule.matcher, hit_cache = false, "matched rule");
-                return Ok(&rule);
+                return Ok(rule);
             }
         }
 
@@ -98,7 +97,7 @@ impl RuleNet {
 impl rd_interface::TcpConnect for RuleNet {
     async fn tcp_connect(&self, ctx: &mut Context, addr: &Address) -> Result<TcpStream> {
         self.rule
-            .get_rule(ctx, &addr)
+            .get_rule(ctx, addr)
             .await?
             .target
             .tcp_connect(ctx, addr)
@@ -255,7 +254,7 @@ mod tests {
         .unwrap()
         .into_dyn();
 
-        const BUF: &'static [u8] = b"asdfasdfasdfasj12312313123";
+        const BUF: &[u8] = b"asdfasdfasdfasj12312313123";
         let mut tcp = rule_net
             .tcp_connect(
                 &mut Context::from_socketaddr("127.0.0.1:1".parse().unwrap()),
@@ -263,7 +262,7 @@ mod tests {
             )
             .await
             .unwrap();
-        tcp.write_all(&BUF).await.unwrap();
+        tcp.write_all(BUF).await.unwrap();
 
         let mut buf = [0u8; BUF.len()];
         tcp.read_exact(&mut buf).await.unwrap();

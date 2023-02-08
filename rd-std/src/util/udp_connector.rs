@@ -90,7 +90,7 @@ impl IUdpSocket for UdpConnector {
                         .get_mut()
                         .take()
                         .expect("connector shouldn't be None");
-                    let fut = connector(&buf, &target);
+                    let fut = connector(buf, target);
                     self.state = State::Binding {
                         fut: Mutex::new(fut),
                     }

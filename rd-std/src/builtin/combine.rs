@@ -74,9 +74,9 @@ mod tests {
         let net3 = TestNet::new().into_dyn();
         let net = CombineNet {
             tcp_connect: net1.clone(),
-            tcp_bind: net2.clone(),
-            udp_bind: net3.clone(),
-            lookup_host: net1.clone(),
+            tcp_bind: net2,
+            udp_bind: net3,
+            lookup_host: net1,
         }
         .into_dyn();
 

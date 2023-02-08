@@ -19,7 +19,7 @@ impl HttpSocks5Server {
     fn new(listen_net: Net, net: Net) -> Self {
         Self {
             http_server: HttpServer::new(net.clone()),
-            socks5_server: Socks5Server::new(listen_net.clone(), net.clone()),
+            socks5_server: Socks5Server::new(listen_net, net),
         }
     }
     #[instrument(err, skip(self, socket))]

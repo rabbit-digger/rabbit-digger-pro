@@ -33,9 +33,8 @@ pub fn get_reader() -> &'static maxminddb::Reader<Box<[u8]>> {
         mmdb.read_to_end(&mut mmdb_buf)
             .expect("Failed to read mmdb");
         let mmdb_buf = mmdb_buf.into_boxed_slice();
-        let reader =
-            maxminddb::Reader::from_source(mmdb_buf).expect("Failed to read mmdb from source");
-        reader
+
+        maxminddb::Reader::from_source(mmdb_buf).expect("Failed to read mmdb from source")
     })
 }
 
@@ -53,7 +52,7 @@ impl GeoIpMatcher {
                     }),
                 ..
             }) => country == self.country,
-            Err(MaxMindDBError::AddressNotFoundError(_)) => self.country == "",
+            Err(MaxMindDBError::AddressNotFoundError(_)) => self.country.is_empty(),
             Err(e) => {
                 tracing::debug!("Failed to lookup country for ip: {}, reason: {:?}", ip, e);
                 false

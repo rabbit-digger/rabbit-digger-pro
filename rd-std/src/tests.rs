@@ -29,7 +29,7 @@ pub async fn spawn_echo_server_udp(net: &Net, addr: impl IntoAddress) {
         loop {
             let mut buf = ReadBuf::new(vec);
             let addr = udp.recv_from(&mut buf).await.unwrap();
-            udp.send_to(&buf.filled(), &addr.into()).await.unwrap();
+            udp.send_to(buf.filled(), &addr.into()).await.unwrap();
         }
     });
     yield_now().await;
@@ -71,12 +71,12 @@ pub async fn spawn_echo_server(net: &Net, addr: impl IntoAddress) {
 }
 
 pub async fn assert_echo(net: &Net, addr: impl IntoAddress) {
-    const BUF: &'static [u8] = b"asdfasdfasdfasj12312313123";
+    const BUF: &[u8] = b"asdfasdfasdfasj12312313123";
     let mut tcp = net
         .tcp_connect(&mut Context::new(), &addr.into_address().unwrap())
         .await
         .unwrap();
-    tcp.write_all(&BUF).await.unwrap();
+    tcp.write_all(BUF).await.unwrap();
 
     let mut buf = [0u8; BUF.len()];
     timeout(DEFAULT_TIMEOUT, tcp.read_exact(&mut buf))

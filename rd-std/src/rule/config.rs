@@ -52,7 +52,7 @@ impl FromStr for IpCidr {
         }
 
         Err(rd_interface::Error::Other(
-            format!("Failed to parse ip_cidr: {}", s).into(),
+            format!("Failed to parse ip_cidr: {s}").into(),
         ))
     }
 }

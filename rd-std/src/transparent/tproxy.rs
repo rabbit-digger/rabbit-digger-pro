@@ -153,7 +153,7 @@ impl RawUdpSource for UdpSource {
         let UdpSource { cache, .. } = self;
         let UdpEndpoint { from, to } = endpoint;
 
-        let udp = match cache.get(&from) {
+        let udp = match cache.get(from) {
             Some(udp) => udp,
             None => {
                 let result = TransparentUdp::bind_any(*from, self.mark);
@@ -167,7 +167,7 @@ impl RawUdpSource for UdpSource {
                 };
                 cache.insert(*from, udp);
                 cache
-                    .get(&from)
+                    .get(from)
                     .expect("impossible: failed to get by from_addr")
             }
         };
@@ -183,7 +183,7 @@ impl RawUdpSource for UdpSource {
 
         // Don't cache reserved address
         if is_reserved(from.ip()) {
-            cache.remove(&from);
+            cache.remove(from);
         }
 
         Poll::Ready(Ok(()))

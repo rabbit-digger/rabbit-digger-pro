@@ -116,7 +116,7 @@ where
                 Some(UdpPacket { data, from, to }) => {
                     ready!(self.s.poll_send(
                         cx,
-                        &data,
+                        data,
                         &UdpEndpoint {
                             from: *from,
                             to: *to

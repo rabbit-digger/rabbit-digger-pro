@@ -50,12 +50,15 @@ impl CompactVecString {
     }
     pub fn iter(&self) -> Iter {
         Iter {
-            inner: &self,
+            inner: self,
             index: 0,
         }
     }
     pub fn len(&self) -> usize {
         self.index.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.index.is_empty()
     }
     pub fn join(&self, sep: &str) -> String {
         self.into_iter().collect::<Vec<_>>().join(sep)
@@ -210,7 +213,7 @@ impl<S: AsRef<str>> From<Vec<S>> for CompactVecString {
             r.push(s.as_ref());
         }
         r.shrink_to_fit();
-        return r;
+        r
     }
 }
 
@@ -218,7 +221,7 @@ impl From<String> for CompactVecString {
     fn from(v: String) -> Self {
         let mut r = Self::with_capacity(1);
         r.push(&v);
-        return r;
+        r
     }
 }
 
@@ -226,7 +229,7 @@ impl From<&str> for CompactVecString {
     fn from(v: &str) -> Self {
         let mut r = Self::with_capacity(1);
         r.push(v);
-        return r;
+        r
     }
 }
 
@@ -268,7 +271,7 @@ mod tests {
     #[test]
     fn test_debug() {
         let v = CompactVecString::from_iter(vec!["a", "b", "c"]);
-        assert_eq!(format!("{:?}", v), "[\"a\", \"b\", \"c\"]");
+        assert_eq!(format!("{v:?}"), "[\"a\", \"b\", \"c\"]");
     }
 
     #[test]

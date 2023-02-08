@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn test_registry_debug() {
         let reg = Registry::default();
-        assert_eq!(format!("{:?}", reg), "Registry { net: [], server: [] }");
+        assert_eq!(format!("{reg:?}"), "Registry { net: [], server: [] }");
     }
 
     struct NotImplementedNet;
@@ -140,7 +140,7 @@ mod tests {
         resolve_net(&mut test, &|key, _ctx| {
             net_map
                 .get(key.represent().as_str().unwrap())
-                .map(|i| i.clone())
+                .cloned()
                 .ok_or_else(|| Error::NotFound("not found".to_string()))
         })
         .unwrap();
