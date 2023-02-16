@@ -1,6 +1,6 @@
 # rabbit-digger-pro
 
-> A picture shows a rabbit digging a wall.
+![logo](https://user-images.githubusercontent.com/8019167/219358254-dd507c1e-99af-4a70-9081-59e44794edc2.png)
 
 [![codecov][codecov-badge]][codecov-url]
 [![MIT licensed][mit-badge]][mit-url]
