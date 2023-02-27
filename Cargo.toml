@@ -107,6 +107,7 @@ telemetry = [
     "tracing-serde",
 ]
 jemalloc = ["jemallocator"]
+libpcap = ["raw/libpcap"]
 
 [workspace]
 members = [

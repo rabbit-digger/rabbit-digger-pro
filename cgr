@@ -1,2 +1,2 @@
 #!/bin/bash
-cargo run --features raw -- $@
+cargo run --features libpcap -- $@
