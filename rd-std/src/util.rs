@@ -3,6 +3,7 @@ pub use forward_udp::forward_udp;
 pub use lru_cache::LruCache;
 pub use net::{CombineNet, NotImplementedNet};
 pub use peekable_tcpstream::PeekableTcpStream;
+pub use poll_future::PollFuture;
 pub use udp_connector::UdpConnector;
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -13,6 +14,7 @@ pub mod forward_udp;
 mod lru_cache;
 mod net;
 mod peekable_tcpstream;
+mod poll_future;
 mod udp_connector;
 
 /// Helper function for converting IPv4 mapped IPv6 address
