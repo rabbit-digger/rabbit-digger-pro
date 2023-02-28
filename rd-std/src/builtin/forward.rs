@@ -148,7 +148,7 @@ impl Builder<Server> for ForwardServer {
     }
 }
 
-async fn resolve_target(net: Net, target: Address) -> Result<SocketAddr, ()> {
+async fn resolve_target(net: Net, target: Address) -> Result<SocketAddr, io::ErrorKind> {
     let addrs = target
         .resolve(move |d, p| async move {
             net.lookup_host(&Address::Domain(d, p))
@@ -156,10 +156,10 @@ async fn resolve_target(net: Net, target: Address) -> Result<SocketAddr, ()> {
                 .await
         })
         .await
-        .map_err(|_| ())?
+        .map_err(|e| e.kind())?
         .into_iter()
         .next();
-    addrs.ok_or(())
+    addrs.ok_or(io::ErrorKind::NotFound)
 }
 
 struct UdpSource {
@@ -167,7 +167,7 @@ struct UdpSource {
     listen_udp: UdpSocket,
     target: Address,
     resolve_interval: Option<Duration>,
-    resolve_future: PollFuture<Result<SocketAddr, ()>>,
+    resolve_future: PollFuture<Result<SocketAddr, io::ErrorKind>>,
     resolve_at: Option<Instant>,
 }
 
@@ -204,12 +204,7 @@ impl RawUdpSource for UdpSource {
             }
         }
 
-        let to = ready!(self.resolve_future.poll(cx).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "failed to resolve target address for udp forward",
-            )
-        }))?;
+        let to = ready!(self.resolve_future.poll(cx))?;
 
         if self.resolve_at.is_none() {
             self.resolve_at = Some(Instant::now());
