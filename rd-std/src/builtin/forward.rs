@@ -3,13 +3,20 @@ use std::{
     io,
     net::SocketAddr,
     task::{self, Poll},
+    time::{Duration, Instant},
 };
 
-use crate::ContextExt;
-use futures::ready;
+use crate::{
+    util::{
+        forward_udp::{forward_udp, RawUdpSource, UdpEndpoint},
+        PollFuture,
+    },
+    ContextExt,
+};
+use futures::{ready, TryFutureExt};
 use rd_interface::{
-    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, IServer,
-    IUdpChannel, IntoDyn, Net, Result, Server, TcpStream, UdpSocket,
+    async_trait, config::NetRef, prelude::*, registry::Builder, Address, Context, IServer, Net,
+    Result, Server, TcpStream, UdpSocket,
 };
 use tokio::select;
 use tracing::instrument;
@@ -24,6 +31,12 @@ pub struct ForwardServerConfig {
     tcp: Option<bool>,
     #[serde(default)]
     udp: bool,
+    /// The interval to resolve the target address. Used in UDP mode.
+    /// If not set, the target address will be resolved only once.
+    /// If set to 0, the target address will be resolved every time.
+    /// the unit is second.
+    #[serde(default)]
+    resolve_interval: Option<u64>,
     #[serde(default)]
     net: NetRef,
     #[serde(default)]
@@ -37,6 +50,7 @@ pub struct ForwardServer {
     target: Address,
     tcp: bool,
     udp: bool,
+    resolve_interval: Option<Duration>,
 }
 
 impl ForwardServer {
@@ -48,6 +62,7 @@ impl ForwardServer {
             target: cfg.target,
             tcp: cfg.tcp.unwrap_or(true),
             udp: cfg.udp,
+            resolve_interval: cfg.resolve_interval.map(Duration::from_secs),
         }
     }
 }
@@ -104,23 +119,17 @@ impl ForwardServer {
             pending::<()>().await;
         }
 
-        let udp_listener = ListenUdpChannel {
-            udp: self
-                .listen_net
-                .udp_bind(&mut Context::new(), &self.bind)
-                .await?,
-            client: None,
-            target: self.target.clone(),
-        }
-        .into_dyn();
-
         let mut ctx = Context::new();
-        let udp = self
-            .net
-            .udp_bind(&mut ctx, &self.target.to_any_addr_port()?)
-            .await?;
+        let listen_udp = self.listen_net.udp_bind(&mut ctx, &self.bind).await?;
 
-        ctx.connect_udp(udp_listener, udp).await?;
+        let source = UdpSource::new(
+            self.net.clone(),
+            self.target.clone(),
+            listen_udp,
+            self.resolve_interval,
+        );
+
+        forward_udp(source, self.net.clone(), None).await?;
 
         Ok(())
     }
@@ -136,49 +145,91 @@ impl Builder<Server> for ForwardServer {
     }
 }
 
-struct ListenUdpChannel {
-    udp: UdpSocket,
-    client: Option<SocketAddr>,
-    target: Address,
+async fn resolve_target(net: Net, target: Address) -> Result<SocketAddr, ()> {
+    let addrs = target
+        .resolve(move |d, p| async move {
+            net.lookup_host(&Address::Domain(d, p))
+                .map_err(|e| e.to_io_err())
+                .await
+        })
+        .await
+        .map_err(|_| ())?
+        .into_iter()
+        .next();
+    addrs.ok_or(())
 }
 
-impl IUdpChannel for ListenUdpChannel {
-    fn poll_send_to(
+struct UdpSource {
+    net: Net,
+    listen_udp: UdpSocket,
+    target: Address,
+    resolve_interval: Option<Duration>,
+    resolve_future: PollFuture<Result<SocketAddr, ()>>,
+    resolve_at: Option<Instant>,
+}
+
+impl UdpSource {
+    fn new(
+        net: Net,
+        target: Address,
+        udp: UdpSocket,
+        resolve_interval: Option<Duration>,
+    ) -> UdpSource {
+        UdpSource {
+            net: net.clone(),
+            listen_udp: udp,
+            resolve_future: PollFuture::new(resolve_target(net, target.clone())),
+            resolve_at: None,
+            target,
+            resolve_interval,
+        }
+    }
+}
+
+impl RawUdpSource for UdpSource {
+    fn poll_recv(
         &mut self,
         cx: &mut task::Context<'_>,
         buf: &mut rd_interface::ReadBuf,
-    ) -> Poll<io::Result<Address>> {
-        let addr = loop {
-            match ready!(self.udp.poll_recv_from(cx, buf)) {
-                Ok(a) => break a,
-                Err(e) => {
-                    tracing::debug!("Error when poll_recv_from: {:?}", e);
-                }
+    ) -> Poll<io::Result<UdpEndpoint>> {
+        if let (Some(resolve_at), Some(resolve_interval)) = (self.resolve_at, self.resolve_interval)
+        {
+            if resolve_at.elapsed() >= resolve_interval {
+                self.resolve_future =
+                    PollFuture::new(resolve_target(self.net.clone(), self.target.clone()));
+                self.resolve_at = None;
             }
+        }
+
+        let to = ready!(self.resolve_future.poll(cx).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                "failed to resolve target address for udp forward",
+            )
+        }))?;
+
+        if self.resolve_at.is_none() {
+            self.resolve_at = Some(Instant::now());
+        }
+
+        let packet = loop {
+            let from = ready!(self.listen_udp.poll_recv_from(cx, buf))?;
+
+            break UdpEndpoint { from, to };
         };
-        self.client = Some(addr);
-        Poll::Ready(Ok(self.target.clone()))
+
+        Poll::Ready(Ok(packet))
     }
 
-    fn poll_recv_from(
+    fn poll_send(
         &mut self,
         cx: &mut task::Context<'_>,
         buf: &[u8],
-        _: &SocketAddr,
-    ) -> Poll<io::Result<usize>> {
-        if let Some(client) = self.client {
-            let result = loop {
-                match ready!(self.udp.poll_send_to(cx, buf, &client.into())) {
-                    Ok(a) => break a,
-                    Err(e) => {
-                        tracing::debug!("Error when poll_send_to: {:?}", e);
-                    }
-                }
-            };
-            Poll::Ready(Ok(result))
-        } else {
-            Poll::Ready(Ok(0))
-        }
+        endpoint: &UdpEndpoint,
+    ) -> Poll<io::Result<()>> {
+        ready!(self.listen_udp.poll_send_to(cx, buf, &endpoint.to.into()))?;
+
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -202,15 +253,16 @@ mod tests {
             listen_net: net.clone(),
             net: net.clone(),
             bind: "127.0.0.1:1234".into_address().unwrap(),
-            target: "127.0.0.1:4321".into_address().unwrap(),
+            target: "localhost:4321".into_address().unwrap(),
             tcp: true,
             udp: true,
+            resolve_interval: None,
         };
         tokio::spawn(async move { server.start().await.unwrap() });
         spawn_echo_server(&net, "127.0.0.1:4321").await;
         spawn_echo_server_udp(&net, "127.0.0.1:4321").await;
 
-        sleep(Duration::from_millis(1)).await;
+        sleep(Duration::from_millis(10)).await;
 
         assert_echo(&net, "127.0.0.1:1234").await;
         assert_echo_udp(&net, "127.0.0.1:1234").await;

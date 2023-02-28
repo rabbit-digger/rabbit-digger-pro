@@ -37,7 +37,7 @@ impl UdpPacket {
 
 // Stream: (data, from, to)
 // Sink: (data, to, from)
-pub trait RawUdpSource: Unpin + Send + Sync {
+pub trait RawUdpSource: Unpin + Send {
     fn poll_recv(
         &mut self,
         cx: &mut task::Context<'_>,
