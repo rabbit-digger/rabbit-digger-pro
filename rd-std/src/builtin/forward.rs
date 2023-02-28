@@ -26,6 +26,7 @@ use tracing::instrument;
 #[derive(Debug)]
 pub struct ForwardServerConfig {
     bind: Address,
+    udp_bind: Option<Address>,
     target: Address,
     #[serde(default)]
     tcp: Option<bool>,
@@ -47,6 +48,7 @@ pub struct ForwardServer {
     listen_net: Net,
     net: Net,
     bind: Address,
+    udp_bind: Address,
     target: Address,
     tcp: bool,
     udp: bool,
@@ -58,7 +60,8 @@ impl ForwardServer {
         ForwardServer {
             listen_net: cfg.listen.value_cloned(),
             net: cfg.net.value_cloned(),
-            bind: cfg.bind,
+            bind: cfg.bind.clone(),
+            udp_bind: cfg.udp_bind.unwrap_or(cfg.bind),
             target: cfg.target,
             tcp: cfg.tcp.unwrap_or(true),
             udp: cfg.udp,
@@ -120,7 +123,7 @@ impl ForwardServer {
         }
 
         let mut ctx = Context::new();
-        let listen_udp = self.listen_net.udp_bind(&mut ctx, &self.bind).await?;
+        let listen_udp = self.listen_net.udp_bind(&mut ctx, &self.udp_bind).await?;
 
         let source = UdpSource::new(
             self.net.clone(),
@@ -253,6 +256,7 @@ mod tests {
             listen_net: net.clone(),
             net: net.clone(),
             bind: "127.0.0.1:1234".into_address().unwrap(),
+            udp_bind: "127.0.0.1:1234".into_address().unwrap(),
             target: "localhost:4321".into_address().unwrap(),
             tcp: true,
             udp: true,
