@@ -1,6 +1,7 @@
 use std::{
     io,
     net::{IpAddr, SocketAddr},
+    num::NonZeroU32,
     pin::Pin,
     task::{self, Poll},
     time::Duration,
@@ -13,7 +14,7 @@ use rd_interface::{
     async_trait, config::NetRef, impl_async_read_write, prelude::*, registry::Builder, Address,
     INet, IntoDyn, Net, ReadBuf, Result, TcpListener, TcpStream, UdpSocket,
 };
-use socket2::{Domain, Socket, Type};
+use socket2::{Domain, SockRef, Socket, Type};
 use tokio::{
     net,
     time::{sleep, timeout},
@@ -86,6 +87,70 @@ struct Resolver {
     net: Option<Net>,
 }
 
+impl LocalNetConfig {
+    fn set_socket(
+        &self,
+        socket: SockRef,
+        _addr: SocketAddr,
+        is_tcp: bool,
+        is_accept: bool,
+    ) -> Result<()> {
+        socket.set_nonblocking(true)?;
+
+        if let Some(size) = self.recv_buffer_size {
+            socket.set_recv_buffer_size(size)?;
+        }
+        if let Some(size) = self.send_buffer_size {
+            socket.set_send_buffer_size(size)?;
+        }
+
+        if let (Some(local_addr), false) = (self.bind_addr, is_accept) {
+            socket.bind(&SocketAddr::new(local_addr, 0).into())?;
+        }
+
+        if let Some(ttl) = self.ttl {
+            socket.set_ttl(ttl)?;
+        }
+
+        if is_tcp {
+            socket.set_nodelay(self.nodelay.unwrap_or(true))?;
+
+            let keepalive_duration = self.tcp_keepalive.unwrap_or(600.0);
+            if keepalive_duration > 0.0 {
+                let keepalive = socket2::TcpKeepalive::new()
+                    .with_time(Duration::from_secs_f64(keepalive_duration));
+                socket.set_tcp_keepalive(&keepalive)?;
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        if let Some(mark) = self.mark {
+            socket.set_mark(mark)?;
+        }
+
+        #[cfg(target_os = "linux")]
+        if let (Some(device), false) = (&self.bind_device, is_accept) {
+            socket.bind_device(Some(device.as_bytes()))?;
+        }
+
+        #[cfg(target_os = "macos")]
+        if let (Some(device), false) = (&self.bind_device, is_accept) {
+            let device = std::ffi::CString::new(device.as_bytes())
+                .map_err(rd_interface::error::map_other)?;
+            unsafe {
+                let idx = libc::if_nametoindex(device.as_ptr());
+                if idx == 0 {
+                    return Err(io::Error::last_os_error().into());
+                }
+
+                socket.bind_device_by_index(NonZeroU32::new(idx))?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl Resolver {
     fn new(net: Option<Net>) -> Self {
         Resolver { net }
@@ -106,88 +171,14 @@ impl LocalNet {
             resolver: Resolver::new(net),
         }
     }
-    fn set_socket(&self, socket: &Socket, _addr: SocketAddr, is_tcp: bool) -> Result<()> {
-        socket.set_nonblocking(true)?;
-
-        if let Some(size) = self.cfg.recv_buffer_size {
-            socket.set_recv_buffer_size(size)?;
-        }
-        if let Some(size) = self.cfg.send_buffer_size {
-            socket.set_send_buffer_size(size)?;
-        }
-
-        if let Some(local_addr) = self.cfg.bind_addr {
-            socket.bind(&SocketAddr::new(local_addr, 0).into())?;
-        }
-
-        if let Some(ttl) = self.cfg.ttl {
-            socket.set_ttl(ttl)?;
-        }
-
-        if is_tcp {
-            socket.set_nodelay(self.cfg.nodelay.unwrap_or(true))?;
-
-            let keepalive_duration = self.cfg.tcp_keepalive.unwrap_or(600.0);
-            if keepalive_duration > 0.0 {
-                let keepalive = socket2::TcpKeepalive::new()
-                    .with_time(Duration::from_secs_f64(keepalive_duration));
-                socket.set_tcp_keepalive(&keepalive)?;
-            }
-        }
-
-        #[cfg(target_os = "linux")]
-        if let Some(mark) = self.cfg.mark {
-            socket.set_mark(mark)?;
-        }
-
-        #[cfg(target_os = "linux")]
-        if let Some(device) = &self.cfg.bind_device {
-            socket.bind_device(Some(device.as_bytes()))?;
-        }
-
-        #[cfg(target_os = "macos")]
-        if let Some(device) = &self.cfg.bind_device {
-            let device = std::ffi::CString::new(device.as_bytes())
-                .map_err(rd_interface::error::map_other)?;
-            unsafe {
-                let idx = libc::if_nametoindex(device.as_ptr());
-                if idx == 0 {
-                    return Err(io::Error::last_os_error().into());
-                }
-
-                const IPV6_BOUND_IF: libc::c_int = 125;
-                let ret = match _addr {
-                    SocketAddr::V4(_) => libc::setsockopt(
-                        std::os::unix::prelude::AsRawFd::as_raw_fd(socket),
-                        libc::IPPROTO_IP,
-                        libc::IP_BOUND_IF,
-                        &idx as *const _ as *const libc::c_void,
-                        std::mem::size_of::<libc::c_uint>() as libc::socklen_t,
-                    ),
-                    SocketAddr::V6(_) => libc::setsockopt(
-                        std::os::unix::prelude::AsRawFd::as_raw_fd(socket),
-                        libc::IPPROTO_IPV6,
-                        IPV6_BOUND_IF,
-                        &idx as *const _ as *const libc::c_void,
-                        std::mem::size_of::<libc::c_uint>() as libc::socklen_t,
-                    ),
-                };
-
-                if ret == -1 {
-                    return Err(io::Error::last_os_error().into());
-                }
-            }
-        }
-
-        Ok(())
-    }
     async fn tcp_connect_single(&self, addr: SocketAddr) -> Result<net::TcpStream> {
         let socket = match addr {
             SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
             SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
         };
 
-        self.set_socket(&socket, addr, true)?;
+        self.cfg
+            .set_socket(SockRef::from(&socket), addr, true, false)?;
 
         let socket = net::TcpSocket::from_std_stream(socket.into());
 
@@ -244,7 +235,8 @@ impl LocalNet {
             SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::DGRAM, None)?,
         };
 
-        self.set_socket(&udp, addr, false)?;
+        self.cfg
+            .set_socket(SockRef::from(&udp), addr, false, false)?;
 
         if self.cfg.bind_addr.is_none() {
             udp.bind(&addr.into())?;
@@ -283,10 +275,10 @@ impl CompatTcp {
 impl rd_interface::ITcpListener for Listener {
     async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
         let (socket, addr) = self.0.accept().await?;
-        if let Some(ttl) = self.1.ttl {
-            socket.set_ttl(ttl)?;
-        }
-        socket.set_nodelay(self.1.nodelay.unwrap_or(true))?;
+
+        self.1
+            .set_socket(SockRef::from(&socket), addr, true, true)?;
+
         Ok((CompatTcp::new(socket).into_dyn(), addr))
     }
 
