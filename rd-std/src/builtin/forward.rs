@@ -41,12 +41,15 @@ pub struct ForwardServerConfig {
     #[serde(default)]
     net: NetRef,
     #[serde(default)]
+    resolve_net: NetRef,
+    #[serde(default)]
     listen: NetRef,
 }
 
 pub struct ForwardServer {
     listen_net: Net,
     net: Net,
+    resolve_net: Net,
     bind: Address,
     udp_bind: Address,
     target: Address,
@@ -60,6 +63,7 @@ impl ForwardServer {
         ForwardServer {
             listen_net: cfg.listen.value_cloned(),
             net: cfg.net.value_cloned(),
+            resolve_net: cfg.resolve_net.value_cloned(),
             bind: cfg.bind.clone(),
             udp_bind: cfg.udp_bind.unwrap_or(cfg.bind),
             target: cfg.target,
@@ -126,7 +130,7 @@ impl ForwardServer {
         let listen_udp = self.listen_net.udp_bind(&mut ctx, &self.udp_bind).await?;
 
         let source = UdpSource::new(
-            self.net.clone(),
+            self.resolve_net.clone(),
             self.target.clone(),
             listen_udp,
             self.resolve_interval,
@@ -148,10 +152,11 @@ impl Builder<Server> for ForwardServer {
     }
 }
 
-async fn resolve_target(net: Net, target: Address) -> Result<SocketAddr, io::ErrorKind> {
+async fn resolve_target(resolve_net: Net, target: Address) -> Result<SocketAddr, io::ErrorKind> {
     let addrs = target
         .resolve(move |d, p| async move {
-            net.lookup_host(&Address::Domain(d, p))
+            resolve_net
+                .lookup_host(&Address::Domain(d, p))
                 .map_err(|e| e.to_io_err())
                 .await
         })
@@ -163,7 +168,7 @@ async fn resolve_target(net: Net, target: Address) -> Result<SocketAddr, io::Err
 }
 
 struct UdpSource {
-    net: Net,
+    resolve_net: Net,
     listen_udp: UdpSocket,
     target: Address,
     resolve_interval: Option<Duration>,
@@ -173,15 +178,15 @@ struct UdpSource {
 
 impl UdpSource {
     fn new(
-        net: Net,
+        resolve_net: Net,
         target: Address,
         udp: UdpSocket,
         resolve_interval: Option<Duration>,
     ) -> UdpSource {
         UdpSource {
-            net: net.clone(),
+            resolve_net: resolve_net.clone(),
             listen_udp: udp,
-            resolve_future: PollFuture::new(resolve_target(net, target.clone())),
+            resolve_future: PollFuture::new(resolve_target(resolve_net, target.clone())),
             resolve_at: None,
             target,
             resolve_interval,
@@ -198,8 +203,10 @@ impl RawUdpSource for UdpSource {
         if let (Some(resolve_at), Some(resolve_interval)) = (self.resolve_at, self.resolve_interval)
         {
             if resolve_at.elapsed() >= resolve_interval {
-                self.resolve_future =
-                    PollFuture::new(resolve_target(self.net.clone(), self.target.clone()));
+                self.resolve_future = PollFuture::new(resolve_target(
+                    self.resolve_net.clone(),
+                    self.target.clone(),
+                ));
                 self.resolve_at = None;
             }
         }
@@ -250,6 +257,7 @@ mod tests {
         let server = ForwardServer {
             listen_net: net.clone(),
             net: net.clone(),
+            resolve_net: net.clone(),
             bind: "127.0.0.1:1234".into_address().unwrap(),
             udp_bind: "127.0.0.1:1234".into_address().unwrap(),
             target: "localhost:4321".into_address().unwrap(),
