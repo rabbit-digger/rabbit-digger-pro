@@ -4,6 +4,7 @@ pub mod alias;
 pub mod blackhole;
 pub mod combine;
 pub mod dns;
+// pub mod dns_server;
 pub mod echo;
 pub mod forward;
 pub mod local;

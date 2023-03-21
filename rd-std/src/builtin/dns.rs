@@ -159,6 +159,34 @@ mod rd_runtime {
     impl UdpSocket for RDUdpSocket {
         type Time = TokioTime;
 
+        async fn connect(addr: SocketAddr) -> io::Result<Self> {
+            let net = NET.with(Clone::clone);
+            let fut = async move {
+                net.udp_bind(
+                    &mut rd_interface::Context::new(),
+                    &Address::any_addr_port(&addr),
+                )
+                .map_err(|e| e.to_io_err())
+                .await
+            };
+            Ok(RDUdpSocket {
+                inner: Mutex::new(Inner::Connecting(Box::pin(fut))),
+            })
+        }
+
+        // TODO: save addr
+        async fn connect_with_bind(addr: SocketAddr, bind_addr: SocketAddr) -> io::Result<Self> {
+            let net = NET.with(Clone::clone);
+            let fut = async move {
+                net.udp_bind(&mut rd_interface::Context::new(), &bind_addr.into())
+                    .map_err(|e| e.to_io_err())
+                    .await
+            };
+            Ok(RDUdpSocket {
+                inner: Mutex::new(Inner::Connecting(Box::pin(fut))),
+            })
+        }
+
         async fn bind(addr: SocketAddr) -> io::Result<Self> {
             let net = NET.with(Clone::clone);
             let fut = async move {
