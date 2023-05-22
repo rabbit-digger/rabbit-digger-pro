@@ -1,5 +1,5 @@
 #!/bin/sh
-# set -x
+# set -xe
 
 RD_MARK="${RD_MARK:=0x11}"
 RD_PORT="${RD_PORT:=19810}"
@@ -35,5 +35,5 @@ if [ -d /sys/class/net/$RD_INTERNAL_DEV ]; then
 fi
 nft "add rule inet rabbit_digger prerouting meta mark $RD_MARK counter return"
 nft "add rule inet rabbit_digger prerouting ip daddr @localnetwork return"
-nft "add rule inet rabbit_digger prerouting meta l4proto { udp } mark set $RD_FW_MARK tproxy ip to 127.0.0.1:$RD_PORT counter accept"
-nft "add rule inet rabbit_digger prerouting meta l4proto { tcp } mark set $RD_FW_MARK tproxy ip to 127.0.0.1:$RD_PORT counter accept"
+nft "add rule inet rabbit_digger prerouting meta l4proto { udp } tproxy ip to :$RD_PORT mark set $RD_FW_MARK counter accept"
+nft "add rule inet rabbit_digger prerouting meta l4proto { tcp } tproxy ip to :$RD_PORT mark set $RD_FW_MARK counter accept"
