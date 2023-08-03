@@ -14,11 +14,11 @@ futures = "0.3"
 serde = "1.0"
 tracing = "0.1.26"
 anyhow = "1.0"
-tokio = { version = "1.5.0", features = ["net", "rt", "macros"] }
+tokio = { version = "1.29.1", features = ["net", "rt", "macros"] }
 parking_lot = "0.12.0"
 tokio-util = { version = "0.7.1", features = ["codec", "net"] }
 pin-project-lite = "0.2.8"
-itertools = "0.10.3"
+itertools = "0.11.0"
 
 # socks5
 socks5-protocol = "0.3.2"
@@ -29,7 +29,7 @@ hyper = { version = "0.14.12", features = ["http1", "client", "server"] }
 
 # transparent
 libc = "0.2.91"
-socket2 = { version = "0.4.0", features = ["all"] }
+socket2 = { version = "0.5.3", features = ["all"] }
 cfg-if = "1.0"
 
 # rule
@@ -39,7 +39,7 @@ smoltcp = { version = "0.8.0", default-features = false, features = [
     "proto-ipv6",
 ] }
 lru_time_cache = "0.11"
-serde_with = "1.8.1"
+serde_with = "3.1.0"
 maxminddb = "0.23.0"
 flate2 = "1.0.20"
 tar = "0.4.35"
@@ -50,10 +50,10 @@ trust-dns-proto = "0.21.1"
 trust-dns-resolver = { version = "0.21.1", optional = true }
 
 # tls
-tokio-rustls = { version = "0.23.2", features = [
+tokio-rustls = { version = "0.24.1", features = [
     "dangerous_configuration",
 ], optional = true }
-webpki-roots = { version = "0.22.2", optional = true }
+webpki-roots = { version = "0.25.1", optional = true }
 
 openssl-crate = { package = "openssl", version = "0.10", features = [
     "vendored",
@@ -66,7 +66,7 @@ native-tls-crate = { package = "native-tls", version = "0.2", features = [
 ], optional = true }
 
 [dev-dependencies]
-tokio = { version = "1.5.0", features = ["full"] }
+tokio = { version = "1.29.1", features = ["full"] }
 
 [features]
 default = ["http_server", "trust-dns-resolver", "native-tls"]

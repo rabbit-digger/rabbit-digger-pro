@@ -36,7 +36,7 @@ windows-sys = { version = "0.32.0", features = [
 ] }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.23.1"
+nix = "0.26.2"
 
 [features]
 default = []

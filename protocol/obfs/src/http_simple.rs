@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::Obfs;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use futures::ready;
 use pin_project_lite::pin_project;
 use rand::prelude::*;
@@ -144,7 +145,7 @@ impl ITcpStream for Connect {
                     let minor = thread_rng().next_u32() % 2;
 
                     let key_bytes: [u8; 16] = thread_rng().gen();
-                    let key = base64::encode(key_bytes);
+                    let key = STANDARD.encode(key_bytes);
 
                     let mut cursor = Cursor::new(Vec::<u8>::with_capacity(1024));
                     cursor.write_fmt(format_args!(

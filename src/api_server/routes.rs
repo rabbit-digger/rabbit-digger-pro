@@ -40,14 +40,7 @@ impl ApiServer {
             .layer(TraceLayer::new_for_http());
 
         if let Some(webui) = &self.web_ui {
-            router = router.fallback(get_service(ServeDir::new(webui)).handle_error(
-                |error: std::io::Error| async move {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Unhandled internal error: {error}"),
-                    )
-                },
-            ))
+            router = router.fallback(get_service(ServeDir::new(webui)))
         }
 
         Ok(router)

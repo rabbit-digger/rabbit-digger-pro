@@ -33,15 +33,18 @@ mod unix {
     use tokio_smoltcp::smoltcp::wire::EthernetAddress;
 
     pub fn get_interface_info(name: &str) -> io::Result<InterfaceInfo> {
-        use nix::{ifaddrs::getifaddrs, sys::socket::SockAddr};
+        use nix::ifaddrs::getifaddrs;
         let addrs = getifaddrs().map_err(|e| Error::new(ErrorKind::Other, e))?;
         for ifaddr in addrs {
             if ifaddr.interface_name != name {
                 continue;
             }
-            if let Some(SockAddr::Link(link)) = ifaddr.address {
+            if let Some(link) = ifaddr
+                .address
+                .and_then(|a| a.as_link_addr().and_then(|a| a.addr()))
+            {
                 return Ok(InterfaceInfo {
-                    ethernet_address: EthernetAddress(link.addr()),
+                    ethernet_address: EthernetAddress(link),
                     name: name.into(),
                     description: None,
                     friendly_name: None,
