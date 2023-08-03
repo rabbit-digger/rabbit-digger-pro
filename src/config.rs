@@ -247,6 +247,6 @@ pub(crate) struct ConfigImport {
 pub struct ConfigExt {
     #[serde(flatten)]
     config: Config,
-    #[serde(default)]
+    #[serde(default, with = "serde_yaml::with::singleton_map_recursive")]
     import: Vec<Import>,
 }
