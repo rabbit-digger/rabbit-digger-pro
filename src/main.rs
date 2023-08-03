@@ -32,20 +32,14 @@ struct ApiServerArgs {
 #[derive(Parser)]
 struct Args {
     /// Path to config file
-    #[clap(
-        short,
-        long,
-        env = "RD_CONFIG",
-        parse(from_os_str),
-        default_value = "config.yaml"
-    )]
+    #[clap(short, long, env = "RD_CONFIG", default_value = "config.yaml")]
     config: PathBuf,
 
     #[clap(flatten)]
     api_server: ApiServerArgs,
 
     /// Write generated config to path
-    #[clap(long, parse(from_os_str))]
+    #[clap(long)]
     write_config: Option<PathBuf>,
 
     #[clap(subcommand)]
@@ -55,10 +49,7 @@ struct Args {
 #[derive(Parser)]
 enum Command {
     /// Generate schema to path, if not present, output to stdout
-    GenerateSchema {
-        #[clap(parse(from_os_str))]
-        path: Option<PathBuf>,
-    },
+    GenerateSchema { path: Option<PathBuf> },
     /// Run in server mode
     Server {
         #[clap(flatten)]

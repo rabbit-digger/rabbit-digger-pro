@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 anyhow = "1.0.38"
 tokio = { version = "1.15.0", features = ["full"] }
 tokio-stream = { version = "0.1.6", features = ["net", "sync", "time"] }
-clap = { version = "3.1.8", default-features = false, features = [
+clap = { version = "4.3.19", default-features = false, features = [
     "std",
     "color",
     "derive",
@@ -64,9 +64,9 @@ console-subscriber = { version = "0.1.3", optional = true }
 
 chrono = { version = "0.4.19", optional = true }
 tracing-serde = { version = "0.1.3", optional = true }
-tracing-opentelemetry = { version = "0.17.0", optional = true }
-opentelemetry = { version = "0.17.0", features = ["rt-tokio"], optional = true }
-opentelemetry-jaeger = { version = "0.16.0", features = [
+tracing-opentelemetry = { version = "0.19.0", optional = true }
+opentelemetry = { version = "0.19.0", features = ["rt-tokio"], optional = true }
+opentelemetry-jaeger = { version = "0.18.0", features = [
     "rt-tokio",
     "reqwest_collector_client",
 ], optional = true }
