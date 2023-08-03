@@ -67,9 +67,9 @@ mod windows {
         NetworkManagement::{
             IpHelper::{
                 ConvertInterfaceIndexToLuid, ConvertInterfaceLuidToAlias, GetIfTable, MIB_IFROW,
-                MIB_IFTABLE, NET_LUID_LH,
+                MIB_IFTABLE,
             },
-            Ndis::NDIS_IF_MAX_STRING_SIZE,
+            Ndis::{IF_MAX_STRING_SIZE, NET_LUID_LH},
         },
     };
 
@@ -88,7 +88,7 @@ mod windows {
             let mut luid: NET_LUID_LH = mem::zeroed();
             if ConvertInterfaceIndexToLuid(index, &mut luid as *mut _) == 0 {
                 // WCHAR
-                let mut name: Vec<u16> = vec![0; NDIS_IF_MAX_STRING_SIZE as usize + 1];
+                let mut name: Vec<u16> = vec![0; IF_MAX_STRING_SIZE as usize + 1];
                 if ConvertInterfaceLuidToAlias(&luid as *const _, name.as_mut_ptr(), name.len())
                     == 0
                 {
