@@ -15,7 +15,7 @@ impl<T: AsRawFd> OriginAddrExt for T {
         let fd = self.as_raw_fd();
 
         unsafe {
-            let (_, origin_addr) = SockAddr::init(|origin_addr, origin_addr_len| {
+            let (_, origin_addr) = SockAddr::try_init(|origin_addr, origin_addr_len| {
                 let ret = if libc::getsockopt(
                     fd,
                     libc::SOL_IP,
