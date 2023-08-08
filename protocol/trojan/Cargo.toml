@@ -7,12 +7,12 @@ edition = "2021"
 [dependencies]
 rd-interface = { path = "../../rd-interface/", version = "0.4" }
 rd-std = { path = "../../rd-std/", version = "0.1" }
-serde = "1.0"
-sha2 = "0.10.1"
+serde = "1.0.183"
+sha2 = "0.10.7"
 hex = "0.4.3"
-socks5-protocol = "0.3.4"
-futures = "0.3"
-tokio = "1.0"
+socks5-protocol = "0.3.5"
+futures = "0.3.28"
+tokio = "1.29.1"
 tokio-tungstenite = "0.20.0"
-tokio-util = { version = "0.7.1", features = ["codec", "net"] }
-bytes = "1.1.0"
+tokio-util = { version = "0.7.8", features = ["codec", "net"] }
+bytes = "1.4.0"

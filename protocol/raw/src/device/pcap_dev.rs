@@ -64,7 +64,7 @@ pub(super) fn get_by_device(
 
     AsyncCapture::new(
         cap.setnonblock().context("Failed to set nonblock")?,
-        |d| d.next().map_err(map_err).map(|p| p.to_vec()),
+        |d| d.next_packet().map_err(map_err).map(|p| p.to_vec()),
         |d, pkt| d.sendpacket(pkt).map_err(map_err),
         caps,
     )

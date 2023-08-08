@@ -7,9 +7,9 @@ edition = "2021"
 [dependencies]
 rd-interface = { path = "../../rd-interface/", version = "0.4" }
 rd-std = { path = "../../rd-std/", version = "0.1" }
-serde = "1.0.177"
+serde = "1.0.183"
 tokio = "1.29.1"
-pin-project-lite = "0.2.10"
+pin-project-lite = "0.2.11"
 futures = "0.3.28"
 rand = "0.8.5"
 base64 = "0.21.2"

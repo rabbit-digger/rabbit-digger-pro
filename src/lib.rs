@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use config::ConfigManager;
 pub use rabbit_digger;
 use rabbit_digger::{RabbitDigger, Registry};
@@ -57,14 +57,16 @@ impl App {
 
         Ok(Self { rd, cfg_mgr })
     }
-    pub async fn run_api_server(&self, api_server: ApiServer) -> Result<()> {
+    pub async fn run_api_server(&self, _api_server: ApiServer) -> Result<()> {
         #[cfg(feature = "api_server")]
-        if let Some(bind) = api_server.bind {
+        if let Some(bind) = _api_server.bind {
+            use anyhow::Context;
+
             api_server::ApiServer {
                 rabbit_digger: self.rd.clone(),
                 config_manager: self.cfg_mgr.clone(),
-                access_token: api_server.access_token,
-                web_ui: api_server.web_ui,
+                access_token: _api_server.access_token,
+                web_ui: _api_server.web_ui,
             }
             .run(&bind)
             .await

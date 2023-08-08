@@ -12,10 +12,10 @@ shadowsocks = { version = "=1.13.2", default-features = false, features = [
     "stream-cipher",
     "aead-cipher-extra",
 ] }
-serde = "1.0"
-bytes = "1.0"
-tracing = "0.1.26"
-serde_json = "1.0"
-tokio = { version = "1.5.0", features = ["rt"] }
+serde = "1.0.183"
+bytes = "1.4.0"
+tracing = "0.1.37"
+serde_json = "1.0.104"
+tokio = { version = "1.29.1", features = ["rt"] }
 socks5-protocol = "0.3.5"
-futures = "0.3"
+futures = "0.3.28"
