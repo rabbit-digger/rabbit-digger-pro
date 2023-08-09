@@ -15,7 +15,10 @@ use rd_interface::{
 };
 use tokio::sync::Mutex;
 use tokio_smoltcp::{
-    smoltcp::wire::{IpAddress, IpCidr},
+    smoltcp::{
+        iface::Config,
+        wire::{IpAddress, IpCidr},
+    },
     BufferSize, Net as SmoltcpNet, NetConfig,
 };
 
@@ -47,20 +50,17 @@ impl RawNet {
             })
             .transpose()?;
         let (ethernet_addr, device) = device::get_device(&config)?;
-
-        let net_config = NetConfig {
-            ethernet_addr,
-            ip_addr: ip_cidr,
-            gateway: gateway.into_iter().collect(),
-            buffer_size: BufferSize {
-                tcp_rx_size: 65536,
-                tcp_tx_size: 65536,
-                udp_rx_size: 65536,
-                udp_tx_size: 65536,
-                udp_rx_meta_size: 256,
-                udp_tx_meta_size: 256,
-                ..Default::default()
-            },
+        let interface_config = Config::new(ethernet_addr.into());
+        let mut net_config =
+            NetConfig::new(interface_config, ip_cidr, gateway.into_iter().collect());
+        net_config.buffer_size = BufferSize {
+            tcp_rx_size: 65536,
+            tcp_tx_size: 65536,
+            udp_rx_size: 65536,
+            udp_tx_size: 65536,
+            udp_rx_meta_size: 256,
+            udp_tx_meta_size: 256,
+            ..Default::default()
         };
 
         let mut params = None;

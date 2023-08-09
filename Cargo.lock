@@ -2730,7 +2730,7 @@ dependencies = [
  "rd-interface",
  "serde",
  "serde_with",
- "smoltcp 0.10.0",
+ "smoltcp",
  "socket2 0.5.3",
  "socks5-protocol",
  "tar",
@@ -3382,17 +3382,6 @@ dependencies = [
 
 [[package]]
 name = "smoltcp"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee34c1e1bfc7e9206cc0fb8030a90129b4e319ab53856249bb27642cab914fb3"
-dependencies = [
- "bitflags 1.3.2",
- "byteorder",
- "managed",
-]
-
-[[package]]
-name = "smoltcp"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d2e3a36ac8fea7b94e666dfa3871063d6e0a5c9d5d4fec9a1a6b7b6760f0229"
@@ -3757,16 +3746,16 @@ dependencies = [
 
 [[package]]
 name = "tokio-smoltcp"
-version = "0.2.4"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e82e8120f0a3d91ce647563dbbea7ee36198f5a60644c009cda49f47684be7ac"
+checksum = "b6d839337247c6d844be5aa3cf83543edaafd73876a53f8891ed12066bb0d6de"
 dependencies = [
  "futures",
  "parking_lot",
  "pin-project-lite",
- "smoltcp 0.8.2",
+ "smoltcp",
  "tokio",
- "tokio-util 0.6.10",
+ "tokio-util 0.7.8",
 ]
 
 [[package]]

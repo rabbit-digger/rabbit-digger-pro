@@ -10,14 +10,14 @@ use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use lru_time_cache::LruCache;
 use parking_lot::Mutex;
 use rd_interface::Result;
-use smoltcp::wire::{
-    EthernetAddress, EthernetFrame, EthernetProtocol, IpProtocol, Ipv4Packet, TcpPacket, UdpPacket,
-};
 use tokio_smoltcp::{
     device::{AsyncDevice, DeviceCapabilities, Packet},
     smoltcp::{
         self,
-        wire::{ArpOperation, ArpPacket, IpCidr},
+        wire::{
+            ArpOperation, ArpPacket, EthernetAddress, EthernetFrame, EthernetProtocol, IpCidr,
+            IpProtocol, Ipv4Packet, TcpPacket, UdpPacket,
+        },
     },
 };
 
@@ -139,7 +139,7 @@ where
         match self.accept_packet(&packet) {
             Action::Pass => Some(packet),
             Action::Rewrite => Some(self.payload(packet, |mut ipv4| {
-                if let Ok(Some((src_addr, ori_addr))) = set_dst_addr(&mut ipv4, self.override_v4) {
+                if let Some((src_addr, ori_addr)) = set_dst_addr(&mut ipv4, self.override_v4) {
                     self.map.insert(src_addr, ori_addr);
                 }
             })),
@@ -162,7 +162,7 @@ where
         }
     }
 
-    fn correct_arp_request(&self, packet: &mut Vec<u8>) -> smoltcp::Result<()> {
+    fn correct_arp_request(&self, packet: &mut Vec<u8>) -> Result<(), smoltcp::wire::Error> {
         if let Layer::L2 = self.layer {
             // SAFETY: we know that the packet is a valid EthernetFrame
             let mut frame = EthernetFrame::new_unchecked(packet);
@@ -257,11 +257,11 @@ impl MapTable {
 fn set_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
     ip: &mut Ipv4Packet<T>,
     dst_addr: SocketAddrV4,
-) -> smoltcp::Result<Option<(SocketAddrV4, SocketAddrV4)>> {
+) -> Option<(SocketAddrV4, SocketAddrV4)> {
     let src_addr = ip.src_addr();
     let orig_addr = ip.dst_addr();
 
-    let (src_port, orig_port) = match ip.protocol() {
+    let (src_port, orig_port) = match ip.next_header() {
         IpProtocol::Tcp => {
             ip.set_dst_addr(dst_addr.ip().to_owned().into());
 
@@ -271,18 +271,18 @@ fn set_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
 
             (tcp.src_port(), dst_port)
         }
-        _ => return Ok(None),
+        _ => return None,
     };
 
-    Ok(Some((
+    Some((
         SocketAddrV4::new(src_addr.into(), src_port),
         SocketAddrV4::new(orig_addr.into(), orig_port),
-    )))
+    ))
 }
 
 fn get_src_addr<T: AsRef<[u8]> + ?Sized>(ip: &Ipv4Packet<&T>) -> Option<SocketAddrV4> {
     let src_addr = ip.src_addr();
-    let port = match ip.protocol() {
+    let port = match ip.next_header() {
         IpProtocol::Tcp => TcpPacket::new_checked(ip.payload()).ok()?.src_port(),
         IpProtocol::Udp => UdpPacket::new_checked(ip.payload()).ok()?.src_port(),
         _ => return None,
@@ -292,7 +292,7 @@ fn get_src_addr<T: AsRef<[u8]> + ?Sized>(ip: &Ipv4Packet<&T>) -> Option<SocketAd
 
 fn get_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(ip: &mut Ipv4Packet<T>) -> Option<SocketAddrV4> {
     let dst_addr = ip.dst_addr();
-    let port = match ip.protocol() {
+    let port = match ip.next_header() {
         IpProtocol::Tcp => TcpPacket::new_checked(ip.payload_mut()).ok()?.dst_port(),
         IpProtocol::Udp => UdpPacket::new_checked(ip.payload_mut()).ok()?.dst_port(),
         _ => return None,
@@ -303,11 +303,11 @@ fn get_dst_addr<T: AsRef<[u8]> + AsMut<[u8]>>(ip: &mut Ipv4Packet<T>) -> Option<
 fn set_src_addr<T: AsRef<[u8]> + AsMut<[u8]>>(
     ip: &mut Ipv4Packet<T>,
     src_addr_v4: SocketAddrV4,
-) -> smoltcp::Result<()> {
+) -> Result<(), smoltcp::wire::Error> {
     let src_addr = src_addr_v4.ip().to_owned().into();
     let dst_addr = ip.dst_addr();
     let port = src_addr_v4.port();
-    if let IpProtocol::Tcp = ip.protocol() {
+    if let IpProtocol::Tcp = ip.next_header() {
         ip.set_src_addr(src_addr);
 
         let mut tcp = TcpPacket::new_checked(ip.payload_mut())?;

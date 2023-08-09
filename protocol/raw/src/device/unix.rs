@@ -30,6 +30,7 @@ pub fn get_tun(cfg: TunTapSetup) -> Result<TunAsyncDevice> {
         .destination(match cfg.destination_addr.address() {
             IpAddress::Ipv4(v4) => IpAddr::from(Ipv4Addr::from(v4)),
             IpAddress::Ipv6(v6) => IpAddr::from(Ipv6Addr::from(v6)),
+            #[allow(unreachable_patterns)]
             _ => unreachable!(),
         })
         .netmask(netmask)
