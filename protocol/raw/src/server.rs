@@ -24,13 +24,7 @@ pub struct RawServer {
 impl IServer for RawServer {
     async fn start(&self) -> rd_interface::Result<()> {
         let params = &self.params;
-        forward_net(
-            self.net.clone(),
-            params.smoltcp_net.clone(),
-            params.map.clone(),
-            params.ip_cidr,
-        )
-        .await?;
+        forward_net(self.net.clone(), params.smoltcp_net.clone(), params.ip_cidr).await?;
 
         Ok(())
     }

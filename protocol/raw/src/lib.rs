@@ -5,7 +5,6 @@ use server::RawServer;
 mod config;
 mod device;
 mod forward;
-mod gateway;
 mod net;
 mod server;
 mod wrap;

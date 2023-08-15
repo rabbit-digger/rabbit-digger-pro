@@ -6,7 +6,6 @@ use std::{
 use crate::{
     config::RawNetConfig,
     device,
-    gateway::{GatewayDevice, MapTable},
     wrap::{TcpListenerWrap, TcpStreamWrap, UdpSocketWrap},
 };
 use parking_lot::Mutex as SyncMutex;
@@ -21,7 +20,6 @@ use tokio_smoltcp::{
 
 pub(crate) struct NetParams {
     pub(crate) smoltcp_net: Arc<SmoltcpNet>,
-    pub(crate) map: MapTable,
     pub(crate) ip_cidr: IpCidr,
 }
 
@@ -65,13 +63,10 @@ impl RawNet {
 
         let mut params = None;
         let smoltcp_net = if config.forward {
-            let device = GatewayDevice::new(device, ethernet_addr, 100, ip_cidr, ip_addr);
-            let map = device.get_map();
             let smoltcp_net = Arc::new(SmoltcpNet::new(device, net_config));
 
             params = Some(NetParams {
                 smoltcp_net: smoltcp_net.clone(),
-                map,
                 ip_cidr,
             });
             smoltcp_net

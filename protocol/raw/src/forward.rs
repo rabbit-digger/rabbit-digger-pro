@@ -11,20 +11,16 @@ use tokio_smoltcp::{
     Net as SmoltcpNet, RawSocket, TcpListener,
 };
 
-use crate::gateway::MapTable;
-
 mod source;
 
 struct Forward {
     net: Net,
-    map: MapTable,
     ip_cidr: IpCidr,
 }
 
 pub async fn forward_net(
     net: Net,
     smoltcp_net: Arc<SmoltcpNet>,
-    map: MapTable,
     ip_cidr: IpCidr,
 ) -> io::Result<()> {
     let tcp_listener = smoltcp_net
@@ -34,7 +30,7 @@ pub async fn forward_net(
         .raw_socket(IpVersion::Ipv4, IpProtocol::Udp)
         .await?;
 
-    let forward = Forward { net, map, ip_cidr };
+    let forward = Forward { net, ip_cidr };
 
     let tcp_task = forward.serve_tcp(tcp_listener);
     let udp_task = forward.serve_udp(raw_socket);
@@ -51,21 +47,15 @@ impl Forward {
     async fn serve_tcp(&self, mut listener: TcpListener) -> Result<()> {
         loop {
             let (tcp, addr) = listener.accept().await?;
-            let orig_addr = self.map.get(&match addr {
-                SocketAddr::V4(v4) => v4,
-                _ => continue,
+            let net = self.net.clone();
+            tokio::spawn(async move {
+                let ctx = &mut Context::from_socketaddr(addr);
+                let target = net
+                    .tcp_connect(ctx, &SocketAddr::from(addr).into_address()?)
+                    .await?;
+                ctx.connect_tcp(TcpStream::from(tcp), target).await?;
+                Ok(()) as Result<()>
             });
-            if let Some(orig_addr) = orig_addr {
-                let net = self.net.clone();
-                tokio::spawn(async move {
-                    let ctx = &mut Context::from_socketaddr(addr);
-                    let target = net
-                        .tcp_connect(ctx, &SocketAddr::from(orig_addr).into_address()?)
-                        .await?;
-                    ctx.connect_tcp(TcpStream::from(tcp), target).await?;
-                    Ok(()) as Result<()>
-                });
-            }
         }
     }
     async fn serve_udp(&self, raw: RawSocket) -> Result<()> {
