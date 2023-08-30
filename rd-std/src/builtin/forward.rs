@@ -173,6 +173,7 @@ struct UdpSource {
     target: Address,
     resolve_interval: Option<Duration>,
     resolve_future: PollFuture<Result<SocketAddr, io::ErrorKind>>,
+    resolved: Option<SocketAddr>,
     resolve_at: Option<Instant>,
 }
 
@@ -187,6 +188,7 @@ impl UdpSource {
             resolve_net: resolve_net.clone(),
             listen_udp: udp,
             resolve_future: PollFuture::new(resolve_target(resolve_net, target.clone())),
+            resolved: None,
             resolve_at: None,
             target,
             resolve_interval,
@@ -211,7 +213,14 @@ impl RawUdpSource for UdpSource {
             }
         }
 
-        let to = ready!(self.resolve_future.poll(cx))?;
+        let to = match self.resolved {
+            Some(to) => to,
+            None => {
+                let to = ready!(self.resolve_future.poll(cx))?;
+                self.resolved = Some(to);
+                to
+            }
+        };
 
         if self.resolve_at.is_none() {
             self.resolve_at = Some(Instant::now());
