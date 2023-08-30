@@ -1,17 +1,27 @@
 use std::{
-    future::Future,
     io,
+    mem::replace,
     net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use rd_interface::{async_trait, Address, AsyncWrite, INet, IntoDyn, Net, Result, NOT_IMPLEMENTED};
+use futures::{task::AtomicWaker, FutureExt};
+use rd_interface::{
+    async_trait, Address, AsyncRead, AsyncWrite, INet, IntoDyn, Net, Result, NOT_IMPLEMENTED,
+};
 use tls_parser::{
     parse_tls_client_hello_extensions, parse_tls_plaintext, SNIType, TlsExtension, TlsMessage,
     TlsMessageHandshake,
 };
+use tokio::{
+    io::AsyncWriteExt,
+    task::{spawn, JoinHandle},
+    time::{sleep, Sleep},
+};
+
+const BUFFER_SIZE: usize = 1024;
 
 pub struct SNISnifferNet {
     net: Net,
@@ -48,7 +58,7 @@ impl rd_interface::TcpConnect for SNISnifferNet {
         ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<rd_interface::TcpStream> {
-        let tcp = SnifferTcp::new(ConnectSendParam::new(self.net.clone(), ctx, addr));
+        let tcp = SnifferTcp::new(addr, ConnectSendParam::new(self.net.clone(), ctx));
         Ok(tcp.into_dyn())
     }
 }
@@ -56,34 +66,47 @@ impl rd_interface::TcpConnect for SNISnifferNet {
 struct ConnectSendParam {
     net: Net,
     ctx: rd_interface::Context,
-    addr: Address,
     buffer: Vec<u8>,
 }
 
 impl ConnectSendParam {
-    fn new(net: Net, ctx: &mut rd_interface::Context, addr: &Address) -> Self {
+    fn new(net: Net, ctx: &mut rd_interface::Context) -> Self {
         Self {
             net,
             ctx: ctx.clone(),
-            addr: addr.clone(),
-            buffer: Vec::with_capacity(1024),
+            buffer: Vec::with_capacity(BUFFER_SIZE),
         }
     }
-    fn extend_buffer(&mut self, buf: &[u8]) {
-        self.buffer.extend_from_slice(buf);
+    // return the length of buf stored into buffer
+    // the buffer limit is BUFFER_SIZE
+    fn extend_buffer(&mut self, buf: &[u8]) -> usize {
+        let to_copy = buf.len().min(BUFFER_SIZE - self.buffer.len());
+        self.buffer.extend_from_slice(&buf[..to_copy]);
+        to_copy
     }
-    async fn connect(self) -> io::Result<rd_interface::TcpStream> {
-        todo!()
-    }
+}
+
+async fn connect_send(
+    net: Net,
+    mut ctx: rd_interface::Context,
+    addr: Address,
+    buffer: Vec<u8>,
+) -> io::Result<rd_interface::TcpStream> {
+    let mut tcp = net.tcp_connect(&mut ctx, &addr).await?;
+
+    tcp.write_all(&buffer).await?;
+
+    Ok(tcp)
 }
 
 enum State {
     WaitingHandshake {
+        addr: Address,
         param: ConnectSendParam,
-        start_time: Instant,
+        timeout: Pin<Box<Sleep>>,
     },
     Connecting {
-        future: Pin<Box<dyn Future<Output = Result<rd_interface::TcpStream>> + Send + Sync>>,
+        future: JoinHandle<io::Result<rd_interface::TcpStream>>,
     },
     Connected {
         stream: rd_interface::TcpStream,
@@ -92,17 +115,29 @@ enum State {
 
 struct SnifferTcp {
     state: State,
-    connect_timeout: Duration,
+    connected_notify: AtomicWaker,
+}
+
+impl Drop for SnifferTcp {
+    fn drop(&mut self) {
+        match &mut self.state {
+            State::Connecting { future } => {
+                future.abort();
+            }
+            _ => {}
+        }
+    }
 }
 
 impl SnifferTcp {
-    pub fn new(param: ConnectSendParam) -> Self {
+    pub fn new(addr: &Address, param: ConnectSendParam) -> Self {
         Self {
             state: State::WaitingHandshake {
+                addr: addr.clone(),
                 param,
-                start_time: Instant::now(),
+                timeout: Box::pin(sleep(Duration::from_millis(250))),
             },
-            connect_timeout: Duration::from_millis(250),
+            connected_notify: AtomicWaker::new(),
         }
     }
 }
@@ -114,20 +149,57 @@ impl rd_interface::ITcpStream for SnifferTcp {
         cx: &mut Context<'_>,
         buf: &mut rd_interface::ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        todo!()
+        match &mut self.state {
+            State::Connected { ref mut stream } => Pin::new(stream).poll_read(cx, buf),
+            _ => {
+                self.connected_notify.register(cx.waker());
+                Poll::Pending
+            }
+        }
     }
 
     fn poll_write(&mut self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.state {
                 State::WaitingHandshake {
+                    ref addr,
                     ref mut param,
-                    start_time,
+                    timeout,
                 } => {
-                    param.extend_buffer(buf);
+                    if timeout.is_elapsed() {
+                        let future = connect_send(
+                            param.net.clone(),
+                            param.ctx.clone(),
+                            addr.clone(),
+                            replace(&mut param.buffer, Vec::new()),
+                        );
+                        self.state = State::Connecting {
+                            future: spawn(future),
+                        };
+                        continue;
+                    } else {
+                        let _ = timeout.poll_unpin(cx);
+                    }
+
+                    let copied = param.extend_buffer(buf);
+
+                    if let Some(sni) = get_sni(&param.buffer) {
+                        let future = connect_send(
+                            param.net.clone(),
+                            param.ctx.clone(),
+                            Address::Domain(sni, addr.port()),
+                            replace(&mut param.buffer, Vec::new()),
+                        );
+                        self.state = State::Connecting {
+                            future: spawn(future),
+                        };
+                    }
+
+                    return Poll::Ready(Ok(copied));
                 }
                 State::Connecting { ref mut future } => {
-                    let stream = futures::ready!(future.as_mut().poll(cx))?;
+                    let stream = futures::ready!(future.poll_unpin(cx))??;
+                    self.connected_notify.wake();
                     self.state = State::Connected { stream };
                 }
                 State::Connected { ref mut stream } => {
@@ -138,11 +210,17 @@ impl rd_interface::ITcpStream for SnifferTcp {
     }
 
     fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        todo!()
+        match &mut self.state {
+            State::Connected { stream } => Pin::new(stream).poll_flush(cx),
+            _ => Poll::Ready(Ok(())),
+        }
     }
 
     fn poll_shutdown(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        todo!()
+        match &mut self.state {
+            State::Connected { stream } => Pin::new(stream).poll_shutdown(cx),
+            _ => Poll::Ready(Ok(())),
+        }
     }
 
     async fn peer_addr(&self) -> rd_interface::Result<SocketAddr> {
