@@ -48,5 +48,6 @@ impl Builder<Net> for SNISnifferNet {
 
 pub fn init(registry: &mut Registry) -> Result<()> {
     registry.add_net::<DNSSnifferNet>();
+    registry.add_net::<SNISnifferNet>();
     Ok(())
 }

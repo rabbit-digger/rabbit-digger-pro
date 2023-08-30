@@ -13,6 +13,8 @@ tokio-stream = { version = "0.1.6", features = ["net", "sync", "time"] }
 clap = { version = "4.3.19", default-features = false, features = [
     "std",
     "color",
+    "help",
+    "usage",
     "derive",
     "env",
 ] }

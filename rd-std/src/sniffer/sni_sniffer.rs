@@ -1,5 +1,5 @@
 use std::{
-    io,
+    fmt, io,
     mem::replace,
     net::SocketAddr,
     pin::Pin,
@@ -35,7 +35,7 @@ impl SNISnifferNet {
 
 impl INet for SNISnifferNet {
     fn provide_tcp_connect(&self) -> Option<&dyn rd_interface::TcpConnect> {
-        self.net.provide_tcp_connect()
+        Some(self)
     }
 
     fn provide_tcp_bind(&self) -> Option<&dyn rd_interface::TcpBind> {
@@ -113,8 +113,19 @@ enum State {
     },
 }
 
+impl fmt::Debug for State {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            State::WaitingHandshake { .. } => write!(f, "WaitingHandshake"),
+            State::Connecting { .. } => write!(f, "Connecting"),
+            State::Connected { .. } => write!(f, "Connected"),
+        }
+    }
+}
+
 struct SnifferTcp {
     state: State,
+    receive_notify: AtomicWaker,
     connected_notify: AtomicWaker,
 }
 
@@ -130,13 +141,14 @@ impl Drop for SnifferTcp {
 }
 
 impl SnifferTcp {
-    pub fn new(addr: &Address, param: ConnectSendParam) -> Self {
+    fn new(addr: &Address, param: ConnectSendParam) -> Self {
         Self {
             state: State::WaitingHandshake {
                 addr: addr.clone(),
                 param,
                 timeout: Box::pin(sleep(Duration::from_millis(250))),
             },
+            receive_notify: AtomicWaker::new(),
             connected_notify: AtomicWaker::new(),
         }
     }
@@ -149,16 +161,6 @@ impl rd_interface::ITcpStream for SnifferTcp {
         cx: &mut Context<'_>,
         buf: &mut rd_interface::ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        match &mut self.state {
-            State::Connected { ref mut stream } => Pin::new(stream).poll_read(cx, buf),
-            _ => {
-                self.connected_notify.register(cx.waker());
-                Poll::Pending
-            }
-        }
-    }
-
-    fn poll_write(&mut self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.state {
                 State::WaitingHandshake {
@@ -166,6 +168,17 @@ impl rd_interface::ITcpStream for SnifferTcp {
                     ref mut param,
                     timeout,
                 } => {
+                    if let Some(sni) = get_sni(&param.buffer) {
+                        let future = spawn(connect_send(
+                            param.net.clone(),
+                            param.ctx.clone(),
+                            Address::Domain(sni, addr.port()),
+                            replace(&mut param.buffer, Vec::new()),
+                        ));
+                        self.state = State::Connecting { future };
+                        continue;
+                    }
+
                     if timeout.is_elapsed() {
                         let future = connect_send(
                             param.net.clone(),
@@ -177,30 +190,35 @@ impl rd_interface::ITcpStream for SnifferTcp {
                             future: spawn(future),
                         };
                         continue;
-                    } else {
-                        let _ = timeout.poll_unpin(cx);
                     }
 
-                    let copied = param.extend_buffer(buf);
+                    let _ = timeout.poll_unpin(cx);
+                    self.receive_notify.register(cx.waker());
 
-                    if let Some(sni) = get_sni(&param.buffer) {
-                        let future = connect_send(
-                            param.net.clone(),
-                            param.ctx.clone(),
-                            Address::Domain(sni, addr.port()),
-                            replace(&mut param.buffer, Vec::new()),
-                        );
-                        self.state = State::Connecting {
-                            future: spawn(future),
-                        };
-                    }
-
-                    return Poll::Ready(Ok(copied));
+                    return Poll::Pending;
                 }
                 State::Connecting { ref mut future } => {
                     let stream = futures::ready!(future.poll_unpin(cx))??;
                     self.connected_notify.wake();
                     self.state = State::Connected { stream };
+                }
+                State::Connected { ref mut stream } => return Pin::new(stream).poll_read(cx, buf),
+            }
+        }
+    }
+
+    fn poll_write(&mut self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        loop {
+            match &mut self.state {
+                State::WaitingHandshake { ref mut param, .. } => {
+                    let copied = param.extend_buffer(buf);
+                    self.receive_notify.wake();
+
+                    return Poll::Ready(Ok(copied));
+                }
+                State::Connecting { .. } => {
+                    self.connected_notify.register(cx.waker());
+                    return Poll::Pending;
                 }
                 State::Connected { ref mut stream } => {
                     return Pin::new(stream).poll_write(cx, buf);
