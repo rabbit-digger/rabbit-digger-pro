@@ -267,6 +267,12 @@ impl rd_interface::ITcpStream for SnifferTcp {
     }
 }
 
+fn is_valid_domain(domain: &str) -> bool {
+    domain
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+}
+
 fn get_sni(bytes: &[u8]) -> Option<String> {
     let (_, res) = parse_tls_plaintext(&bytes).ok()?;
 
@@ -292,13 +298,14 @@ fn get_sni(bytes: &[u8]) -> Option<String> {
             }
         })
         .filter_map(|data| std::str::from_utf8(data).ok())
+        .filter(|s| is_valid_domain(s))
         .map(ToString::to_string)
         .next()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::get_sni;
+    use super::{get_sni, is_valid_domain};
 
     const TLS_CLIENT_HELLO: &[u8] = &[
         0x16u8, 0x03, 0x01, 0x02, 0x00, 0x01, 0x00, 0x01, 0xfc, 0x03, 0x03, 0xad, 0x1a, 0xb0, 0x9a,
@@ -339,15 +346,25 @@ mod tests {
     ];
 
     #[test]
-    fn parse_sni_none() {
+    fn test_parse_sni_none() {
         assert_eq!(get_sni(&[]), None);
     }
 
     #[test]
-    fn parse_sni_ok() {
+    fn test_parse_sni_ok() {
         assert_eq!(
             get_sni(TLS_CLIENT_HELLO),
             Some("b.bdstatic.com".to_string())
         );
+    }
+
+    #[test]
+    fn test_mijia_cloud_invalid() {
+        assert!(!is_valid_domain("Mijia Cloud"))
+    }
+
+    #[test]
+    fn test_is_valid_domain() {
+        assert!(is_valid_domain("www.google.com"))
     }
 }
