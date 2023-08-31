@@ -43,3 +43,43 @@ impl<T> PollFuture<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc;
+
+    use super::*;
+
+    #[test]
+    fn test_poll_future() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<()>();
+        let mut fut = PollFuture::new(async move {
+            rx.recv().await;
+            1
+        });
+
+        assert!(!fut.is_ready());
+        assert_eq!(
+            fut.poll(&mut Context::from_waker(futures::task::noop_waker_ref())),
+            Poll::Pending
+        );
+        assert!(!fut.is_ready());
+        tx.send(()).unwrap();
+        assert_eq!(
+            fut.poll(&mut Context::from_waker(futures::task::noop_waker_ref())),
+            Poll::Ready(1)
+        );
+        assert!(fut.is_ready());
+    }
+
+    #[test]
+    fn test_poll_future_ready() {
+        let mut fut = PollFuture::ready(1);
+        assert!(fut.is_ready());
+        assert_eq!(
+            fut.poll(&mut Context::from_waker(futures::task::noop_waker_ref())),
+            Poll::Ready(1)
+        );
+        assert!(fut.is_ready());
+    }
+}
