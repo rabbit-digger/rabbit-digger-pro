@@ -38,6 +38,11 @@ pub struct SNINetConfig {
     /// If not set, only 443 port will be sniffed.
     #[serde(default)]
     ports: Option<Vec<u16>>,
+    /// Force sniff domain.
+    /// By default, only sniff connection to IP address.
+    /// If set to true, will sniff all connection.
+    #[serde(default)]
+    force_sniff: bool,
 }
 
 impl Builder<Net> for SNISnifferNet {
@@ -46,7 +51,11 @@ impl Builder<Net> for SNISnifferNet {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        Ok(SNISnifferNet::new(config.net.value_cloned(), config.ports))
+        Ok(SNISnifferNet::new(
+            config.net.value_cloned(),
+            config.ports,
+            config.force_sniff,
+        ))
     }
 }
 
