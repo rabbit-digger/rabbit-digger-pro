@@ -257,6 +257,18 @@ impl Address {
         }
     }
 
+    /// parse domain first, if it can be parsed as IP address,
+    /// then return it, otherwise return the original domain.
+    pub fn into_normalized(self) -> Address {
+        match self {
+            Address::SocketAddr(_) => self,
+            Address::Domain(d, p) => match strip_brackets(&d).parse::<IpAddr>() {
+                Ok(ip) => Address::SocketAddr(SocketAddr::new(ip, p)),
+                Err(_) => Address::Domain(d, p),
+            },
+        }
+    }
+
     /// Returns true if the address is domain.
     pub fn is_domain(&self) -> bool {
         match self {

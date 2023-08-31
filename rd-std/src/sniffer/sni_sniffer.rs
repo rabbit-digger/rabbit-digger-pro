@@ -189,7 +189,7 @@ impl rd_interface::ITcpStream for SnifferTcp {
                         let future = spawn(connect_send(
                             param.net.clone(),
                             param.ctx.clone(),
-                            Address::Domain(sni, addr.port()),
+                            Address::Domain(sni, addr.port()).into_normalized(),
                             replace(&mut param.buffer, Vec::new()),
                         ));
                         self.state = State::Connecting { future };
