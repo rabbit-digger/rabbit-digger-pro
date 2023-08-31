@@ -34,6 +34,10 @@ impl Builder<Net> for DNSSnifferNet {
 pub struct SNINetConfig {
     #[serde(default)]
     net: NetRef,
+    /// Ports to sniff.
+    /// If not set, only 443 port will be sniffed.
+    #[serde(default)]
+    ports: Option<Vec<u16>>,
 }
 
 impl Builder<Net> for SNISnifferNet {
@@ -42,7 +46,7 @@ impl Builder<Net> for SNISnifferNet {
     type Item = Self;
 
     fn build(config: Self::Config) -> Result<Self> {
-        Ok(SNISnifferNet::new(config.net.value_cloned()))
+        Ok(SNISnifferNet::new(config.net.value_cloned(), config.ports))
     }
 }
 
