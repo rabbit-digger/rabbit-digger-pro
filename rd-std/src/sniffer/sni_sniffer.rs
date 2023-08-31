@@ -26,11 +26,16 @@ const BUFFER_SIZE: usize = 1024;
 pub struct SNISnifferNet {
     net: Net,
     ports: Option<Vec<u16>>,
+    force_sniff: bool,
 }
 
 impl SNISnifferNet {
-    pub fn new(net: Net, ports: Option<Vec<u16>>) -> Self {
-        Self { net, ports }
+    pub fn new(net: Net, ports: Option<Vec<u16>>, force_sniff: bool) -> Self {
+        Self {
+            net,
+            ports,
+            force_sniff,
+        }
     }
 }
 
@@ -59,14 +64,19 @@ impl rd_interface::TcpConnect for SNISnifferNet {
         ctx: &mut rd_interface::Context,
         addr: &Address,
     ) -> Result<rd_interface::TcpStream> {
-        if match &self.ports {
+        let mut need_sniff = addr.is_socket_addr() || self.force_sniff;
+
+        need_sniff &= match &self.ports {
             Some(ports) => ports.contains(&addr.port()),
             None => addr.port() == 443,
-        } {
-            Ok(SnifferTcp::new(addr, ConnectSendParam::new(self.net.clone(), ctx)).into_dyn())
-        } else {
-            self.net.tcp_connect(ctx, addr).await
+        };
+
+        if need_sniff {
+            let tcp = SnifferTcp::new(addr, ConnectSendParam::new(self.net.clone(), ctx));
+            return Ok(tcp.into_dyn());
         }
+
+        self.net.tcp_connect(ctx, addr).await
     }
 }
 

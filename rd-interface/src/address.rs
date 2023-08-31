@@ -256,6 +256,22 @@ impl Address {
             Either::Right((d, p)) => Address::Domain(d.to_string(), p),
         }
     }
+
+    /// Returns true if the address is domain.
+    pub fn is_domain(&self) -> bool {
+        match self {
+            Address::Domain(_, _) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns true if the address is IP address.
+    pub fn is_socket_addr(&self) -> bool {
+        match self {
+            Address::SocketAddr(_) => true,
+            _ => false,
+        }
+    }
 }
 
 enum Either<T, U> {
