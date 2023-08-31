@@ -210,6 +210,7 @@ impl RawUdpSource for UdpSource {
                     self.target.clone(),
                 ));
                 self.resolve_at = None;
+                self.resolved = None;
             }
         }
 
