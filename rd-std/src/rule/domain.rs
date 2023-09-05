@@ -19,9 +19,10 @@ impl TryFrom<String> for Method {
 
 impl DomainMatcher {
     fn test(&self, domain: &str) -> bool {
+        let mut domains = self.domain.iter();
         match self.method {
-            Method::Keyword => self.domain.iter().any(|d| domain.contains(d)),
-            Method::Match => self.domain.iter().any(|d| {
+            Method::Keyword => domains.any(|d| domain.contains(d)),
+            Method::Match => domains.any(|d| {
                 if d.starts_with("+.") {
                     d.strip_prefix('+')
                         .map(|i| domain.ends_with(i))
@@ -31,7 +32,7 @@ impl DomainMatcher {
                     domain == d
                 }
             }),
-            Method::Suffix => self.domain.iter().any(|d| domain.ends_with(d)),
+            Method::Suffix => domains.any(|d| domain.ends_with(d)),
         }
     }
 }
@@ -80,19 +81,22 @@ mod tests {
 
         // test suffix
         let matcher = DomainMatcher {
-            domain: vec![".com".to_string()].into(),
+            domain: vec!["example.com".to_string()].into(),
             method: Method::Suffix,
         };
         assert!(match_addr("example.com:26666", &matcher).await);
+        assert!(match_addr("sub.example.com:26666", &matcher).await);
+        assert!(match_addr("prefixexample.com:26666", &matcher).await);
         assert!(!match_addr("example.cn:26666", &matcher).await);
 
         // test suffix with +
         let matcher = DomainMatcher {
-            domain: vec!["+.com".to_string()].into(),
+            domain: vec!["+.example.com".to_string()].into(),
             method: Method::Match,
         };
         assert!(match_addr("example.com:26666", &matcher).await);
         assert!(match_addr("sub.example.com:26666", &matcher).await);
+        assert!(!match_addr("prefixexample.com:26666", &matcher).await);
         assert!(!match_addr("example.cn:26666", &matcher).await);
     }
 }
