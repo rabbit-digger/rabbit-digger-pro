@@ -72,9 +72,8 @@ tls-parser = "0.11.0"
 tokio = { version = "1.29.1", features = ["full"] }
 
 [features]
-default = ["http_server", "trust-dns-resolver", "native-tls"]
+default = ["trust-dns-resolver", "native-tls"]
 plugin = []
-http_server = []
 
 rustls = ["tokio-rustls", "webpki-roots"]
 openssl = ["openssl-crate", "tokio-openssl"]
