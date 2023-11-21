@@ -23,9 +23,11 @@ impl Storage for MemoryCache {
     async fn get_updated_at(&self, key: &str) -> Result<Option<SystemTime>> {
         Ok(self.cache.read().get(key).map(|item| item.updated_at))
     }
+
     async fn get(&self, key: &str) -> Result<Option<StorageItem>> {
         Ok(self.cache.read().get(key).cloned())
     }
+
     async fn set(&self, key: &str, value: &str) -> Result<()> {
         self.cache.write().insert(
             key.to_string(),
@@ -36,6 +38,7 @@ impl Storage for MemoryCache {
         );
         Ok(())
     }
+
     async fn keys(&self) -> Result<Vec<StorageKey>> {
         Ok(self
             .cache
@@ -50,6 +53,11 @@ impl Storage for MemoryCache {
 
     async fn remove(&self, key: &str) -> Result<()> {
         self.cache.write().remove(key);
+        Ok(())
+    }
+
+    async fn clear(&self) -> Result<()> {
+        self.cache.write().clear();
         Ok(())
     }
 }

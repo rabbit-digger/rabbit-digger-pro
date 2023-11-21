@@ -31,4 +31,5 @@ pub trait Storage: Send + Sync {
     async fn set(&self, key: &str, value: &str) -> Result<()>;
     async fn remove(&self, key: &str) -> Result<()>;
     async fn keys(&self) -> Result<Vec<StorageKey>>;
+    async fn clear(&self) -> Result<()>;
 }

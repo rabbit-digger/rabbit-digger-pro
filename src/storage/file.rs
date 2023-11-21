@@ -130,6 +130,7 @@ impl Storage for FileStorage {
         let index = self.get_index().await?;
         Ok(index.index.get(key).map(|item| item.updated_at))
     }
+
     async fn get(&self, key: &str) -> Result<Option<StorageItem>> {
         let _ = self.lock.read().await;
         let index = self.get_index().await?;
@@ -165,6 +166,7 @@ impl Storage for FileStorage {
 
         Ok(())
     }
+
     async fn keys(&self) -> Result<Vec<StorageKey>> {
         let _ = self.lock.read().await;
         let index = self.get_index().await?;
@@ -193,6 +195,20 @@ impl Storage for FileStorage {
         index.index.remove(key);
         self.set_index(index).await?;
 
+        Ok(())
+    }
+
+    async fn clear(&self) -> Result<()> {
+        let _ = self.lock.write().await;
+        let index = self.get_index().await?;
+        for item in index.index.values() {
+            remove_file(self.storage_dir.join(&item.content)).await.ok();
+        }
+        self.set_index(Index {
+            version: 0,
+            index: HashMap::new(),
+        })
+        .await?;
         Ok(())
     }
 }
