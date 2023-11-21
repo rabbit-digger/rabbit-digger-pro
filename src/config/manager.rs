@@ -5,7 +5,7 @@ use crate::{
     storage::{FileStorage, FolderType, Storage},
 };
 
-use super::{importer::get_importer, select_map::SelectMap, ConfigExt, Import, ImportSource};
+use super::{importer::get_importer, select_map::SelectMap, Import, ImportSource};
 use anyhow::{Context, Result};
 use async_stream::stream;
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
@@ -47,9 +47,8 @@ impl ConfigManager {
 
         Ok(stream! {
             loop {
-                let config = inner.deserialize_config(&source).await?;
-                let (config, import) = inner.unfold_import(config).await?;
-                yield inner.unfold_config(config).await;
+                let (config, import) = inner.deserialize_config_from_source(&source).await?;
+                yield Ok(config);
                 inner.wait_source(&source, &import).await?;
             }
         })
@@ -67,9 +66,8 @@ impl ConfigManager {
 
         Ok(stream! {
             loop {
-                let config = inner.deserialize_config(&source).await?;
-                let (config, import) = inner.unfold_import(config).await?;
-                yield inner.unfold_config(config).await;
+                let (config, import) = inner.deserialize_config_from_source(&source).await?;
+                yield Ok(config);
                 let r = select! {
                     r = inner.wait_source(&source, &import) => r,
                     r = sources.next() => {
@@ -99,12 +97,13 @@ impl Import {
 }
 
 impl Inner {
-    async fn deserialize_config(&self, source: &ImportSource) -> Result<ConfigExt> {
+    async fn deserialize_config_from_source(
+        &self,
+        source: &ImportSource,
+    ) -> Result<(Config, Vec<Import>)> {
         let mut config = deserialize_config(&source.get_content(&self.file_cache).await?)?;
         config.config.id = source.cache_key();
-        Ok(config)
-    }
-    async fn unfold_import(&self, mut config: ConfigExt) -> Result<(Config, Vec<Import>)> {
+
         let imports = config.import;
 
         for i in &imports {
@@ -112,18 +111,17 @@ impl Inner {
                 .await
                 .context(format!("applying import: {i:?}"))?;
         }
+        let mut config = config.config;
 
-        Ok((config.config, imports))
-    }
-    async fn unfold_config(&self, mut config: Config) -> Result<Config> {
         // restore patch
         SelectMap::from_cache(&config.id, &self.select_storage)
             .await?
             .apply_config(&mut config)
             .await;
 
-        Ok(config)
+        Ok((config, imports))
     }
+
     async fn wait_source(&self, cfg_src: &ImportSource, imports: &[Import]) -> Result<()> {
         let mut events = FuturesUnordered::new();
         events.push(cfg_src.wait(&self.file_cache));
