@@ -115,7 +115,9 @@ fn ghost_net() -> Net {
 }
 
 impl Clash {
-    fn proxy_to_net(&self, p: Proxy) -> Result<Net> {
+    fn proxy_to_net(&self, p: Proxy, target_net: Option<String>) -> Result<Net> {
+        let target_net = target_net.unwrap_or_else(|| "local".to_string());
+
         let net = match p.proxy_type.as_ref() {
             "ss" => {
                 #[derive(Debug, Deserialize)]
@@ -141,7 +143,8 @@ impl Clash {
                         let obfs_net = Net::new(
                             "obfs",
                             json!({
-                                obfs_mode: plugin_opts,
+                                "obfs_mode": obfs_mode,
+                                "net": target_net,
                             }),
                         );
 
@@ -166,6 +169,7 @@ impl Clash {
                             "cipher": params.cipher,
                             "password": params.password,
                             "udp": params.udp.unwrap_or_default(),
+                            "net": target_net,
                         }),
                     )
                 }
@@ -190,6 +194,7 @@ impl Clash {
                         "password": params.password,
                         "sni": params.sni.unwrap_or(params.server),
                         "skip_cert_verify": params.skip_cert_verify.unwrap_or_default(),
+                        "net": target_net,
                     }),
                 )
             }
@@ -242,6 +247,30 @@ impl Clash {
                         "list": net_list,
                     }),
                 )
+            }
+            "relay" => {
+                let first_net = net_list
+                    .get(0)
+                    .cloned()
+                    .unwrap_or_else(|| "noop".to_string());
+                let mut cur = Net::new(
+                    "alias",
+                    json!({
+                        "net": first_net,
+                    }),
+                );
+
+                for net in net_list.into_iter().skip(1) {
+                    cur = Net::new(
+                        "relay",
+                        json!({
+                            "net": net,
+                            "upstream": cur,
+                        }),
+                    );
+                }
+
+                todo!()
             }
             _ => {
                 return Err(anyhow!(
@@ -390,7 +419,7 @@ impl Importer for Clash {
             let name = self.prefix(&old_name);
             added_proxies.push(name.clone());
             self.name_map.insert(old_name.clone(), name.clone());
-            match self.proxy_to_net(p) {
+            match self.proxy_to_net(p, None) {
                 Ok(p) => {
                     config.net.insert(name, p);
                 }
