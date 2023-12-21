@@ -73,7 +73,7 @@ struct ClashConfig {
     rule_providers: BTreeMap<String, RuleProvider>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Proxy {
     name: String,
     #[serde(rename = "type")]
@@ -114,10 +114,15 @@ fn ghost_net() -> Net {
     )
 }
 
-impl Clash {
-    fn proxy_to_net(&self, p: Proxy, target_net: Option<String>) -> Result<Net> {
-        let target_net = target_net.unwrap_or_else(|| "local".to_string());
+fn with_net(mut net: Net, target_net: Option<Net>) -> Net {
+    if let (Some(obj), Some(target_net)) = (net.opt.as_object_mut(), target_net) {
+        obj.insert("net".to_string(), serde_json::to_value(target_net).unwrap());
+    }
+    net
+}
 
+impl Clash {
+    fn proxy_to_net(&self, p: Proxy, target_net: Option<Net>) -> Result<Net> {
         let net = match p.proxy_type.as_ref() {
             "ss" => {
                 #[derive(Debug, Deserialize)]
@@ -140,12 +145,15 @@ impl Clash {
                             .map(|i| i.to_string())
                             .unwrap_or_default();
 
-                        let obfs_net = Net::new(
-                            "obfs",
-                            json!({
-                                "obfs_mode": obfs_mode,
-                                "net": target_net,
-                            }),
+                        let obfs_net = with_net(
+                            Net::new(
+                                "obfs",
+                                json!({
+                                    "obfs_mode": obfs_mode,
+                                    "net": target_net,
+                                }),
+                            ),
+                            target_net,
                         );
 
                         Net::new(
@@ -162,15 +170,17 @@ impl Clash {
                         return Err(anyhow!("unsupported plugin: {}", plugin));
                     }
                 } else {
-                    Net::new(
-                        "shadowsocks",
-                        json!({
-                            "server": format!("{}:{}", params.server, params.port),
-                            "cipher": params.cipher,
-                            "password": params.password,
-                            "udp": params.udp.unwrap_or_default(),
-                            "net": target_net,
-                        }),
+                    with_net(
+                        Net::new(
+                            "shadowsocks",
+                            json!({
+                                "server": format!("{}:{}", params.server, params.port),
+                                "cipher": params.cipher,
+                                "password": params.password,
+                                "udp": params.udp.unwrap_or_default(),
+                            }),
+                        ),
+                        target_net,
                     )
                 }
             }
@@ -219,7 +229,7 @@ impl Clash {
             .ok_or_else(|| anyhow!("Name not found. clash name: {}", target))
     }
 
-    fn proxy_group_to_net(&self, p: ProxyGroup) -> Result<Net> {
+    fn proxy_group_to_net(&self, p: ProxyGroup, proxy_map: &HashMap<String, Proxy>) -> Result<Net> {
         let net_list = p
             .proxies
             .into_iter()
@@ -249,28 +259,25 @@ impl Clash {
                 )
             }
             "relay" => {
-                let first_net = net_list
-                    .get(0)
-                    .cloned()
-                    .unwrap_or_else(|| "noop".to_string());
-                let mut cur = Net::new(
-                    "alias",
-                    json!({
-                        "net": first_net,
-                    }),
-                );
-
-                for net in net_list.into_iter().skip(1) {
-                    cur = Net::new(
-                        "relay",
+                let net = net_list.iter().try_fold(
+                    Net::new(
+                        "alias",
                         json!({
-                            "net": net,
-                            "upstream": cur,
+                            "net": "local"
                         }),
-                    );
-                }
+                    ),
+                    |acc, x| {
+                        let proxy = proxy_map.get(x).ok_or(anyhow!(
+                            "proxy {} not found in proxy group {}",
+                            x,
+                            p.name
+                        ))?;
 
-                todo!()
+                        self.proxy_to_net(proxy.clone(), Some(acc))
+                    },
+                )?;
+
+                net
             }
             _ => {
                 return Err(anyhow!(
@@ -413,12 +420,14 @@ impl Importer for Clash {
     ) -> Result<()> {
         let clash_config: ClashConfig = serde_yaml::from_str(content)?;
         let mut added_proxies = Vec::new();
+        let mut proxy_map = HashMap::new();
 
         for p in clash_config.proxies {
             let old_name = p.name.clone();
             let name = self.prefix(&old_name);
             added_proxies.push(name.clone());
             self.name_map.insert(old_name.clone(), name.clone());
+            proxy_map.insert(old_name.clone(), p.clone());
             match self.proxy_to_net(p, None) {
                 Ok(p) => {
                     config.net.insert(name, p);
@@ -444,7 +453,7 @@ impl Importer for Clash {
 
             for (old_name, pg) in proxy_groups {
                 let name = self.proxy_group_name(&old_name);
-                match self.proxy_group_to_net(pg) {
+                match self.proxy_group_to_net(pg, &proxy_map) {
                     Ok(pg) => {
                         config.net.insert(name, pg);
                     }
