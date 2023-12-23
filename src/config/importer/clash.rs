@@ -196,16 +196,17 @@ impl Clash {
                     skip_cert_verify: Option<bool>,
                 }
                 let params: Param = serde_json::from_value(p.opt)?;
-
-                Net::new(
-                    "trojan",
-                    json!({
-                        "server": format!("{}:{}", params.server, params.port),
-                        "password": params.password,
-                        "sni": params.sni.unwrap_or(params.server),
-                        "skip_cert_verify": params.skip_cert_verify.unwrap_or_default(),
-                        "net": target_net,
-                    }),
+                with_net(
+                    Net::new(
+                        "trojan",
+                        json!({
+                            "server": format!("{}:{}", params.server, params.port),
+                            "password": params.password,
+                            "sni": params.sni.unwrap_or(params.server),
+                            "skip_cert_verify": params.skip_cert_verify.unwrap_or_default(),
+                        }),
+                    ),
+                    target_net,
                 )
             }
             _ => return Err(anyhow!("Unsupported proxy type: {}", p.proxy_type)),
@@ -504,5 +505,88 @@ impl Importer for Clash {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_yaml::from_str;
+
+    #[tokio::test]
+    async fn test_importer_clash_relay() {
+        let mut clash = Clash {
+            rule_name: None,
+            prefix: None,
+            direct: None,
+            reject: None,
+            disable_proxy_group: false,
+            select: None,
+            name_map: BTreeMap::new(),
+        };
+
+        let content = r#"
+rules: []
+proxies:
+  - name: proxy1
+    type: "ss"
+    server: "proxy1"
+    port: 1
+    cipher: chacha20-ietf
+    password: p
+  - name: proxy2
+    type: "ss"
+    server: "proxy2"
+    port: 2
+    cipher: chacha20-ietf
+    password: p
+proxy-groups:
+  - name: relay
+    type: relay
+    proxies:
+      - proxy1
+      - proxy2
+"#;
+
+        let mut config = from_str::<Config>(content).unwrap();
+        let cache = crate::storage::MemoryCache::new().await.unwrap();
+        clash.process(&mut config, content, &cache).await.unwrap();
+
+        let config_string = serde_yaml::to_string(&config).unwrap();
+
+        assert_eq!(
+            config_string,
+            r#"id: ''
+net:
+  proxy1:
+    type: shadowsocks
+    server: proxy1:1
+    cipher: chacha20-ietf
+    password: p
+    udp: false
+  proxy2:
+    type: shadowsocks
+    server: proxy2:2
+    cipher: chacha20-ietf
+    password: p
+    udp: false
+  relay:
+    type: shadowsocks
+    server: proxy2:2
+    cipher: chacha20-ietf
+    password: p
+    udp: false
+    net:
+      type: shadowsocks
+      server: proxy1:1
+      cipher: chacha20-ietf
+      password: p
+      udp: false
+      net:
+        type: alias
+        net: local
+server: {}
+"#
+        );
     }
 }
