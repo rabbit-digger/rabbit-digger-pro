@@ -3,10 +3,7 @@ pub mod default;
 use std::borrow::Cow;
 
 use indexmap::IndexMap;
-use rd_interface::{
-    schemars::{self, JsonSchema},
-    Value,
-};
+use rd_interface::Value;
 use serde::{Deserialize, Serialize};
 
 pub type ConfigNet = IndexMap<String, Net>;
@@ -22,19 +19,8 @@ pub struct Config {
     pub server: ConfigServer,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, JsonSchema)]
-pub struct NetMetadata {
-    /// Reset all connections passing through this Net
-    reset_on_change: bool,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Net {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    pub metadata: Option<NetMetadata>,
-    #[serde(flatten)]
-    pub _reserved: Reserved,
     #[serde(rename = "type")]
     pub net_type: String,
     #[serde(flatten)]
@@ -49,8 +35,6 @@ pub struct Server {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub metadata: Option<ServerMetadata>,
-    #[serde(flatten)]
-    pub _reserved: Reserved,
     #[serde(rename = "type")]
     pub server_type: String,
     #[serde(flatten)]
@@ -86,8 +70,6 @@ impl Net {
         Net {
             net_type: net_type.into(),
             opt,
-            _reserved: Default::default(),
-            metadata: Default::default(),
         }
     }
     pub fn new_opt(
@@ -96,12 +78,6 @@ impl Net {
     ) -> rd_interface::Result<Net> {
         Ok(Net::new(net_type, serde_json::to_value(opt)?))
     }
-    pub fn metadata<'a>(&'a self) -> Cow<'a, NetMetadata> {
-        match self.metadata.as_ref() {
-            Some(m) => Cow::Borrowed(m),
-            None => Cow::Owned(Default::default()),
-        }
-    }
 }
 
 impl Server {
@@ -109,7 +85,6 @@ impl Server {
         Server {
             server_type: server_type.into(),
             opt,
-            _reserved: Default::default(),
             metadata: Default::default(),
         }
     }
