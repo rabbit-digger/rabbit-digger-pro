@@ -33,3 +33,25 @@ pub trait Storage: Send + Sync {
     async fn keys(&self) -> Result<Vec<StorageKey>>;
     async fn clear(&self) -> Result<()>;
 }
+
+// all key-values in `from` will be copied to `to`
+pub async fn assign_storage(from: &impl Storage, to: &impl Storage) -> Result<()> {
+    let keys = from.keys().await?;
+
+    for key in keys {
+        let to_updated_at = to
+            .get_updated_at(&key.key)
+            .await?
+            .unwrap_or_else(|| SystemTime::UNIX_EPOCH);
+
+        if to_updated_at >= key.updated_at {
+            continue;
+        }
+
+        if let Some(item) = from.get(&key.key).await? {
+            to.set(&key.key, &item.content).await?;
+        }
+    }
+
+    Ok(())
+}
