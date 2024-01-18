@@ -1,0 +1,20 @@
+rules: []
+proxies:
+  - name: proxy1
+    type: "ss"
+    server: "proxy1"
+    port: 1
+    cipher: chacha20-ietf
+    password: p
+  - name: proxy2
+    type: "ss"
+    server: "proxy2"
+    port: 2
+    cipher: chacha20-ietf
+    password: p
+proxy-groups:
+  - name: relay
+    type: relay
+    proxies:
+      - proxy1
+      - proxy2

@@ -1,0 +1,30 @@
+id: ''
+net:
+  proxy1:
+    type: shadowsocks
+    server: proxy1:1
+    cipher: chacha20-ietf
+    password: p
+    udp: false
+  proxy2:
+    type: shadowsocks
+    server: proxy2:2
+    cipher: chacha20-ietf
+    password: p
+    udp: false
+  relay:
+    type: shadowsocks
+    server: proxy2:2
+    cipher: chacha20-ietf
+    password: p
+    udp: false
+    net:
+      type: shadowsocks
+      server: proxy1:1
+      cipher: chacha20-ietf
+      password: p
+      udp: false
+      net:
+        type: alias
+        net: local
+server: {}

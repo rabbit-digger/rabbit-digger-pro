@@ -512,6 +512,7 @@ impl Importer for Clash {
 mod tests {
     use super::*;
     use serde_yaml::from_str;
+    use std::fs;
 
     #[tokio::test]
     async fn test_importer_clash_relay() {
@@ -525,68 +526,16 @@ mod tests {
             name_map: BTreeMap::new(),
         };
 
-        let content = r#"
-rules: []
-proxies:
-  - name: proxy1
-    type: "ss"
-    server: "proxy1"
-    port: 1
-    cipher: chacha20-ietf
-    password: p
-  - name: proxy2
-    type: "ss"
-    server: "proxy2"
-    port: 2
-    cipher: chacha20-ietf
-    password: p
-proxy-groups:
-  - name: relay
-    type: relay
-    proxies:
-      - proxy1
-      - proxy2
-"#;
+        let content = fs::read_to_string("tests/relay_clash.yml").expect("Unable to read file");
+        let wanted_content =
+            fs::read_to_string("tests/relay_rdp.yml").expect("Unable to read file");
 
-        let mut config = from_str::<Config>(content).unwrap();
+        let mut config = from_str::<Config>(&content).unwrap();
         let cache = crate::storage::MemoryCache::new().await.unwrap();
-        clash.process(&mut config, content, &cache).await.unwrap();
+        clash.process(&mut config, &content, &cache).await.unwrap();
 
         let config_string = serde_yaml::to_string(&config).unwrap();
 
-        assert_eq!(
-            config_string,
-            r#"id: ''
-net:
-  proxy1:
-    type: shadowsocks
-    server: proxy1:1
-    cipher: chacha20-ietf
-    password: p
-    udp: false
-  proxy2:
-    type: shadowsocks
-    server: proxy2:2
-    cipher: chacha20-ietf
-    password: p
-    udp: false
-  relay:
-    type: shadowsocks
-    server: proxy2:2
-    cipher: chacha20-ietf
-    password: p
-    udp: false
-    net:
-      type: shadowsocks
-      server: proxy1:1
-      cipher: chacha20-ietf
-      password: p
-      udp: false
-      net:
-        type: alias
-        net: local
-server: {}
-"#
-        );
+        assert_eq!(config_string, wanted_content);
     }
 }
