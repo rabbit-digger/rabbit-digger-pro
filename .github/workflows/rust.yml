@@ -20,6 +20,7 @@ jobs:
             artifact_name: rabbit-digger-pro
             release_name: rabbit-digger-pro-macos-amd64
     steps:
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v2
         with:
           submodules: recursive
