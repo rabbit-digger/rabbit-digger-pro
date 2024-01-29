@@ -95,6 +95,17 @@ where
     Err(last_err)
 }
 
+async fn read_from_path(path: impl AsRef<std::path::Path>) -> Result<String> {
+    let content = read_to_string(path).await?;
+
+    // Remove BOM
+    if content.starts_with('\u{feff}') {
+        return Ok(content[3..].to_string());
+    }
+
+    Ok(content)
+}
+
 impl ImportSource {
     pub fn new_path(path: PathBuf) -> Self {
         ImportSource::Path(path)
@@ -124,7 +135,7 @@ impl ImportSource {
         }
 
         Ok(match self {
-            ImportSource::Path(path) => read_to_string(path).await?,
+            ImportSource::Path(path) => read_from_path(path).await?,
             ImportSource::Poll(ImportUrl { url, .. }) => {
                 config_storage().await.set(&key, "").await?;
                 tracing::info!("Fetching {}", url);
