@@ -75,6 +75,7 @@ pub struct TrojanNetConfig {
     /// hostname:port
     server: Address,
     /// password in plain text
+    #[serde(skip_serializing_if = "rd_interface::config::detailed_field")]
     password: String,
 
     /// sni
@@ -100,6 +101,7 @@ pub struct TrojancNetConfig {
     /// hostname:port
     server: RdAddress,
     /// password in plain text
+    #[serde(skip_serializing_if = "rd_interface::config::detailed_field")]
     password: String,
 
     /// enabled websocket support

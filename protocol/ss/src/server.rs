@@ -18,6 +18,7 @@ mod source;
 #[derive(Debug, Clone)]
 pub struct SSServerConfig {
     pub(crate) bind: Address,
+    #[serde(skip_serializing_if = "rd_interface::config::detailed_field")]
     pub(crate) password: String,
     #[serde(default)]
     pub(crate) udp: bool,

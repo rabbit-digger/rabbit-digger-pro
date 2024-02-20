@@ -12,7 +12,9 @@ use futures::{
     Stream, StreamExt, TryStreamExt,
 };
 use rd_interface::{
-    config::{CompactVecString, NetRef, VisitorContext},
+    config::{
+        serialize_with_fields, CompactVecString, NetRef, VisitorContext, ALL_SERIALIZE_FIELDS,
+    },
     registry::NetGetter,
     Arc, Error, IntoDyn, Net, Server, Value,
 };
@@ -37,7 +39,8 @@ struct RunningEntities {
 
 struct SerializedConfig {
     id: String,
-    str: String,
+    all_fields: String,
+    simple_fields: String,
 }
 
 #[allow(dead_code)]
@@ -158,19 +161,6 @@ impl RabbitDigger {
         Ok(())
     }
 
-    // get current config if it's running
-    pub async fn config(&self) -> Result<String> {
-        let state = self.inner.state.read().await;
-        match &*state {
-            State::Running(Running { config, .. }) => {
-                return Ok(config.read().await.str.clone());
-            }
-            _ => {
-                return Err(anyhow!("Not running"));
-            }
-        };
-    }
-
     // get current connection state
     pub async fn connection<F, R>(&self, f: F) -> R
     where
@@ -223,7 +213,10 @@ impl RabbitDigger {
 
         *state = State::Running(Running {
             config: RwLock::new(SerializedConfig {
-                str: serde_json::to_string(&config)?,
+                all_fields: serialize_with_fields(ALL_SERIALIZE_FIELDS.to_vec(), || {
+                    serde_json::to_string(&config)
+                })?,
+                simple_fields: serde_json::to_string(&config)?,
                 id: config.id,
             }),
             entities,
@@ -331,8 +324,9 @@ impl RabbitDigger {
                 entities: RunningEntities { nets, .. },
                 ..
             }) => {
-                let config_str = &mut config.write().await.str;
-                let mut config: config::Config = serde_json::from_str(config_str)?;
+                let mut serialized_config = config.write().await;
+                let mut config: config::Config =
+                    serde_json::from_str(&serialized_config.all_fields)?;
 
                 if let (Some(cfg), Some(running_net)) =
                     (config.net.get_mut(net_name), nets.get(net_name))
@@ -354,7 +348,11 @@ impl RabbitDigger {
                     running_net.update_net(net);
 
                     *cfg = new_cfg;
-                    *config_str = serde_json::to_string(&config)?;
+                    serialized_config.all_fields =
+                        serialize_with_fields(ALL_SERIALIZE_FIELDS.to_vec(), || {
+                            serde_json::to_string(&config)
+                        })?;
+                    serialized_config.simple_fields = serde_json::to_string(&config)?;
                 }
                 return Ok(());
             }
@@ -372,14 +370,14 @@ impl RabbitDigger {
         }
     }
 
-    pub async fn get_config<F, R>(&self, f: F) -> R
+    pub async fn get_config<F, R>(&self, f: F) -> Result<R>
     where
-        F: FnOnce(Option<&str>) -> R,
+        F: FnOnce(&str) -> R,
     {
         let state = self.inner.state.read().await;
         match state.running() {
-            Some(i) => f(Some(&*i.config.read().await.str)),
-            None => f(None),
+            Some(i) => Ok(f(&*i.config.read().await.simple_fields)),
+            None => Err(anyhow!("Not running")),
         }
     }
 

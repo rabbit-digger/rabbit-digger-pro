@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use crate::{self as rd_interface, Address, Net};
 pub use resolvable::{Resolvable, ResolvableSchema};
 use schemars::{
@@ -208,4 +210,38 @@ impl JsonSchema for Address {
         }
         .into()
     }
+}
+
+#[derive(PartialEq, Clone)]
+pub enum ConfigField {
+    /// Default field type
+    Common,
+    /// Field type for detailed mode, which may be very large
+    Detail,
+    /// Field type for sensitive mode, which may contain sensitive information
+    Sensitive,
+}
+
+pub const ALL_SERIALIZE_FIELDS: [ConfigField; 3] = [
+    ConfigField::Common,
+    ConfigField::Detail,
+    ConfigField::Sensitive,
+];
+thread_local!(static SERIALIZE_FIELDS: RefCell<Vec<ConfigField>> = RefCell::new(vec![ConfigField::Common]));
+
+pub fn detailed_field<T>(_: T) -> bool {
+    !SERIALIZE_FIELDS.with(|x| x.borrow().contains(&ConfigField::Detail))
+}
+
+pub fn sensitive_field<T>(_: T) -> bool {
+    !SERIALIZE_FIELDS.with(|x| x.borrow().contains(&ConfigField::Sensitive))
+}
+
+pub fn serialize_with_fields<T, F: FnOnce() -> T>(fields: Vec<ConfigField>, f: F) -> T {
+    SERIALIZE_FIELDS.with(|x| {
+        let old_fields = std::mem::replace(&mut *x.borrow_mut(), fields);
+        let ret = f();
+        *x.borrow_mut() = old_fields;
+        ret
+    })
 }

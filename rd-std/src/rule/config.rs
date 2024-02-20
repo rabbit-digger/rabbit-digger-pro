@@ -160,6 +160,7 @@ impl RuleItem {
 pub struct RuleNetConfig {
     #[serde(default = "default_lru_cache_size")]
     pub lru_cache_size: usize,
+    #[serde(skip_serializing_if = "rd_interface::config::detailed_field")]
     pub rule: Vec<RuleItem>,
 }
 

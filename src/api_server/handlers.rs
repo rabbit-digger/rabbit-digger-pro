@@ -77,7 +77,7 @@ pub(super) async fn get_config(
         HeaderValue::from_static("application/json"),
     );
 
-    let config_str = rd.config().await?;
+    let config_str = rd.get_config(|c| c.to_owned()).await?;
     Ok((headers, config_str))
 }
 
