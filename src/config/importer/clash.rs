@@ -123,7 +123,8 @@ fn with_net(mut net: Net, target_net: Option<Net>) -> Net {
 
 impl Clash {
     fn proxy_to_net(&self, p: Proxy, target_net: Option<Net>) -> Result<Net> {
-        let net = match p.proxy_type.as_ref() {
+        // TODO: http and socks5 has limited support
+        let net: Net = match p.proxy_type.as_ref() {
             "ss" => {
                 #[derive(Debug, Deserialize)]
                 #[serde(rename_all = "kebab-case")]
@@ -193,6 +194,7 @@ impl Clash {
                     // udp is ignored
                     // udp: Option<bool>,
                     sni: Option<String>,
+                    #[serde(rename = "skip-cert-verify")]
                     skip_cert_verify: Option<bool>,
                 }
                 let params: Param = serde_json::from_value(p.opt)?;
@@ -204,6 +206,40 @@ impl Clash {
                             "password": params.password,
                             "sni": params.sni.unwrap_or(params.server),
                             "skip_cert_verify": params.skip_cert_verify.unwrap_or_default(),
+                        }),
+                    ),
+                    target_net,
+                )
+            }
+            "http" => {
+                #[derive(Debug, Deserialize)]
+                struct Param {
+                    server: String,
+                    port: u16,
+                }
+                let params: Param = serde_json::from_value(p.opt)?;
+                with_net(
+                    Net::new(
+                        "http",
+                        json!({
+                            "server": format!("{}:{}", params.server, params.port),
+                        }),
+                    ),
+                    target_net,
+                )
+            }
+            "socks5" => {
+                #[derive(Debug, Deserialize)]
+                struct Param {
+                    server: String,
+                    port: u16,
+                }
+                let params: Param = serde_json::from_value(p.opt)?;
+                with_net(
+                    Net::new(
+                        "socks5",
+                        json!({
+                            "server": format!("{}:{}", params.server, params.port),
                         }),
                     ),
                     target_net,
