@@ -13,7 +13,9 @@ pub enum EventType {
     CloseConnection,
     Write(u64),
     Read(u64),
+    #[allow(dead_code)]
     SendTo(Address, u64),
+    #[allow(dead_code)]
     RecvFrom(Address, u64),
 }
 

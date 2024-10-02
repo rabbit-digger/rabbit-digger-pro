@@ -11,6 +11,7 @@ use rd_interface::{
 use tracing::instrument;
 
 pub struct RuleItem {
+    #[allow(dead_code)]
     pub target_name: String,
     pub target: Net,
     matcher: config::Matcher,

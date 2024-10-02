@@ -1,4 +1,3 @@
-use core::fmt;
 use std::{
     io::{self, Cursor, Write},
     pin::Pin,
@@ -78,17 +77,6 @@ impl Connect {
             read: ReadState::Read(vec![0u8; 8192], 0),
             param,
         }
-    }
-}
-
-struct UrlEncode<'a>(&'a [u8]);
-
-impl<'a> fmt::Display for UrlEncode<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for i in self.0 {
-            write!(f, "%{:02x}", i)?;
-        }
-        Ok(())
     }
 }
 

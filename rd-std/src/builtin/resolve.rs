@@ -10,7 +10,6 @@ use rd_interface::{
 
 type Resolver =
     Arc<dyn Fn(String, u16) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> + Send + Sync>;
-pub struct Udp(UdpSocket, Resolver);
 
 // Resolves domain names to IP addresses before connecting.
 #[rd_config]

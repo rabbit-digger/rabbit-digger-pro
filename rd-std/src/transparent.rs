@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 mod origin_addr;
 #[cfg(target_os = "linux")]
 mod redir;

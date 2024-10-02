@@ -4,10 +4,8 @@ pub trait OriginAddrExt {
     fn origin_addr(&self) -> io::Result<SocketAddr>;
 }
 
-#[cfg(target_os = "linux")]
 use std::os::unix::prelude::AsRawFd;
 
-#[cfg(target_os = "linux")]
 impl<T: AsRawFd> OriginAddrExt for T {
     fn origin_addr(&self) -> io::Result<SocketAddr> {
         use socket2::SockAddr;
