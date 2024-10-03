@@ -4,7 +4,7 @@ sidebar: auto
 
 # Inside
 
-`rabbit-digger` 内部的秘密🐰...
+`rabbit-digger` 内部的秘密 🐰...
 
 ## Net
 
@@ -20,25 +20,23 @@ sidebar: auto
 
 ## ExternalFile
 
-`ExternalFile` 可用在 `Config` 中. 代表着这个字段是一个外部的文件. `ExternalFile` 可以是文件, 也可以是 `Url`. 当 `ExternalFile` 是文件且 `watch` 为 `true` 时, `Net` 会在文件变更时被重建. 当 `Url` 和 `interval` 被设置时, 文件会被轮询, 并且在改变时重建 `Net`.
+`ExternalFile` 可用在 `Config` 中. 代表着这个字段是一个外部的文件. `ExternalFile` 可以是文件, 也可以是 `Url`. 当 `ExternalFile` 是文件且 `watch` 为 `true` 时, `Net` 会在文件变更时被重建. 当 `Url` 和 `interval` 被设置时, 文件会被轮询, 并且在改变时重建 `Net`.
 
 ## Config 处理流
 
-所有 `Config` 类型都实现了 `Config` trait, `rabbit-digger` 会在加载 `Net` 时调用 `Config::visit` 来访问内部的字段, 并填入所有的 `NetRef`, `ExternalFile`. 在填入 `ExternalFile` 的时候会记录所有使用到的文件, 并在文件变动的时候重新构建 `Net`.
+所有 `Config` 类型都实现了 `Config` trait, `rabbit-digger` 会在加载 `Net` 时调用 `Config::visit` 来访问内部的字段, 并填入所有的 `NetRef`, `ExternalFile`. 在填入 `ExternalFile` 的时候会记录所有使用到的文件, 并在文件变动的时候重新构建 `Net`.
 
-```flow
-input=>inputoutput: Config.yaml
-mkctx=>operation: 创建配置上下文, 用于保存 Config 依赖的文件
-import=>operation: 处理 Import 字段
-build=>operation: 构造 Net 和 Server
-cond=>condition: 依赖的文件
-是否改变?
-run_server=>operation: 运行 Server
-直到所有Server停止
+```mermaid
+flowchart TD
+    input(Config.yml)
+    mkctx[创建配置上下文, 用于保存 Config 依赖的文件]
+    import[处理 Import 字段]
+    build[构造 Net 和 Server]
+    cond{依赖的文件
+    是否改变?}
+    run_server[运行 Server]
 
-input->mkctx->import->build->run_server->cond
-
-cond(yes,left)->mkctx
-cond(no)->run_server
-
+    input --> mkctx --> import --> build --> run_server --> cond
+    cond --> |Yes| mkctx
+    cond --> |No| run_server
 ```
