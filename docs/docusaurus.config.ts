@@ -1,5 +1,6 @@
+import { themes as prismThemes } from 'prism-react-renderer';
 import type { Config } from '@docusaurus/types';
-import { themes } from 'prism-react-renderer';
+import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Rabbit Digger Pro',
@@ -31,58 +32,57 @@ const config: Config = {
   presets: [
     [
       'classic',
-      ({
+      {
         docs: {
-          sidebarPath: require.resolve('./sidebars.js'),
+          sidebarPath: './sidebars.ts',
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
             'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
         },
         theme: {
-          customCss: require.resolve('./src/css/custom.css'),
+          customCss: './src/css/custom.css',
         },
-      }),
+      } satisfies Preset.Options,
     ],
   ],
 
-  themeConfig:
-    ({
-      // Replace with your project's social card
-      image: 'img/docusaurus-social-card.jpg',
-      navbar: {
-        title: 'Rabbit Digger Pro',
-        logo: {
-          alt: 'Rabbit Digger Pro',
-          src: 'img/logo.svg',
+  themeConfig: {
+    // Replace with your project's social card
+    image: 'img/docusaurus-social-card.jpg',
+    navbar: {
+      title: 'Rabbit Digger Pro',
+      logo: {
+        alt: 'Rabbit Digger Pro',
+        src: 'img/logo.svg',
+      },
+      items: [
+        {
+          type: 'docSidebar',
+          sidebarId: 'tutorialSidebar',
+          position: 'left',
+          label: '教程',
         },
-        items: [
-          {
-            type: 'docSidebar',
-            sidebarId: 'tutorialSidebar',
-            position: 'left',
-            label: '教程',
-          },
-          {
-            href: 'https://github.com/rabbit-digger/rabbit-digger-pro',
-            label: 'GitHub',
-            position: 'right',
-          },
-          {
-            type: 'localeDropdown',
-            position: 'right',
-          },
-        ],
-      },
-      footer: {
-        style: 'dark',
-        copyright: `Copyright © ${new Date().getFullYear()} Rabbit Digger Pro. Built with Docusaurus.`,
-      },
-      prism: {
-        theme: themes.github,
-        darkTheme: themes.dracula,
-      },
-    }),
+        {
+          href: 'https://github.com/rabbit-digger/rabbit-digger-pro',
+          label: 'GitHub',
+          position: 'right',
+        },
+        {
+          type: 'localeDropdown',
+          position: 'right',
+        },
+      ],
+    },
+    footer: {
+      style: 'dark',
+      copyright: `Copyright © ${new Date().getFullYear()} Rabbit Digger Pro. Built with Docusaurus.`,
+    },
+    prism: {
+      theme: prismThemes.github,
+      darkTheme: prismThemes.dracula,
+    },
+  } satisfies Preset.ThemeConfig,
 };
 
 export default config;
